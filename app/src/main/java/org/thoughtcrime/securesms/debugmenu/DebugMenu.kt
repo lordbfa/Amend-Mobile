@@ -1,0 +1,984 @@
+package org.thoughtcrime.securesms.debugmenu
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePickerState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerState
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.retain.retain
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import network.loki.messenger.BuildConfig
+import network.loki.messenger.R
+import network.loki.messenger.libsession_util.protocol.ProMessageFeature
+import network.loki.messenger.libsession_util.protocol.ProProfileFeature
+import org.session.libsession.messaging.groups.LegacyGroupDeprecationManager
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Commands.*
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.FALSE
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.NOT_SET
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.SEEN_1
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.SEEN_2
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.SEEN_3
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.SEEN_4
+import org.thoughtcrime.securesms.debugmenu.DebugMenuViewModel.Companion.TRUE
+import org.thoughtcrime.securesms.ui.dialog.AlertDialog
+import org.thoughtcrime.securesms.ui.Cell
+import org.thoughtcrime.securesms.ui.dialog.DialogButtonData
+import org.thoughtcrime.securesms.ui.Divider
+import org.thoughtcrime.securesms.ui.GetString
+import org.thoughtcrime.securesms.ui.dialog.LoadingDialog
+import org.thoughtcrime.securesms.ui.components.SlimFillButtonRect
+import org.thoughtcrime.securesms.ui.components.BackAppBar
+import org.thoughtcrime.securesms.ui.components.DropDown
+import org.thoughtcrime.securesms.ui.components.SessionOutlinedTextField
+import org.thoughtcrime.securesms.ui.components.SessionSwitch
+import org.thoughtcrime.securesms.ui.theme.LocalColors
+import org.thoughtcrime.securesms.ui.theme.LocalDimensions
+import org.thoughtcrime.securesms.ui.theme.LocalType
+import org.thoughtcrime.securesms.ui.theme.PreviewTheme
+import org.thoughtcrime.securesms.ui.theme.bold
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DebugMenu(
+    uiState: DebugMenuViewModel.UIState,
+    sendCommand: (DebugMenuViewModel.Commands) -> Unit,
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit
+) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val datePickerState = rememberDatePickerState()
+    val timePickerState = rememberTimePickerState()
+
+    var showingDeprecatedDatePicker by retain { mutableStateOf(false) }
+    var showingDeprecatedTimePicker by retain { mutableStateOf(false) }
+
+    var showingDeprecatingStartDatePicker by retain { mutableStateOf(false) }
+    var showingDeprecatingStartTimePicker by retain { mutableStateOf(false) }
+
+    val getPickedTime = {
+        val localDate = ZonedDateTime.ofInstant(
+            Instant.ofEpochMilli(datePickerState.selectedDateMillis!!), ZoneId.of("UTC")
+        ).toLocalDate()
+
+        val localTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
+        ZonedDateTime.of(localDate, localTime, ZoneId.systemDefault())
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            // App bar
+            BackAppBar(title = "Debug Menu", onBack = onClose)
+        },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
+        contentWindowInsets = WindowInsets.safeDrawing,
+    ) { contentPadding ->
+        // display a snackbar when required
+        LaunchedEffect(uiState.snackMessage) {
+            if (!uiState.snackMessage.isNullOrEmpty()) {
+                snackbarHostState.showSnackbar(uiState.snackMessage)
+            }
+        }
+
+        // Alert dialogs
+        if (uiState.showDeprecatedStateWarningDialog) {
+            AlertDialog(
+                onDismissRequest = { sendCommand(HideEnvironmentWarningDialog) },
+                title = "Are you sure you want to change the deprecation state?",
+                text = "This will restart the app...",
+                showCloseButton = false, // don't display the 'x' button
+                buttons = listOf(
+                    DialogButtonData(
+                        text = GetString(R.string.cancel),
+                        onClick = { sendCommand(HideDeprecationChangeDialog) }
+                    ),
+                    DialogButtonData(
+                        text = GetString(android.R.string.ok),
+                        onClick = { sendCommand(OverrideDeprecationState) }
+                    )
+                )
+            )
+        }
+
+        if (uiState.showEnvironmentWarningDialog) {
+            AlertDialog(
+                onDismissRequest = { sendCommand(HideEnvironmentWarningDialog) },
+                title = "Are you sure you want to switch environments?",
+                text = "Changing this setting will result in all conversations and Snode data being cleared...",
+                showCloseButton = false, // don't display the 'x' button
+                buttons = listOf(
+                    DialogButtonData(
+                        text = GetString(R.string.cancel),
+                        onClick = { sendCommand(HideEnvironmentWarningDialog) }
+                    ),
+                    DialogButtonData(
+                        text = GetString(android.R.string.ok),
+                        onClick = { sendCommand(ChangeEnvironment) }
+                    )
+                )
+            )
+        }
+
+        if (uiState.showLoadingDialog) {
+            LoadingDialog(title = "Applying changes...")
+        }
+
+        val layoutDirection = LocalLayoutDirection.current
+        val safeInsetsPadding = PaddingValues(
+            start = contentPadding.calculateStartPadding(layoutDirection) + LocalDimensions.current.spacing,
+            end = contentPadding.calculateEndPadding(layoutDirection) + LocalDimensions.current.spacing,
+            top = contentPadding.calculateTopPadding(),
+            bottom = contentPadding.calculateBottomPadding(),
+        )
+
+        Column(
+            modifier = Modifier
+                .background(LocalColors.current.background)
+                .padding(safeInsetsPadding)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Spacer(modifier = Modifier.height(LocalDimensions.current.spacing))
+
+            // Info pane
+            val clipboardManager = LocalClipboardManager.current
+            val appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE} - ${
+                BuildConfig.GIT_HASH.take(
+                    6
+                )
+            })"
+
+            DebugCell(
+                modifier = Modifier.clickable {
+                    // clicking the cell copies the version number to the clipboard
+                    clipboardManager.setText(AnnotatedString(appVersion))
+                },
+                title = "App Info"
+            ) {
+                Text(
+                    text = "Version: $appVersion",
+                    style = LocalType.current.base
+                )
+            }
+
+            // Environment
+            DebugCell("Environment") {
+                DropDown(
+                    modifier = Modifier.fillMaxWidth(0.6f),
+                    selectedText = uiState.currentEnvironment,
+                    values = uiState.environments,
+                    onValueSelected = {
+                        sendCommand(ShowEnvironmentWarningDialog(it))
+                    }
+                )
+            }
+
+            // Debug Logger
+            DebugCell(
+                "Debug Logger",
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            )
+            {
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xxsSpacing))
+
+                SlimFillButtonRect(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Show Debug Logs",
+                ) {
+                    sendCommand(DebugMenuViewModel.Commands.NavigateTo(DebugMenuDestination.DebugMenuLogs))
+                }
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+
+                Column {
+                    DebugLogGroup.entries.forEach { logGroup ->
+                        DebugSwitchRow(
+                            text = "Show toasts for ${logGroup.label}",
+                            checked = uiState.showToastForGroups[logGroup.label] == true,
+                            onCheckedChange = {
+                                sendCommand(DebugMenuViewModel.Commands.ToggleDebugLogGroup(
+                                    group = logGroup,
+                                    showToast = it)
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Session Pro
+            DebugCell(
+                "Session Pro",
+                verticalArrangement = Arrangement.spacedBy(0.dp))
+            {
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+
+                Text(text = "Purchase a plan")
+                Spacer(modifier = Modifier.height(LocalDimensions.current.smallSpacing))
+
+                DropDown(
+                    selected = null,
+                    modifier = modifier,
+                    values = uiState.debugProPlans,
+                    onValueSelected = { sendCommand(DebugMenuViewModel.Commands.PurchaseDebugPlan(it!!)) },
+                    labeler = { it?.label ?: "Select a plan to buy" },
+                    allowSelectingNullValue = false,
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+
+                DebugSwitchRow(
+                    text = "Set current user as Pro",
+                    checked = uiState.forceCurrentUserAsPro,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ForceCurrentUserAsPro(it))
+                    }
+                )
+
+                AnimatedVisibility(uiState.forceCurrentUserAsPro) {
+                    Column {
+                        Text(
+                            modifier = Modifier.padding(top = LocalDimensions.current.xxsSpacing),
+                            text = "Debug Subscription Status",
+                            style = LocalType.current.base
+                        )
+                        DropDown(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = LocalDimensions.current.xxsSpacing),
+                            selectedText = uiState.selectedDebugSubscriptionStatus.label,
+                            values = uiState.debugSubscriptionStatuses.map { it.label },
+                            onValueSelected = { selection ->
+                                sendCommand(
+                                    DebugMenuViewModel.Commands.SetDebugSubscriptionStatus(
+                                        uiState.debugSubscriptionStatuses.first { it.label == selection }
+                                    )
+                                )
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                        DebugSwitchRow(
+                            text = "Is Within Quick Refund Window",
+                            checked = uiState.withinQuickRefund,
+                            onCheckedChange = {
+                                sendCommand(DebugMenuViewModel.Commands.WithinQuickRefund(it))
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                Text(
+                    modifier = Modifier.padding(top = LocalDimensions.current.xxsSpacing),
+                    text = "Pro Data Status",
+                    style = LocalType.current.base
+                )
+                DropDown(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = LocalDimensions.current.xxsSpacing),
+                    selectedText = uiState.selectedDebugProPlanStatus.label,
+                    values = uiState.debugProPlanStatus.map { it.label },
+                    onValueSelected = { selection ->
+                        sendCommand(
+                            DebugMenuViewModel.Commands.SetDebugProPlanStatus(
+                                uiState.debugProPlanStatus.first { it.label == selection }
+                            )
+                        )
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                DebugSwitchRow(
+                    text = "Force \"No Billing\" APIs",
+                    checked = uiState.forceNoBilling,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ForceNoBilling(it))
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                DebugSwitchRow(
+                    text = "Set all incoming messages as Pro",
+                    checked = uiState.forceIncomingMessagesAsPro,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ForceIncomingMessagesAsPro(it))
+                    }
+                )
+
+                AnimatedVisibility(uiState.forceIncomingMessagesAsPro) {
+                    Column {
+                        for (feature in (ProMessageFeature.entries + ProProfileFeature.entries)) {
+                            DebugCheckboxRow(
+                                text = "Message Feature: ${feature.name}",
+                                minHeight = 30.dp,
+                                checked = uiState.messageProFeature.contains(feature),
+                                onCheckedChange = {
+                                    sendCommand(
+                                        DebugMenuViewModel.Commands.SetMessageProFeature(
+                                            feature, it
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                }
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                DebugSwitchRow(
+                    text = "Set app as post Pro launch",
+                    checked = uiState.forcePostPro,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ForcePostPro(it))
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                DebugSwitchRow(
+                    text = "Set other users as Pro",
+                    checked = uiState.forceOtherUsersAsPro,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ForceOtherUsersAsPro(it))
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(LocalDimensions.current.xsSpacing)
+                ){
+                    Image(
+                        modifier = Modifier.size(LocalDimensions.current.iconXSmall),
+                        painter = painterResource(id = R.drawable.ic_triangle_alert),
+                        colorFilter = ColorFilter.tint(LocalColors.current.warning),
+                        contentDescription = null,
+                    )
+
+                    Text(
+                        text = "For avatar animation or Pro badge changes based on the values modified above, please restart the app",
+                        style = LocalType.current.base.copy(color = LocalColors.current.warning)
+                    )
+                }
+            }
+
+            if (uiState.dbInspectorState != DebugMenuViewModel.DatabaseInspectorState.NOT_AVAILABLE) {
+                DebugCell("Database inspector") {
+                    SlimFillButtonRect(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            sendCommand(DebugMenuViewModel.Commands.ToggleDatabaseInspector)
+                        },
+                        text = if (uiState.dbInspectorState == DebugMenuViewModel.DatabaseInspectorState.STOPPED)
+                            "Start"
+                        else "Stop",
+                    )
+                }
+            }
+
+            // Donations
+            DebugCell("Donations") {
+                Text(
+                    text = "First app install: ${uiState.firstInstall}",
+                    style = LocalType.current.base
+                )
+                Text(
+                    text = "Has donated: ${uiState.hasDonated}",
+                    style = LocalType.current.base
+                )
+                Text(
+                    text = "Has copied donate URL: ${uiState.hasCopiedDonationURL}",
+                    style = LocalType.current.base
+                )
+                Text(
+                    text = "Seen donation CTA amount: ${uiState.seenDonateCTAAmount} times",
+                    style = LocalType.current.base
+                )
+                Text(
+                    text = "Last seen donation CTA: ${uiState.lastSeenDonateCTA}",
+                    style = LocalType.current.base
+                )
+                Text(
+                    text = "Show CTA from positive review: ${uiState.showDonateCTAFromPositiveReview}",
+                    style = LocalType.current.base
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xxxsSpacing))
+                Divider()
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xxxsSpacing))
+
+                DebugDropDownRow(
+                    text = "Debug 'Has donated': ",
+                    selectedText = uiState.hasDonatedDebug,
+                    values = listOf(NOT_SET, TRUE, FALSE),
+                    onValueSelected = {
+                        sendCommand(SetDebugHasDonated(it))
+                    }
+                )
+                DebugDropDownRow(
+                    text = "Debug 'Has copied link': ",
+                    selectedText = uiState.hasCopiedDonationURLDebug,
+                    values = listOf(NOT_SET, TRUE, FALSE),
+                    onValueSelected = {
+                        sendCommand(SetDebugHasCopiedDonation(it))
+                    }
+                )
+                DebugDropDownRow(
+                    text = "Debug 'CTA seen amount': ",
+                    selectedText = uiState.seenDonateCTAAmountDebug,
+                    values = listOf(NOT_SET, SEEN_1, SEEN_2, SEEN_3, SEEN_4),
+                    onValueSelected = {
+                        sendCommand(SetDebugDonationCTAViews(it))
+                    }
+                )
+                DebugDropDownRow(
+                    text = "Debug 'Show donation from app review': ",
+                    selectedText = uiState.showDonateCTAFromPositiveReviewDebug,
+                    values = listOf(NOT_SET, TRUE, FALSE),
+                    onValueSelected = {
+                        sendCommand(SetDebugShowDonationFromReview(it))
+                    }
+                )
+            }
+
+            // Fake contacts
+            DebugCell("Generate fake contacts") {
+                var prefix by remember { mutableStateOf("User-") }
+                var count by remember { mutableStateOf("2000") }
+
+                DebugRow("Prefix") {
+                    SessionOutlinedTextField(
+                        text = prefix,
+                        innerPadding = PaddingValues(LocalDimensions.current.smallSpacing),
+                        onChange = { prefix = it },
+                        modifier = Modifier.weight(2f)
+                    )
+                }
+
+                DebugRow("Count") {
+                    SessionOutlinedTextField(
+                        text = count,
+                        innerPadding = PaddingValues(LocalDimensions.current.smallSpacing),
+                        onChange = { value -> count = value.filter { it.isDigit() } },
+                        modifier = Modifier.weight(2f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
+                SlimFillButtonRect(modifier = Modifier.fillMaxWidth(), text = "Generate") {
+                    sendCommand(
+                        GenerateContacts(
+                            prefix = prefix,
+                            count = count.toInt(),
+                        )
+                    )
+                }
+            }
+
+            // Session Token
+            DebugCell("Session Token") {
+                // Schedule a test token-drop notification for 10 seconds from now
+                SlimFillButtonRect(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Schedule Token Page Notification (10s)",
+                    onClick = { sendCommand(ScheduleTokenNotification) }
+                )
+            }
+
+            // Keys
+            DebugCell("User Details") {
+
+                SlimFillButtonRect (
+                    text = "Copy Account ID",
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        sendCommand(CopyAccountId)
+                    }
+                )
+
+                SlimFillButtonRect(
+                    text = "Copy 07-prefixed Version Blinded Public Key",
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        sendCommand(Copy07PrefixedBlindedPublicKey)
+                    }
+                )
+
+                SlimFillButtonRect (
+                    text = "Copy Pro Master Key",
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        sendCommand(DebugMenuViewModel.Commands.CopyProMasterKey)
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+
+            // Flags
+            DebugCell("Flags") {
+                DebugSwitchRow(
+                    text = "Hide Message Requests",
+                    checked = uiState.hideMessageRequests,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.HideMessageRequest(it))
+                    }
+                )
+
+                DebugSwitchRow(
+                    text = "Hide Note to Self",
+                    checked = uiState.hideNoteToSelf,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.HideNoteToSelf(it))
+                    }
+                )
+
+                SlimFillButtonRect(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Clear All Trusted Downloads",
+                ) {
+                    sendCommand(ClearTrustedDownloads)
+                }
+            }
+
+            DebugCell("Fileserver, avatar & attachment") {
+                Text("Alternative file server")
+
+                DropDown(
+                    modifier = Modifier.fillMaxWidth(),
+                    selected = uiState.alternativeFileServer,
+                    values = uiState.availableAltFileServers,
+                    onValueSelected = { sendCommand(DebugMenuViewModel.Commands.SelectAltFileServer(it)) },
+                    labeler = { it?.url?.host ?: "Do not use" },
+                    allowSelectingNullValue = true,
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+
+                DebugSwitchRow(
+                    text = "Debug avatar reupload (shorten interval, and toast messages)",
+                    checked = uiState.debugAvatarReupload,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ToggleDebugAvatarReupload)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(LocalDimensions.current.xsSpacing))
+                DebugSwitchRow(
+                    text = "Force 30sec TTL avatar",
+                    checked = uiState.forceShortTTl,
+                    onCheckedChange = {
+                        sendCommand(DebugMenuViewModel.Commands.ForceShortTTl(it))
+                    }
+                )
+
+                SlimFillButtonRect(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Reset Push Token",
+                ) {
+                    sendCommand(DebugMenuViewModel.Commands.ResetPushToken)
+                }
+
+                SlimFillButtonRect(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Clear All Trusted Downloads",
+                ) {
+                    sendCommand(ClearTrustedDownloads)
+                }
+            }
+
+            DebugCell("Conversation V3") {
+                DebugSwitchRow(
+                    text = "Use ConversationV3",
+                    checked = uiState.userConvoV3,
+                    onCheckedChange = {
+                        sendCommand(UseConvoV3(it))
+                    }
+                )
+            }
+
+            // Group deprecation state
+            DebugCell("Legacy Group Deprecation Overrides") {
+                DropDown(
+                    selectedText = uiState.forceDeprecationState.displayName,
+                    values = uiState.availableDeprecationState.map { it.displayName },
+                ) { selected ->
+                    val override = LegacyGroupDeprecationManager.DeprecationState.entries
+                        .firstOrNull { it.displayName == selected }
+
+                    sendCommand(ShowDeprecationChangeDialog(override))
+                }
+
+                DebugRow(title = "Deprecating start date", modifier = Modifier.clickable {
+                    datePickerState.applyFromZonedDateTime(uiState.deprecatingStartTime)
+                    timePickerState.applyFromZonedDateTime(uiState.deprecatingStartTime)
+                    showingDeprecatingStartDatePicker = true
+                }) {
+                    Text(
+                        text = uiState.deprecatingStartTime.withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate().toString()
+                    )
+                }
+
+                DebugRow(title = "Deprecating start time", modifier = Modifier.clickable {
+                    datePickerState.applyFromZonedDateTime(uiState.deprecatingStartTime)
+                    timePickerState.applyFromZonedDateTime(uiState.deprecatingStartTime)
+                    showingDeprecatingStartTimePicker = true
+                }) {
+                    Text(
+                        text = uiState.deprecatingStartTime.withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalTime().toString()
+                    )
+                }
+
+                DebugRow(title = "Deprecated date", modifier = Modifier.clickable {
+                    datePickerState.applyFromZonedDateTime(uiState.deprecatedTime)
+                    timePickerState.applyFromZonedDateTime(uiState.deprecatedTime)
+                    showingDeprecatedDatePicker = true
+                }) {
+                    Text(
+                        text = uiState.deprecatedTime.withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate().toString()
+                    )
+                }
+
+                DebugRow(title = "Deprecated time", modifier = Modifier.clickable {
+                    datePickerState.applyFromZonedDateTime(uiState.deprecatedTime)
+                    timePickerState.applyFromZonedDateTime(uiState.deprecatedTime)
+                    showingDeprecatedTimePicker = true
+                }) {
+                    Text(
+                        text = uiState.deprecatedTime.withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalTime().toString()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(LocalDimensions.current.spacing))
+            Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding()))
+        }
+
+        // Deprecation date picker
+        if (showingDeprecatedDatePicker || showingDeprecatingStartDatePicker) {
+            DatePickerDialog(
+                onDismissRequest = {
+                    showingDeprecatedDatePicker = false
+                    showingDeprecatingStartDatePicker = false
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (showingDeprecatedDatePicker) {
+                            sendCommand(
+                                DebugMenuViewModel.Commands.OverrideDeprecatedTime(
+                                    getPickedTime()
+                                )
+                            )
+                            showingDeprecatedDatePicker = false
+                        } else {
+                            sendCommand(
+                                DebugMenuViewModel.Commands.OverrideDeprecatingStartTime(
+                                    getPickedTime()
+                                )
+                            )
+                            showingDeprecatingStartDatePicker = false
+                        }
+                    }) {
+                        Text("Set", color = LocalColors.current.text)
+                    }
+                },
+            ) {
+                DatePicker(datePickerState)
+            }
+        }
+
+        if (showingDeprecatedTimePicker || showingDeprecatingStartTimePicker) {
+            AlertDialog(
+                onDismissRequest = {
+                    showingDeprecatedTimePicker = false
+                    showingDeprecatingStartTimePicker = false
+                },
+                title = "Set Time",
+                buttons = listOf(
+                    DialogButtonData(
+                        text = GetString(R.string.cancel),
+                        onClick = {
+                            showingDeprecatedTimePicker = false
+                            showingDeprecatingStartTimePicker = false
+                        }
+                    ),
+                    DialogButtonData(
+                        text = GetString(android.R.string.ok),
+                        onClick = {
+                            if (showingDeprecatedTimePicker) {
+                                sendCommand(
+                                    OverrideDeprecatedTime(
+                                        getPickedTime()
+                                    )
+                                )
+                                showingDeprecatedTimePicker = false
+                            } else {
+                                sendCommand(
+                                    OverrideDeprecatingStartTime(
+                                        getPickedTime()
+                                    )
+                                )
+                                showingDeprecatingStartTimePicker = false
+                            }
+                        }
+                    )
+                )
+            ) {
+                TimePicker(timePickerState)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+private fun DatePickerState.applyFromZonedDateTime(time: ZonedDateTime) {
+    selectedDateMillis = time.withZoneSameInstant(ZoneId.of("UTC")).toEpochSecond() * 1000L
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+private fun TimePickerState.applyFromZonedDateTime(time: ZonedDateTime) {
+    val normalised = time.withZoneSameInstant(ZoneId.systemDefault())
+    hour = normalised.hour
+    minute = normalised.minute
+}
+
+
+private val LegacyGroupDeprecationManager.DeprecationState?.displayName: String
+    get() {
+        return this?.name ?: "No state override"
+    }
+
+@Composable
+private fun DebugRow(
+    title: String,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = LocalDimensions.current.itemButtonIconSpacing,
+    content: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = modifier.heightIn(min = minHeight),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = LocalType.current.base,
+            modifier = Modifier.weight(1f)
+        )
+
+        Spacer(modifier = Modifier.width(LocalDimensions.current.xsSpacing))
+
+        content()
+    }
+}
+
+@Composable
+fun DebugSwitchRow(
+    text: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    DebugRow(
+        title = text,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) },
+    ) {
+        SessionSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            qaTag = R.string.qa_default_debug
+        )
+    }
+
+}
+
+@Composable
+fun DebugCheckboxRow(
+    text: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = LocalDimensions.current.itemButtonIconSpacing,
+) {
+    DebugRow(
+        title = text,
+        minHeight = minHeight,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) },
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = LocalColors.current.accent,
+                uncheckedColor = LocalColors.current.disabled,
+                checkmarkColor = LocalColors.current.background
+            )
+        )
+    }
+}
+
+@Composable
+fun DebugDropDownRow(
+    text: String,
+    selectedText: String,
+    values: List<String>,
+    onValueSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = LocalDimensions.current.itemButtonIconSpacing,
+) {
+    DebugRow(
+        title = text,
+        minHeight = minHeight,
+        modifier = modifier
+            .fillMaxWidth(),
+    ) {
+        DropDown(
+            modifier = Modifier.weight(1f, fill = false),
+            selectedText = selectedText,
+            values = values,
+            onValueSelected = onValueSelected
+        )
+    }
+}
+
+@Composable
+fun ColumnScope.DebugCell(
+    title: String,
+    modifier: Modifier = Modifier,
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(LocalDimensions.current.xsSpacing),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Spacer(modifier = Modifier.height(LocalDimensions.current.smallSpacing))
+
+    Cell(
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(LocalDimensions.current.spacing),
+            verticalArrangement = verticalArrangement
+        ) {
+            Text(
+                text = title,
+                style = LocalType.current.large.bold()
+            )
+
+            content()
+        }
+    }
+}
+
+@Preview
+@Composable
+fun PreviewDebugMenu() {
+    PreviewTheme {
+        DebugMenu(
+            uiState = DebugMenuViewModel.UIState(
+                currentEnvironment = "Development",
+                environments = listOf("Development", "Production"),
+                snackMessage = null,
+                showEnvironmentWarningDialog = false,
+                showLoadingDialog = false,
+                showDeprecatedStateWarningDialog = false,
+                hideMessageRequests = true,
+                hideNoteToSelf = false,
+                forceDeprecationState = null,
+                deprecatedTime = ZonedDateTime.now(),
+                availableDeprecationState = emptyList(),
+                deprecatingStartTime = ZonedDateTime.now(),
+                forceCurrentUserAsPro = true,
+                forceIncomingMessagesAsPro = true,
+                forceOtherUsersAsPro = false,
+                forcePostPro = false,
+                forceShortTTl = false,
+                messageProFeature = setOf(ProMessageFeature.HIGHER_CHARACTER_LIMIT),
+                dbInspectorState = DebugMenuViewModel.DatabaseInspectorState.STARTED,
+                debugSubscriptionStatuses = setOf(DebugMenuViewModel.DebugSubscriptionStatus.AUTO_GOOGLE),
+                selectedDebugSubscriptionStatus = DebugMenuViewModel.DebugSubscriptionStatus.AUTO_GOOGLE,
+                debugProPlanStatus = setOf(DebugMenuViewModel.DebugProPlanStatus.NORMAL),
+                selectedDebugProPlanStatus = DebugMenuViewModel.DebugProPlanStatus.NORMAL,
+                debugProPlans = emptyList(),
+                forceNoBilling = false,
+                withinQuickRefund = true,
+                debugAvatarReupload = true,
+                hasDonated = false,
+                hasCopiedDonationURL = false,
+                seenDonateCTAAmount = 0,
+                lastSeenDonateCTA = "-",
+                showDonateCTAFromPositiveReview = false,
+                hasDonatedDebug = "",
+                hasCopiedDonationURLDebug = "",
+                seenDonateCTAAmountDebug = "",
+                showDonateCTAFromPositiveReviewDebug = "",
+                firstInstall = "",
+                userConvoV3 = false,
+            ),
+            sendCommand = {},
+            onClose = {}
+        )
+    }
+}

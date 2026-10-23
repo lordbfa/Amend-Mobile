@@ -1,0 +1,466 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- NOTE: Only non-translated Accessibility IDs for automated testing exist in this file. -->
+
+    <!-- Onboarding related -->
+    <string name="AccessibilityId_accountIdOrOnsEnter">Account id input box</string>
+    <string name="AccessibilityId_sessionIdInput">Session id input box</string>
+    <string name="AccessibilityId_recoveryPasswordHidePermanentlyConfirm">Confirm button</string>
+    <string name="AccessibilityId_accountIdCopy">Copy Account ID</string>
+    <string name="AccessibilityId_copy">Copy button</string>
+    <string name="AccessibilityId_recoveryPasswordHideRecoveryPassword">Hide recovery password button</string>
+    <string name="AccessibilityId_qrCode">QR code</string>
+    <string name="AccessibilityId_sessionRecoveryPassword">Recovery password</string>
+    <string name="AccessibilityId_sessionRecoveryPasswordContainer">Recovery password container</string>
+    <string name="AccessibilityId_sessionRecoveryPasswordMenuItem">Recovery password menu item</string>
+    <string name="AccessibilityId_qrView">View QR code</string>
+    <string name="AccessibilityId_notificationsFastMode">Fast mode notifications button</string>
+    <string name="AccessibilityId_notificationsSlowMode">Slow mode notifications button</string>
+    <string name="AccessibilityId_loadAccountProgressMessage">Loading animation</string>
+    <string name="AccessibilityId_onboardingAccountCreate">Create account button</string>
+    <string name="AccessibilityId_onboardingAccountExists">Restore your session button</string>
+    <string name="AccessibilityId_urlOpenBrowser">Open URL</string>
+    <string name="AccessibilityId_onboardingTos">Terms of service button</string>
+    <string name="AccessibilityId_onboardingPrivacy">Privacy policy button</string>
+    <string name="AccessibilityId_recoveryPasswordEnter">Recovery phrase input</string>
+    <string name="AccessibilityId_recoveryPasswordBanner">Reveal recovery phrase button</string>
+    <string name="AccessibilityId_messageNewDescriptionMobile">Help desk link</string>
+    <string name="AccessibilityId_sessionInviteAFriendButton">Invite friend button</string>
+    <!-- Landing Page -->
+    <!-- Session ID Page-->
+    <string name="AccessibilityId_theContinue">Continue</string>
+    <!-- Recovery phrase input -->
+    <!--Restore by seed page-->
+    <!--Create Display Name    -->
+    <string name="AccessibilityId_displayNameEnter">Enter display name</string>
+    <!--Message Notifications Options-->
+    <string name="AccessibilityId_notificationsMessageContinue">Continue with settings</string>
+    <!--Recovery Phrase reminder-->
+    <string name="AccessibilityId_sessionRecoveryPasswordCopy">Copy Recovery Phrase</string>
+    <!--Home Page-->
+    <string name="AccessibilityId_conversationListItem">Conversation list item</string>
+    <string name="AccessibilityId_contactUserDetails">Details</string>
+    <string name="AccessibilityId_pin">Pin</string>
+    <string name="AccessibilityId_profilePicture">User settings</string>
+    <string name="AccessibilityId_avatarPicker">Image picker</string>
+    <string name="AccessibilityId_searchIcon">Search icon</string>
+    <!--Settings Page -->
+    <string name="AccessibilityId_conversationsBlockedContacts">Blocked contacts</string>
+    <string name="AccessibilityId_shareAccountId">Account ID</string>
+    <string name="AccessibilityId_imageButton">Image button</string>
+    <string name="AccessibilityId_cameraButton">Camera button</string>
+    <string name="qa_settings_dialog_username_save">update-username-confirm-button</string>
+    <string name="qa_settings_dialog_username_cancel">update-username-cancel-button</string>
+    <!--Message requests-->
+    <string name="AccessibilityId_clearAll">Clear all</string>
+    <string name="AccessibilityId_messageRequestsNonePending">No pending message requests</string>
+    <string name="AccessibilityId_messageRequestsNew">Message request</string>
+    <string name="AccessibilityId_sessionMessageRequestsBanner">Message requests banner</string>
+    <!--New conversation pop up-->
+    <string name="AccessibilityId_groupCreate">Create group</string>
+    <string name="AccessibilityId_communityJoin">Join community button</string>
+    <string name="AccessibilityId_conversationsNew">New conversation button</string>
+    <string name="AccessibilityId_messageNew">New direct message</string>
+    <!-- Join community pop up -->
+    <string name="AccessibilityId_communityEnterUrl">Community input</string>
+    <!-- Conversation -->
+    <string name="qa_conversation_avatar">conversation-options-avatar</string>
+    <string name="AccessibilityId_conversationsAddToHome">Add to home screen</string>
+    <string name="AccessibilityId_conversationsSettingsAllMedia">All media</string>
+    <string name="AccessibilityId_block">Block</string>
+    <string name="AccessibilityId_blockConfirm">Confirm block</string>
+    <string name="AccessibilityId_unblockConfirm">Confirm unblock</string>
+    <string name="AccessibilityId_delete">Delete</string>
+    <string name="AccessibilityId_deleteButton">Delete button</string>
+    <string name="AccessibilityId_blockButton">Block button</string>
+    <string name="AccessibilityId_leave">Leave</string>
+    <string name="AccessibilityId_clear">Clear</string>
+    <string name="AccessibilityId_disappearingMessages">Disappearing messages</string>
+    <string name="AccessibilityId_enable">Enable</string>
+    <string name="AccessibilityId_notificationsMute">Mute notifications</string>
+    <string name="AccessibilityId_sessionNotifications">Notification settings</string>
+    <string name="AccessibilityId_search">Search</string>
+    <!-- Conversation settings -->
+    <string name="qa_conversation_settings_avatar">profile-picture</string>
+    <string name="qa_conversation_settings_edit_name">edit-profile-icon</string>
+    <string name="qa_conversation_settings_display_name_nts">your-profile-name</string>
+    <string name="qa_conversation_settings_display_name_1on1">preferred-display-name</string>
+    <string name="qa_conversation_settings_display_name_groups">group-name</string>
+    <string name="qa_conversation_settings_display_name_community">community-name</string>
+    <string name="qa_conversation_settings_description_1on1">fallback-display-name</string>
+    <string name="qa_conversation_settings_description_groups">group-description</string>
+    <string name="qa_conversation_settings_description_community">community-description</string>
+    <string name="qa_conversation_settings_account_id">account-id</string>
+    <string name="qa_conversation_settings_copy_account">copy-account-id-menu-option</string>
+    <string name="qa_conversation_settings_search">search-conversation-menu-option</string>
+    <string name="qa_conversation_settings_disappearing">disappearing-messages-menu-option</string>
+    <string name="qa_conversation_settings_disappearing_sub">disappearing-messages-timer-details-menu-option</string>
+    <string name="qa_conversation_settings_pin">pin-conversation-menu-option</string>
+    <string name="qa_conversation_settings_notifications">notifications-menu-option</string>
+    <string name="qa_conversation_settings_notifications_sub">notifications-details-menu-option</string>
+    <string name="qa_conversation_settings_notifications_radio_all">notifications-all-messages-radio-button</string>
+    <string name="qa_conversation_settings_notifications_radio_mentions">notifications-mentions-only-radio-button</string>
+    <string name="qa_conversation_settings_notifications_radio_mute">notifications-mute-radio-button</string>
+    <string name="qa_conversation_settings_notifications_radio_muted_until">notifications-muted-until-radio-button</string>
+    <string name="qa_conversation_settings_notifications_radio_forever">notifications-forever-time-option</string>
+    <string name="qa_conversation_settings_notifications_radio_1m">notifications-one-minute-time-option</string>
+    <string name="qa_conversation_settings_notifications_radio_5m">notifications-five-minute-time-option</string>
+    <string name="qa_conversation_settings_notifications_radio_1h">notifications-one-hour-time-option</string>
+    <string name="qa_conversation_settings_notifications_radio_2h">notifications-two-hours-time-option</string>
+    <string name="qa_conversation_settings_notifications_radio_1d">notifications-one-day-time-option</string>
+    <string name="qa_conversation_settings_notifications_radio_1w">notifications-one-week-time-option</string>
+    <string name="qa_conversation_settings_attachments">attachments-menu-option</string>
+    <string name="qa_conversation_settings_block">block-user-menu-option</string>
+    <string name="qa_conversation_settings_clear_messages">clear-all-messages-menu-option</string>
+    <string name="qa_conversation_settings_delete_conversation">delete-conversation-menu-option</string>
+    <string name="qa_conversation_settings_delete_contact">delete-contact-menu-option</string>
+    <string name="qa_conversation_search_input">search-input</string>
+    <string name="qa_input_clear">clear-input-button</string>
+    <string name="qa_input_clear_name">clear-input-button-name</string>
+    <string name="qa_input_clear_description">clear-input-button-description</string>
+    <string name="qa_conversation_search_cancel">search-cancel-button</string>
+    <string name="qa_conversation_search_up">search-toggle-up-button</string>
+    <string name="qa_conversation_search_down">search-toggle-down-button</string>
+    <string name="qa_conversation_search_loading">search-loading-icon</string>
+    <string name="qa_conversation_settings_hide_nts">hide-nts-menu-option</string>
+    <string name="qa_conversation_settings_copy_community_url">copy-community-url-menu-option</string>
+    <string name="qa_conversation_settings_leave_community">leave-community-menu-option</string>
+    <string name="qa_conversation_settings_manage_admins">manage-admins-menu-option</string>
+    <string name="qa_conversation_settings_manage_members">manage-members-menu-option</string>
+    <string name="qa_conversation_settings_group_members">group-members-menu-option</string>
+    <string name="qa_conversation_settings_invite_contacts">invite-contacts-menu-option</string>
+    <string name="qa_conversation_settings_leave_group">leave-group-menu-option</string>
+    <string name="qa_conversation_settings_delete_group">delete-group-menu-option</string>
+    <string name="qa_conversation_settings_dialog_hide_nts_confirm">hide-nts-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_hide_nts_cancel">hide-nts-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_show_nts_confirm">show-nts-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_show_nts_cancel">show-nts-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_whitelist_confirm">whitelist-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_whitelist_cancel">whitelist-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_block_confirm">block-user-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_block_cancel">block-user-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_unblock_confirm">unblock-user-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_unblock_cancel">unblock-user-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_delete_contact_confirm">delete-contact-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_delete_contact_cancel">delete-contact-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_delete_conversation_confirm">delete-conversation-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_delete_conversation_cancel">delete-conversation-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_leave_community_confirm">leave-community-confirm-option</string>
+    <string name="qa_conversation_settings_dialog_leave_community_cancel">leave-community-cancel-option</string>
+    <string name="qa_conversation_settings_dialog_delete_group_confirm">delete-group-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_delete_group_cancel">delete-group-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_leave_group_confirm">leave-group-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_add_admin">add-admin-button</string>
+    <string name="qa_conversation_settings_dialog_leave_group_cancel">leave-group-cancel-button</string>
+    <string name="qa_conversation_settings_dialog_clear_messages_confirm">clear-all-messages-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_clear_messages_cancel">clear-all-messages-cancel-button</string>
+    <string name="qa_conversation_settings_clear_messages_radio_device">clear-device-radio-option</string>
+    <string name="qa_conversation_settings_clear_messages_radio_everyone">clear-everyone-radio-option</string>
+    <string name="qa_conversation_settings_dialog_nickname_input">nickname-input</string>
+    <string name="qa_conversation_settings_dialog_nickname_set">set-nickname-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_nickname_remove">set-nickname-remove-button</string>
+    <string name="qa_conversation_settings_dialog_groupname_input">update-group-info-name-input</string>
+    <string name="qa_conversation_settings_dialog_groupname_description_input">update-group-info-description-input</string>
+    <string name="qa_conversation_settings_dialog_groupname_save">update-group-info-confirm-button</string>
+    <string name="qa_conversation_settings_dialog_groupname_cancel">update-group-info-cancel-button</string>
+    <!--  Conversation options for closed group-->
+    <string name="AccessibilityId_groupNameNew">Accept name change</string>
+    <string name="AccessibilityId_membersInvite">Invite button</string>
+    <string name="AccessibilityId_set">Apply changes</string>
+    <string name="AccessibilityId_groupNameChangeCancel">Cancel name change</string>
+    <string name="AccessibilityId_contactMentions">Contact mentions</string>
+    <string name="AccessibilityId_done">Done</string>
+    <string name="AccessibilityId_groupEdit">Edit group</string>
+    <string name="AccessibilityId_groupMembers">Group Members</string>
+    <string name="AccessibilityId_groupName">Group name</string>
+    <string name="AccessibilityId_groupLeave">Leave group</string>
+    <string name="AccessibilityId_mentions_list">Mentions list</string>
+    <string name="AccessibilityId_outdated_group_banner">Legacy group banner</string>
+    <string name="AccessibilityId_empty_conversation">Empty list</string>
+    <string name="AccessibilityId_recreate_legacy_group">Legacy Groups Recreate Button</string>
+    <!--  Conversation icons -->
+    <string name="AccessibilityId_messageRequestsAccept">Accept message request</string>
+    <string name="AccessibilityId_messageRequestsBlock">Block message request</string>
+    <string name="AccessibilityId_call">Call button</string>
+    <string name="AccessibilityId_confirm">Confirm</string>
+    <string name="AccessibilityId_deleteRequest">Delete message request</string>
+    <string name="AccessibilityId_sessionSettings">Settings</string>
+    <!-- Configuration messages -->
+    <string name="AccessibilityId_blockedBanner">Blocked banner</string>
+    <string name="AccessibilityId_blockedBannerText">Blocked banner text</string>
+    <string name="AccessibilityId_control_message">Control message</string>
+    <string name="AccessibilityId_disappearingMessagesFollowSetting">Follow setting</string>
+    <!--New Session -->
+    <string name="AccessibilityId_next">Next</string>
+    <!--  New group -->
+    <string name="AccessibilityId_contact">Contact</string>
+    <string name="AccessibilityId_contactStatus">Contact status</string>
+    <string name="AccessibilityId_groupNameEnter">Group name input</string>
+    <string name="AccessibilityId_groupNameSearch">Search contacts field</string>
+    <string name="AccessibilityId_selectContact">Select contact</string>
+    <string name="AccessibilityId_removeContact">Remove contact button</string>
+    <string name="AccessibilityId_resendInvite">Resend invite button</string>
+    <string name="AccessibilityId_versionWarning">Version warning banner</string>
+    <string name="qa_invite_button">invite-contacts-button</string>
+    <string name="qa_unblock_button">unblock-contacts-button</string>
+    <!--Conversation screen -->
+    <string name="AccessibilityId_attachmentsButton">Attachments button</string>
+    <string name="AccessibilityId_files">Documents folder</string>
+    <string name="AccessibilityId_download">Download media</string>
+    <string name="AccessibilityId_gif">GIF button</string>
+    <string name="AccessibilityId_image">Images folder</string>
+    <string name="AccessibilityId_inputBox">Message input box</string>
+    <string name="AccessibilityId_voiceMessageNew">New voice message</string>
+    <string name="AccessibilityId_camera">Select camera button</string>
+    <string name="AccessibilityId_send">Send message button</string>
+    <string name="AccessibilityId_attachmentsClickToDownload">Untrusted attachment message</string>
+    <string name="AccessibilityId_emojiSearch">Back to emoji</string>
+    <string name="AccessibilityId_emojiSearchClear">Clear search entry</string>
+    <!-- Conversation View-->
+    <string name="AccessibilityId_deleteMessage">Delete message</string>
+    <string name="AccessibilityId_deleteMessageDeleted">Deleted message</string>
+    <string name="AccessibilityId_document">Document</string>
+    <string name="AccessibilityId_message">Message body</string>
+    <string name="AccessibilityId_send_status">Message sent status: </string>
+    <string name="AccessibilityId_reply">Reply to message</string>
+    <string name="AccessibilityId_saveAttachment">Save attachment</string>
+    <string name="AccessibilityId_select">Select</string>
+    <string name="AccessibilityId_messageVoice">Voice message</string>
+    <string name="AccessibilityId_deliveryIndicator">Delivered</string>
+    <string name="AccessibilityId_message_request_config_message">Message request has been accepted</string>
+    <!-- Modals -->
+    <string name="AccessibilityId_modalTitle">Modal heading</string>
+    <string name="AccessibilityId_modalMessage">Modal description</string>
+    <!--Settings Page-->
+    <string name="AccessibilityId_sessionAppearance">Appearance</string>
+    <string name="AccessibilityId_apply">Apply</string>
+    <string name="AccessibilityId_cancel">Cancel</string>
+    <string name="AccessibilityId_sessionClearData">Clear data</string>
+    <string name="AccessibilityId_clearDeviceOnlyRadio">clear-device-only-radio</string>
+    <string name="AccessibilityId_clearDeviceAndNetworkRadio">clear-device-and-network-radio</string>
+    <string name="AccessibilityId_conversationTitle">Conversation header name</string>
+    <string name="AccessibilityId_sessionConversations">Conversations</string>
+    <string name="AccessibilityId_disappearingMessagesOff">Disable disappearing messages</string>
+    <string name="AccessibilityId_disappearingMessagesDisappearAfterRead">Disappear after read option</string>
+    <string name="AccessibilityId_disappearingMessagesDisappearAfterSent">Disappear after send option</string>
+    <string name="AccessibilityId_disappearingMessagesDisappear">Disappearing messages type and time</string>
+    <string name="AccessibilityId_displayNameNew">Edit user nickname</string>
+    <string name="AccessibilityId_help">Help</string>
+    <string name="AccessibilityId_sessionInviteAFriend">Invite a friend</string>
+    <string name="AccessibilityId_sessionMessageRequests">Message requests</string>
+    <string name="AccessibilityId_messageUser">Message user</string>
+    <string name="AccessibilityId_notifications">Notifications</string>
+    <string name="AccessibilityId_sessionPrivacy">Privacy</string>
+    <string name="AccessibilityId_setButton">Set button</string>
+    <string name="AccessibilityId_displayName">Display name</string>
+    <string name="qa_settings_item_session_network">session-network-menu-item</string>
+    <string name="qa_settings_item_donate">donate-menu-item</string>
+    <string name="qa_settings_item_path">path-menu-item</string>
+    <string name="qa_settings_item_pro">pro-menu-item</string>
+    <!-- The Pro row's LABEL, which is what says which state the account is in ("Session Pro Beta" /
+         "Upgrade Session" / "Renew Pro Beta"). Separate from the row above, which is the tap target and
+         carries no text of its own — so a test reading the row's STATE needs this one, not that one. -->
+    <string name="qa_settings_item_pro_title">pro-menu-item-title</string>
+
+    <!-- In app review -->
+    <string name="qa_inapp_review_dialog_button_great">enjoy-session-positive-button</string>
+    <string name="qa_inapp_review_dialog_button_work">enjoy-session-negative-button</string>
+    <string name="qa_inapp_review_dialog_button_rate">rate-app-button</string>
+    <string name="qa_inapp_review_dialog_button_not_now">not-now-button</string>
+    <string name="qa_inapp_review_dialog_button_survey">open-survey-button</string>
+
+    <!-- Pro Settings -->
+    <string name="qa_pro_settings_action_update_plan">pro-settings-update-plan</string>
+    <string name="qa_pro_settings_action_show_badge">pro-settings-show-badge</string>
+    <string name="qa_pro_settings_action_show_badge_toggle">pro-settings-show-badge-toggle</string>
+    <string name="qa_pro_settings_action_request_refund">pro-settings-request-refund</string>
+    <string name="qa_pro_settings_action_cancel_plan">pro-settings-cancel-plan</string>
+    <string name="qa_pro_settings_action_renew_plan">pro-settings-renew-plan</string>
+    <string name="qa_pro_settings_action_recover_plan">pro-settings-recover-plan</string>
+    <string name="qa_pro_settings_action_faq">pro-settings-faq</string>
+    <string name="qa_pro_settings_action_support">pro-settings-support</string>
+
+    <!-- Pro features a message was sent with, listed on the message details screen. The names are the
+         subset of the Pro feature vocabulary that applies per message, so one feature is named the same
+         wherever it appears -->
+    <string name="qa_pro_message_feature_badges">pro-message-feature-badges</string>
+    <string name="qa_pro_message_feature_longer_messages">pro-message-feature-longer-messages</string>
+    <string name="qa_pro_message_feature_animated_display_picture">pro-message-feature-animated-display-picture</string>
+
+    <!-- Manage members and admin -->
+    <string name="qa_manage_members_invite_contacts">invite-contacts-menu-option</string>
+    <string name="qa_manage_members_invite_account_id">invite-accountid-menu-option</string>
+    <string name="qa_manage_members_promote_members">promote-members-menu-option</string>
+
+    <!-- Manage members and admin dialogs -->
+    <string name="qa_manage_members_dialog_remove_member">remove-member-option</string>
+    <string name="qa_manage_members_dialog_remove_member_messages">remove-member-messages-option</string>
+    <string name="qa_manage_members_dialog_share_message_history">share-message-history-option</string>
+    <string name="qa_manage_members_dialog_share_new_messages">share-new-messages-option</string>
+
+    <!-- Preferences -->
+    <string name="qa_preferences_voice_calls">preferences-option-voice-call</string>
+    <string name="qa_preferences_voice_calls_toggle">preferences-option-voice-call-toggle</string>
+    <string name="qa_preferences_lock_app">preferences-option-lock-app</string>
+    <string name="qa_preferences_lock_app_toggle">preferences-option-lock-app-toggle</string>
+    <string name="qa_preferences_message_requests">preferences-option-message-requests</string>
+    <string name="qa_preferences_message_requests_toggle">preferences-option-message-requests-toggle</string>
+    <string name="qa_preferences_read_receipt">preferences-option-read-receipt</string>
+    <string name="qa_preferences_read_receipt_toggle">preferences-option-read-receipt-toggle</string>
+    <string name="qa_preferences_typing_indicator">preferences-option-typing-indicators</string>
+    <string name="qa_preferences_typing_indicator_toggle">preferences-option-typing-indicators-toggle</string>
+    <string name="qa_preferences_link_previews">preferences-option-link-previews</string>
+    <string name="qa_preferences_link_previews_toggle">preferences-option-link-previews-toggle</string>
+    <string name="qa_preferences_incognito_keyboard">preferences-option-incognito-keyboard</string>
+    <string name="qa_preferences_incognito_keyboard_toggle">preferences-option-incognito-keyboard-toggle</string>
+    <string name="qa_preferences_trim_threads">preferences-option-trim-threads</string>
+    <string name="qa_preferences_trim_threads_toggle">preferences-option-trim-threads-toggle</string>
+    <string name="qa_preferences_send_with_enter">preferences-option-send-with-enter</string>
+    <string name="qa_preferences_send_with_enter_toggle">preferences-option-send-with-enter_toggle</string>
+    <string name="qa_preferences_autoplay_audio">preferences-option-autoplay-audio</string>
+    <string name="qa_preferences_autoplay_audio_toggle">preferences-option-autoplay-audio-toggle</string>
+    <string name="qa_preferences_option_blocked_contacts">preferences-option-blocked-contacts</string>
+    <string name="qa_preferences_option_notification_privacy">preferences-option-notification-privacy</string>
+    <string name="qa_preferences_ringtone">preferences-option-ringtone</string>
+    <string name="qa_preferences_navigate_device_settings">preferences-option-navigate-device-settings</string>
+    <string name="qa_preferences_navigate_to_conversations">preferences-option-navigate-convo-settings</string>
+    <string name="qa_preferences_navigate_to_groups">preferences-option-navigate-groups-settings</string>
+    <string name="qa_preferences_navigate_to_communities">preferences-option-navigate-communities-settings</string>
+    <string name="qa_preferences_navigate_to_calls">preferences-option-navigate-calls-settings</string>
+    <string name="qa_preferences_vibrate">preferences-option-vibrate</string>
+    <string name="qa_preferences_vibrate_toggle">preferences-option-vibrate-toggle</string>
+    <string name="qa_preferences_sound_when_app_is_open">preferences-option-sound-when-app-is-open</string>
+    <string name="qa_preferences_sound_when_app_is_open_toggle">preferences-option-sound-when-app-is-open-toggle</string>
+    <string name="qa_preferences_whitelist">preferences-option-whitelist</string>
+    <string name="qa_preferences_whitelist_toggle">preferences-option-whitelist-toggle</string>
+    <string name="qa_preferences_enable_push">preferences-option-enable-push</string>
+    <string name="qa_preferences_enable_push_toggle">preferences-option-enable-push-toggle</string>
+    <string name="qa_preferences_appearance_follow_system">preferences-appearance_follow_system</string>
+    <string name="qa_preferences_dialog_enable">preferences-dialog-option-enable</string>
+    <string name="qa_preferences_dialog_cancel">preferences-dialog-option-cancel</string>
+
+    <!-- Help settings -->
+    <string name="qa_help_settings_export">preferences-option-export</string>
+    <string name="qa_help_settings_translate">preferences-option-translate</string>
+    <string name="qa_help_settings_feedback">preferences-option-feedback</string>
+    <string name="qa_help_settings_support">preferences-option-help</string>
+    <string name="qa_help_settings_faq">preferences-option-faq</string>
+
+    <!-- Media send -->
+    <string name="qa_mediapicker_folder_item">mediapicker-folder-item-thumbnail</string>
+    <string name="qa_mediapicker_image_item">mediapicker-image-item-thumbnail</string>
+
+    <!-- Misc. -->
+    <string name="AccessibilityId_navigateBack">Navigate back</string>
+    <string name="AccessibilityId_close">Close Dialog</string>
+    <string name="AccessibilityId_expand">Expand</string>
+    <string name="AccessibilityId_mediaInvalid">Media invalid</string>
+    <string name="AccessibilityId_mediaLoading">Media loading</string>
+    <string name="AccessibilityId_mediaMessage">Media message</string>
+    <string name="AccessibilityId_save">Save</string>
+    <string name="AccessibilityId_remove">Remove</string>
+    <string name="qa_icon_error">error-icon</string>
+    <string name="qa_input_error">error-message</string>
+    <string name="qa_button_submit">submit-button</string>
+    <string name="qa_blocked_banner">blocked-banner</string>
+    <string name="qa_delete_message_device_only">delete-only-on-this-device</string>
+    <string name="qa_delete_message_everyone">delete-for-everyone</string>
+    <string name="qa_pro_badge_component">pro-badge-component</string>
+    <string name="qa_pro_badge_text">pro-badge-text</string>
+    <string name="qa_pro_badge_icon">pro-badge-icon</string>
+    <!-- Unique ids for elements a spec would otherwise have to reach by parent/child traversal.
+         A traversal encodes a layout detail rather than a contract, so it breaks on restructuring;
+         these are addressed directly instead. Same strings on iOS - one locator serves both. -->
+    <string name="qa_conversation_header_pro_badge">conversation-header-pro-badge</string>
+    <string name="qa_pro_settings_update_plan_subtitle">pro-settings-update-plan-subtitle</string>
+    <!-- Section headers on the Pro settings screen. Named for the section's role rather than its
+         visible title, so they survive a copy change. -->
+    <string name="qa_pro_settings_stats_header">pro-settings-stats-header</string>
+    <!-- The four cells of the Pro stats matrix. Same strings as iOS. -->
+    <string name="qa_pro_stats_longer_messages">pro-stats-longer-messages</string>
+    <string name="qa_pro_stats_pinned_conversations">pro-stats-pinned-conversations</string>
+    <string name="qa_pro_stats_badges_sent">pro-stats-badges-sent</string>
+    <!-- The text inside a Pro stats cell. Generic on purpose: the cell's own id
+         (qa_pro_stats_*) sits on the row, which carries no text of its own, so a
+         reader scopes this child by that parent - the same shape as
+         qa_pro_screen_action_label and qa_action_item_title. -->
+    <string name="qa_pro_stats_value">pro-stats-value</string>
+    <string name="qa_pro_stats_groups_upgraded">pro-stats-groups-upgraded</string>
+    <string name="qa_pro_settings_manage_header">pro-settings-manage-header</string>
+    <string name="qa_pro_settings_features_header">pro-settings-features-header</string>
+    <!-- The Pro settings header's loading/error status message. ONE id for the slot: the four
+         possible messages are told apart by their TEXT, so this must stay on the node carrying the
+         message and must not gain a contentDescription — that would be a second source of truth for
+         the same string, and the first thing to rot when the copy changes. Same string on iOS. -->
+    <string name="qa_pro_settings_status_banner">pro-settings-status-banner</string>
+    <!-- The hero description under the Pro settings header. ONE id for the slot: the three
+         possible messages (never subscribed / expired / active) are told apart by their TEXT, so
+         this must stay on the node carrying the message and must not gain a contentDescription.
+         Same string on iOS and Desktop - one locator serves all three. -->
+    <string name="qa_pro_settings_description">pro-settings-description</string>
+    <!-- The Pro store-flow screens (update / renew / refund / cancel), one id per destination so a
+         spec can assert WHICH screen a state opens. Only one of them is ever on screen, which is what
+         lets the parts below carry generic ids. Same strings on iOS - one locator serves both. -->
+    <string name="qa_pro_screen_choose_plan">pro-screen-choose-plan</string>
+    <string name="qa_pro_screen_choose_plan_no_billing">pro-screen-choose-plan-no-billing</string>
+    <string name="qa_pro_screen_choose_plan_non_originating">pro-screen-choose-plan-non-originating</string>
+    <string name="qa_pro_screen_cancel_plan">pro-screen-cancel-plan</string>
+    <string name="qa_pro_screen_cancel_plan_non_originating">pro-screen-cancel-plan-non-originating</string>
+    <string name="qa_pro_screen_refund_plan">pro-screen-refund-plan</string>
+    <string name="qa_pro_screen_refund_plan_non_originating">pro-screen-refund-plan-non-originating</string>
+    <string name="qa_pro_screen_refund_in_progress">pro-screen-refund-in-progress</string>
+    <string name="qa_pro_screen_plan_confirmation">pro-screen-plan-confirmation</string>
+    <!-- The parts of whichever store-flow screen is showing. Generic on purpose: these screens are
+         mutually exclusive, so the screen id above supplies the context and this stays four ids
+         instead of four per screen. Several screens differ only in their interpolated store name, so
+         the description is often the only thing that tells two of them apart - assert its TEXT, and
+         do not add a contentDescription to these nodes. Not every screen has all four. -->
+    <string name="qa_pro_screen_header">pro-screen-header</string>
+    <string name="qa_pro_screen_title">pro-screen-title</string>
+    <string name="qa_pro_screen_description">pro-screen-description</string>
+    <string name="qa_pro_screen_action">pro-screen-action</string>
+    <!-- The label inside qa_pro_screen_action. Separate because the tagged Button node
+         exposes no text of its own: the copy lives on an untagged child, so a test filtering
+         on the button's text matches nothing. -->
+    <string name="qa_pro_screen_action_label">pro-screen-action-label</string>
+    <!-- The "how to manage this elsewhere" cells on the non-originating screens. Two are shown at
+         once, so unlike the parts above these are named per option. -->
+    <string name="qa_pro_link_cell_device">pro-link-cell-device</string>
+    <string name="qa_pro_link_cell_device_title">pro-link-cell-device-title</string>
+    <string name="qa_pro_link_cell_device_description">pro-link-cell-device-description</string>
+    <string name="qa_pro_link_cell_website">pro-link-cell-website</string>
+    <string name="qa_pro_link_cell_website_title">pro-link-cell-website-title</string>
+    <string name="qa_pro_link_cell_website_description">pro-link-cell-website-description</string>
+    <string name="qa_action_item_title">action-item-title</string>
+    <string name="qa_action_item_subtitle">action-item-subtitle</string>
+    <string name="qa_action_item_icon">action-item-icon</string>
+    <string name="qa_conversations_blocked_contact_item">qa-blocked-contacts-settings-item</string>
+    <string name="qa_default_debug">default-debug</string>
+
+    <!-- CTAs -->
+    <string name="qa_cta_body">cta-body</string>
+    <string name="qa_cta_feature">cta-feature-</string>
+    <string name="qa_cta_button_positive">cta-button-positive</string>
+    <string name="qa_cta_button_negative">cta-button-negative</string>
+
+    <string name="qa_collapsing_footer_action">qa-collapsing-footer-action</string>
+
+    <!-- The expand affordance on a collapsed message bubble. Carried by the tap TARGET in both
+         conversation implementations (the v2 TextView, whose bounds are hit-tested, and the v3
+         Compose control), so flipping the convo-v3 debug flag cannot change the locator.
+         Android only: iOS marks the whole bubble as a single accessibility element, so an id on the
+         equivalent control there is not reachable, and its specs locate the affordance differently. -->
+    <string name="qa_message_read_more">message-read-more</string>
+
+    <!-- The shared "Open URL" confirmation dialog, which every urlOpen confirmation in the app goes
+         through, so these three ids cover all of them rather than one caller. The description is the
+         node carrying the interpolated URL, so a spec reads its TEXT to assert WHICH url is about to
+         be opened - do not add a contentDescription to it. Same strings on Desktop - one locator
+         serves both. The "Copy URL" button is deliberately left untagged: a spec already finds it by
+         its label, and a testTag would change its resource-id. -->
+    <string name="qa_open_url_dialog">open-url-dialog</string>
+    <string name="qa_open_url_description">open-url-description</string>
+    <string name="qa_open_url_confirm_button">open-url-confirm-button</string>
+
+</resources>

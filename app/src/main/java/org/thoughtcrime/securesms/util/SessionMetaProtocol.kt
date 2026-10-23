@@ -1,0 +1,43 @@
+package org.thoughtcrime.securesms.util
+
+import org.session.libsession.utilities.recipients.Recipient
+
+object SessionMetaProtocol {
+
+    private val timestamps = mutableSetOf<Long>()
+
+    fun getTimestamps(): Set<Long> {
+        return timestamps
+    }
+
+    fun addTimestamp(timestamp: Long) {
+        timestamps.add(timestamp)
+    }
+
+    @JvmStatic
+    fun clearReceivedMessages() {
+        timestamps.clear()
+    }
+
+    fun removeTimestamps(timestamps: Set<Long>) {
+        SessionMetaProtocol.timestamps.removeAll(timestamps)
+    }
+
+    @JvmStatic
+    fun shouldIgnoreMessage(timestamp: Long): Boolean {
+        val shouldIgnoreMessage = timestamps.contains(timestamp)
+        timestamps.add(timestamp)
+        return shouldIgnoreMessage
+    }
+
+    @JvmStatic
+    fun canUserReplyToNotification(recipient: Recipient): Boolean {
+        // TODO return !recipient.address.isRSSFeed
+        return true
+    }
+
+    @JvmStatic
+    fun shouldSendTypingIndicator(recipient: Recipient): Boolean {
+        return !recipient.isGroupOrCommunityRecipient && recipient.approved && !recipient.blocked
+    }
+}

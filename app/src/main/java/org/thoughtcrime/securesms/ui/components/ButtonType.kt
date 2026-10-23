@@ -1,0 +1,109 @@
+package org.thoughtcrime.securesms.ui.components
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import org.thoughtcrime.securesms.ui.theme.LocalColors
+import org.thoughtcrime.securesms.ui.theme.LocalDimensions
+import org.thoughtcrime.securesms.ui.theme.dangerDark
+
+private val disabledBorder @Composable get() = BorderStroke(
+    width = LocalDimensions.current.borderStroke,
+    color = LocalColors.current.disabled
+)
+
+interface ButtonType {
+    val contentPadding: PaddingValues get() = ButtonDefaults.ContentPadding
+
+    @Composable
+    fun border(enabled: Boolean): BorderStroke?
+    @Composable
+    fun buttonColors(): ButtonColors
+
+    class Outline(
+        private val contentColor: Color,
+        private val borderColor: Color = contentColor,
+        private val disabledColor: Color? = null
+    ): ButtonType {
+        @Composable
+        override fun border(enabled: Boolean) = BorderStroke(
+            width = LocalDimensions.current.borderStroke,
+            color = if (enabled) borderColor else disabledColor ?: LocalColors.current.disabled
+        )
+        @Composable
+        override fun buttonColors() = ButtonDefaults.buttonColors(
+            contentColor = contentColor,
+            containerColor = Color.Transparent,
+            disabledContentColor = disabledColor ?: LocalColors.current.disabled,
+            disabledContainerColor = Color.Transparent
+        )
+    }
+
+    class Fill(
+        private val containerColor: Color,
+    ): ButtonType {
+        @Composable
+        override fun border(enabled: Boolean) = null
+        @Composable
+        override fun buttonColors() = ButtonDefaults.buttonColors(
+            contentColor = LocalColors.current.background,
+            containerColor = containerColor,
+            disabledContentColor = LocalColors.current.textOnAccent,
+            disabledContainerColor = LocalColors.current.disabled
+        )
+    }
+
+    object AccentFill: ButtonType {
+        @Composable
+        override fun border(enabled: Boolean) = null
+        @Composable
+        override fun buttonColors() = ButtonDefaults.buttonColors(
+            contentColor = LocalColors.current.textOnAccent,
+            containerColor = LocalColors.current.accent,
+            disabledContentColor = LocalColors.current.textOnAccent,
+            disabledContainerColor = LocalColors.current.disabled
+        )
+    }
+
+    object TertiaryFill: ButtonType {
+        @Composable
+        override fun border(enabled: Boolean) = null
+        @Composable
+        override fun buttonColors() = ButtonDefaults.buttonColors(
+            contentColor = LocalColors.current.text,
+            containerColor = LocalColors.current.backgroundTertiary,
+            disabledContentColor = LocalColors.current.textOnAccent,
+            disabledContainerColor = LocalColors.current.disabled
+        )
+    }
+
+    object DangerFill: ButtonType {
+        @Composable
+        override fun border(enabled: Boolean) = null
+        @Composable
+        override fun buttonColors() = ButtonDefaults.buttonColors(
+            contentColor = Color.Black,
+            containerColor = dangerDark,
+            disabledContentColor = LocalColors.current.textOnAccent,
+            disabledContainerColor = LocalColors.current.disabled
+        )
+    }
+
+    class Borderless(private val color: Color): ButtonType {
+        override val contentPadding: PaddingValues
+            get() = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+        @Composable
+        override fun border(enabled: Boolean) = null
+        @Composable
+        override fun buttonColors() = ButtonDefaults.outlinedButtonColors(
+            contentColor = color,
+            containerColor = Color.Transparent,
+            disabledContentColor = LocalColors.current.disabled,
+            disabledContainerColor = Color.Transparent
+        )
+    }
+}

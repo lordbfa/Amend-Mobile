@@ -1,0 +1,1284 @@
+package org.thoughtcrime.securesms.database
+
+import android.content.Context
+import android.net.Uri
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import network.loki.messenger.libsession_util.MutableConversationVolatileConfig
+import network.loki.messenger.libsession_util.PRIORITY_PINNED
+import network.loki.messenger.libsession_util.PRIORITY_VISIBLE
+import network.loki.messenger.libsession_util.ReadableUserGroupsConfig
+import network.loki.messenger.libsession_util.protocol.ProFeature
+import network.loki.messenger.libsession_util.protocol.ProMessageFeature
+import network.loki.messenger.libsession_util.protocol.ProProfileFeature
+import network.loki.messenger.libsession_util.util.BlindKeyAPI
+import network.loki.messenger.libsession_util.util.Bytes
+import network.loki.messenger.libsession_util.util.Conversation
+import network.loki.messenger.libsession_util.util.ExpiryMode
+import network.loki.messenger.libsession_util.util.GroupInfo
+import network.loki.messenger.libsession_util.util.KeyPair
+import org.session.libsession.database.MessageDataProvider
+import org.session.libsession.database.StorageProtocol
+import org.session.libsession.messaging.calls.CallMessageType
+import org.session.libsession.messaging.jobs.AttachmentUploadJob
+import org.session.libsession.messaging.jobs.Job
+import org.session.libsession.messaging.jobs.JobQueue
+import org.session.libsession.messaging.jobs.MessageSendJob
+import org.session.libsession.messaging.messages.Message
+import org.session.libsession.messaging.messages.control.GroupUpdated
+import org.session.libsession.messaging.messages.signal.IncomingMediaMessage
+import org.session.libsession.messaging.messages.signal.IncomingTextMessage
+import org.session.libsession.messaging.messages.signal.OutgoingMediaMessage
+import org.session.libsession.messaging.messages.signal.OutgoingTextMessage
+import org.session.libsession.messaging.messages.visible.Attachment
+import org.session.libsession.messaging.messages.visible.Reaction
+import org.session.libsession.messaging.messages.visible.VisibleMessage
+import org.session.libsession.messaging.sending_receiving.attachments.AttachmentId
+import org.session.libsession.messaging.sending_receiving.attachments.DatabaseAttachment
+import org.session.libsession.messaging.sending_receiving.attachments.PointerAttachment
+import org.session.libsession.messaging.sending_receiving.data_extraction.DataExtractionNotificationInfoMessage
+import org.session.libsession.messaging.sending_receiving.link_preview.LinkPreview
+import org.session.libsession.messaging.sending_receiving.quotes.QuoteModel
+import org.session.libsession.messaging.utilities.UpdateMessageData
+import org.session.libsession.network.SnodeClock
+import org.session.libsession.utilities.Address
+import org.session.libsession.utilities.Address.Companion.fromSerialized
+import org.session.libsession.utilities.Address.Companion.toAddress
+import org.session.libsession.utilities.Address.Companion.toConversableAddress
+import org.session.libsession.utilities.GroupDisplayInfo
+import org.session.libsession.utilities.GroupRecord
+import org.session.libsession.utilities.GroupUtil
+import org.session.libsession.utilities.getGroup
+import org.session.libsession.utilities.isCommunityInbox
+import org.session.libsession.utilities.recipients.Recipient
+import org.session.libsession.utilities.recipients.RecipientData
+import org.session.libsession.utilities.upsertContact
+import org.session.libsession.utilities.withGroupConfigs
+import org.session.libsession.utilities.withMutableGroupConfigs
+import org.session.libsession.utilities.withMutableUserConfigs
+import org.session.libsession.utilities.withUserConfigs
+import org.session.libsignal.crypto.ecc.DjbECPublicKey
+import org.session.libsignal.crypto.ecc.ECKeyPair
+import org.session.libsignal.messages.SignalServiceAttachmentPointer
+import org.session.libsignal.utilities.AccountId
+import org.session.libsignal.utilities.Log
+import org.thoughtcrime.securesms.api.error.UnhandledStatusCodeException
+import org.thoughtcrime.securesms.auth.LoginStateRepository
+import org.thoughtcrime.securesms.database.MmsSmsDatabaseExt.trimThread
+import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper
+import org.thoughtcrime.securesms.database.model.MessageId
+import org.thoughtcrime.securesms.pro.ProSendStats
+import org.thoughtcrime.securesms.pro.db.ProDatabase
+import org.thoughtcrime.securesms.database.model.MessageRecord
+import org.thoughtcrime.securesms.database.model.ReactionRecord
+import org.thoughtcrime.securesms.dependencies.ConfigFactory
+import org.thoughtcrime.securesms.mms.PartAuthority
+import org.thoughtcrime.securesms.util.FilenameUtils
+import org.thoughtcrime.securesms.util.SessionMetaProtocol
+import org.thoughtcrime.securesms.util.getOrConstructConvo
+import org.thoughtcrime.securesms.util.findCause
+import org.thoughtcrime.securesms.util.getOrConstructConvo
+import javax.inject.Inject
+import javax.inject.Provider
+import javax.inject.Singleton
+import network.loki.messenger.libsession_util.util.GroupMember as LibSessionGroupMember
+
+private const val TAG = "Storage"
+
+@Singleton
+open class Storage @Inject constructor(
+    @ApplicationContext context: Context,
+    helper: Provider<SQLCipherOpenHelper>,
+    private val configFactory: ConfigFactory,
+    private val jobDatabase: SessionJobDatabase,
+    private val threadDatabase: ThreadDatabase,
+    private val recipientDatabase: RecipientSettingsDatabase,
+    private val attachmentDatabase: AttachmentDatabase,
+    private val lokiAPIDatabase: LokiAPIDatabase,
+    private val groupDatabase: GroupDatabase,
+    private val lokiMessageDatabase: LokiMessageDatabase,
+    private val mmsSmsDatabase: MmsSmsDatabase,
+    private val mmsDatabase: MmsDatabase,
+    private val smsDatabase: SmsDatabase,
+    private val reactionDatabase: ReactionDatabase,
+
+    private val messageDataProvider: MessageDataProvider,
+    private val clock: SnodeClock,
+    private val recipientRepository: RecipientRepository,
+    private val loginStateRepository: LoginStateRepository,
+    private val json: Json,
+    private val jobQueue: Provider<JobQueue>,
+    private val proDatabase: Provider<ProDatabase>,
+) : Database(context, helper), StorageProtocol {
+
+    override fun getUserPublicKey(): String? { return loginStateRepository.peekLoginState()?.accountId?.hexString }
+
+    override fun getUserX25519KeyPair(): KeyPair = requireNotNull(loginStateRepository.peekLoginState()) {
+        "No logged in state available"
+    }.accountX25519KeyPair
+
+    override fun getUserED25519KeyPair(): KeyPair? {
+        return loginStateRepository.peekLoginState()?.accountEd25519KeyPair
+    }
+
+    override fun getUserBlindedAccountId(serverPublicKey: String): AccountId? {
+        val myId = getUserPublicKey() ?: return null
+        return AccountId(BlindKeyAPI.blind15Ids(myId, serverPublicKey).first())
+    }
+
+    override fun getAttachmentsForMessage(mmsMessageId: Long): List<DatabaseAttachment> {
+        return attachmentDatabase.getAttachmentsForMessage(mmsMessageId)
+    }
+
+    override fun getLastSeen(threadAddress: Address.Conversable): Long? {
+        return threadDatabase.getLastSeen(threadAddress)?.toEpochMilliseconds()
+    }
+
+    override fun ensureMessageHashesAreSender(
+        hashes: Set<String>,
+        sender: String,
+        closedGroupId: String
+    ): Boolean {
+        val threadId = getThreadId(fromSerialized(closedGroupId))!!
+        val senderIsMe = sender == getUserPublicKey()
+
+        val info = lokiMessageDatabase.getSendersForHashes(threadId, hashes)
+
+        return if (senderIsMe) info.all { it.isOutgoing } else info.all { it.sender == sender }
+    }
+
+    override fun deleteMessagesByHash(threadId: Long, hashes: List<String>) {
+        for (info in lokiMessageDatabase.getSendersForHashes(threadId, hashes.toSet())) {
+            messageDataProvider.deleteMessage(info.messageId)
+        }
+    }
+
+    override fun deleteMessagesByUser(threadId: Long, userSessionId: String) {
+        val userMessages = mmsSmsDatabase.getUserMessages(threadId, userSessionId)
+        val (mmsMessages, smsMessages) = userMessages.partition { it.isMms }
+        if (mmsMessages.isNotEmpty()) {
+            messageDataProvider.deleteMessages(mmsMessages.map(MessageRecord::id), isSms = false)
+        }
+        if (smsMessages.isNotEmpty()) {
+            messageDataProvider.deleteMessages(smsMessages.map(MessageRecord::id), isSms = true)
+        }
+    }
+
+    override fun clearAllMessages(threadId: Long): List<String?> {
+        val messages = mmsSmsDatabase.getAllMessagesWithHash(threadId)
+        val (mmsMessages, smsMessages) = messages.partition { it.first.isMms }
+        if (mmsMessages.isNotEmpty()) {
+            messageDataProvider.deleteMessages(mmsMessages.map{ it.first.id }, isSms = false)
+        }
+        if (smsMessages.isNotEmpty()) {
+            messageDataProvider.deleteMessages(smsMessages.map{ it.first.id }, isSms = true)
+        }
+
+        return messages.map { it.second } // return the message hashes
+    }
+
+    override fun updateConversationLastSeenIfNeeded(
+        threadAddress: Address.Conversable,
+        lastSeenTime: Long
+    ) {
+        var shouldUpdateLastRead = false
+
+        configFactory.withMutableUserConfigs { configs ->
+            val convo = configs.getOrConstructConvo(threadAddress)
+            val currentLastRead = convo.lastRead
+
+            if (convo.unread) {
+                convo.unread = lastSeenTime < currentLastRead
+            }
+
+            shouldUpdateLastRead = lastSeenTime > currentLastRead
+            if (shouldUpdateLastRead) {
+                convo.lastRead = lastSeenTime
+            }
+
+            configs.convoInfoVolatile.set(convo)
+        }
+
+        // Normally, the config will be synced to db automatically.
+        // But there are cases the config reject our request, mainly due to lastSeenTime
+        // being too ancient.
+        // So we manually update the db here also to protect against this case
+        if (shouldUpdateLastRead) {
+            threadDatabase.upsertThreadLastSeen(
+                listOf(threadAddress to kotlin.time.Instant.fromEpochMilliseconds(lastSeenTime))
+            )
+        }
+    }
+
+    override fun updateConversationLastSeenIfNeeded(
+        threadId: Long,
+        lastSeenTime: Long
+    ) {
+        val threadAddress = threadDatabase.getRecipientAddress(threadId) ?: return
+        updateConversationLastSeenIfNeeded(
+            threadAddress = threadAddress,
+            lastSeenTime = lastSeenTime
+        )
+    }
+
+    override fun markConversationAsReadUpToMessage(messageId: MessageId) {
+        val maxTimestampMillsAndThreadId = mmsSmsDatabase.getMaxTimestampInThreadUpTo(messageId)
+        if (maxTimestampMillsAndThreadId != null) {
+            val threadId = maxTimestampMillsAndThreadId.second
+            val maxTimestamp = maxTimestampMillsAndThreadId.first
+            val threadAddress = threadDatabase.getRecipientAddress(threadId) ?: return
+            updateConversationLastSeenIfNeeded(
+                threadAddress = threadAddress,
+                lastSeenTime = maxTimestamp
+            )
+        }
+    }
+
+    override fun markConversationAsUnread(threadId: Long) {
+        val threadAddress = threadDatabase.getRecipientAddress(threadId) ?: return
+
+        // don't process configs for inbox recipients
+        if (threadAddress.isCommunityInbox) return
+
+        configFactory.withMutableUserConfigs { configs ->
+            val config = configs.convoInfoVolatile
+            val convo = getConvo(
+                threadAddress = threadAddress,
+                config = config,
+                groupConfig = configs.userGroups
+            ) ?: return@withMutableUserConfigs
+
+            convo.unread = true
+            config.set(convo)
+        }
+    }
+
+    private fun getConvo(
+        threadAddress: Address,
+        config: MutableConversationVolatileConfig,
+        groupConfig: ReadableUserGroupsConfig
+    ) : Conversation? {
+        return when (threadAddress) {
+            // recipient closed group
+            is Address.LegacyGroup -> config.getOrConstructLegacyGroup(threadAddress.groupPublicKeyHex)
+            is Address.Group -> config.getOrConstructClosedGroup(threadAddress.accountId.hexString)
+            // recipient is open group
+            is Address.Community -> {
+                val og = groupConfig.getCommunityInfo(
+                    baseUrl = threadAddress.serverUrl,
+                    room = threadAddress.room,
+                ) ?: return null
+                config.getOrConstructCommunity(
+                    baseUrl = threadAddress.serverUrl,
+                    room = threadAddress.room,
+                    pubKeyHex = og.community.pubKeyHex,
+                )
+            }
+            is Address.CommunityBlindedId -> {
+                config.getOrConstructedBlindedOneToOne(threadAddress.blindedId.blindedId.hexString)
+            }
+            // otherwise recipient is one to one
+            is Address.Standard -> {
+                config.getOrConstructOneToOne(threadAddress.accountId.hexString)
+            }
+            else -> throw NullPointerException("Weren't expecting to have a convo with address ${threadAddress}")
+        }
+    }
+
+    override fun persist(
+        threadRecipient: Recipient,
+        message: VisibleMessage,
+        quotes: QuoteModel?,
+        linkPreview: List<LinkPreview?>,
+        attachments: List<Attachment>,
+        runThreadUpdate: Boolean
+    ): MessageId? {
+        val messageID: MessageId?
+        val senderAddress = fromSerialized(message.sender!!)
+        val isUserSender = (message.sender!! == getUserPublicKey())
+        val isUserBlindedSender = (threadRecipient.data as? RecipientData.Community)
+            ?.serverPubKey
+            ?.let {
+                BlindKeyAPI.sessionIdMatchesBlindedId(
+                    sessionId = getUserPublicKey()!!,
+                    blindedId = message.sender!!,
+                    serverPubKey = it
+                )
+            } ?: false
+
+        val targetAddress = if ((isUserSender || isUserBlindedSender) && !message.syncTarget.isNullOrEmpty()) {
+            message.syncTarget!!.toAddress()
+        } else MessageTargetAddress.of(threadRecipient.address, senderAddress)
+
+        if (message.threadID == null) {
+            message.threadID = getOrCreateThreadIdFor(targetAddress)
+        }
+        val expiryMode = message.expiryMode
+        val expiresInMillis = expiryMode.expiryMillis
+        val expireStartedAt = if (expiryMode is ExpiryMode.AfterSend) message.sentTimestamp!! else 0
+
+
+        if (message.isMediaMessage() || attachments.isNotEmpty()) {
+
+            // Sanitise attachments with missing names
+            for (attachment in attachments.filter { it.filename.isNullOrEmpty() }) {
+
+                // Unfortunately we have multiple Attachment classes, but only `SignalAttachment` has the `isVoiceNote` property which we can
+                // use to differentiate between an audio-file with no filename and a voice-message with no file-name, so we convert to that
+                // and pass it through.
+                val signalAttachment = attachment.toSignalAttachment()
+                attachment.filename = FilenameUtils.getFilenameFromUri(context, Uri.parse(attachment.url), attachment.contentType, signalAttachment)
+            }
+
+            val linkPreviews = linkPreview.mapNotNull { it }
+            val insertResult = if (isUserSender || isUserBlindedSender) {
+                val pointers = attachments.mapNotNull {
+                    it.toSignalAttachment()
+                }
+
+                val mediaMessage = OutgoingMediaMessage(
+                    message = message,
+                    recipient = targetAddress,
+                    attachments = pointers,
+                    outgoingQuote = quotes,
+                    linkPreview = linkPreviews.firstOrNull(),
+                    expiresInMillis = expiresInMillis,
+                    expireStartedAt = expireStartedAt
+                )
+                mmsDatabase.insertSecureDecryptedMessageOutbox(
+                    mediaMessage,
+                    message.threadID!!,
+                    message.sentTimestamp!!
+                )
+            } else {
+                // It seems like we have replaced SignalServiceAttachment with SessionServiceAttachment
+                val signalServiceAttachments = attachments.mapNotNull {
+                    it.toSignalPointer()
+                }
+                val mediaMessage = IncomingMediaMessage(
+                    message = message,
+                    from = senderAddress,
+                    expiresIn = expiresInMillis,
+                    expireStartedAt = expireStartedAt,
+                    group = threadRecipient.address as? Address.GroupLike,
+                    attachments = PointerAttachment.forPointers(signalServiceAttachments),
+                    quote = quotes,
+                    linkPreviews = linkPreviews
+                )
+                mmsDatabase.insertSecureDecryptedMessageInbox(
+                    mediaMessage,
+                    message.threadID!!,
+                    message.receivedTimestamp ?: 0
+                )
+            }
+
+            messageID = insertResult?.messageId?.let { MessageId(it, mms = true) }
+
+        } else {
+            val isOpenGroupInvitation = (message.openGroupInvitation != null)
+
+            val insertResult = if (isUserSender || isUserBlindedSender) {
+                val textMessage = if (isOpenGroupInvitation) OutgoingTextMessage.fromOpenGroupInvitation(
+                    json = json,
+                    invitation = message.openGroupInvitation!!,
+                    recipient = targetAddress,
+                    sentTimestampMillis = message.sentTimestamp!!,
+                    expiresInMillis = expiresInMillis,
+                    expireStartedAtMillis = expireStartedAt,
+                    proFeatures = message.proFeatures
+                )!!
+                else OutgoingTextMessage(
+                    message = message,
+                    recipient = targetAddress,
+                    expiresInMillis = expiresInMillis,
+                    expireStartedAtMillis = expireStartedAt
+                )
+
+                smsDatabase.insertMessageOutbox(
+                    message.threadID!!,
+                    textMessage,
+                    message.sentTimestamp!!
+                )
+            } else {
+                val textMessage = if (isOpenGroupInvitation) IncomingTextMessage.fromOpenGroupInvitation(
+                    json = json,
+                    invitation = message.openGroupInvitation!!,
+                    sender = senderAddress,
+                    sentTimestampMillis = message.sentTimestamp!!,
+                    expiresInMillis = expiresInMillis,
+                    expireStartedAt = expireStartedAt
+                )!!
+                else IncomingTextMessage(
+                    message = message,
+                    sender = senderAddress,
+                    group = threadRecipient.address as? Address.GroupLike,
+                    expiresInMillis = expiresInMillis,
+                    expireStartedAt = expireStartedAt
+                )
+                smsDatabase.insertMessageInbox(
+                    textMessage.copy(isSecureMessage = true),
+                    message.threadID!!,
+                    message.receivedTimestamp ?: 0
+                )
+            }
+            messageID = insertResult?.messageId?.let { MessageId(it, mms = false) }
+        }
+
+        message.serverHash?.let { serverHash ->
+            messageID?.let { id ->
+                lokiMessageDatabase.setMessageServerHash(id, serverHash)
+            }
+        }
+        return messageID
+    }
+
+    override fun persistJob(job: Job) {
+        jobDatabase.persistJob(job)
+    }
+
+    override fun markJobAsSucceeded(jobId: String) {
+        jobDatabase.markJobAsSucceeded(jobId)
+    }
+
+    override fun markJobAsFailedPermanently(jobId: String) {
+        jobDatabase.markJobAsFailedPermanently(jobId)
+    }
+
+    override fun getAllPendingJobs(vararg types: String): Map<String, Job?> {
+        return jobDatabase.getAllJobs(*types)
+    }
+
+    override fun getAttachmentUploadJob(attachmentID: Long): AttachmentUploadJob? {
+        return jobDatabase.getAttachmentUploadJob(attachmentID)
+    }
+
+    override fun getMessageSendJob(messageSendJobID: String): MessageSendJob? {
+        return jobDatabase.getMessageSendJob(messageSendJobID)
+    }
+
+    override fun resumeMessageSendJobIfNeeded(messageSendJobID: String) {
+        val job = jobDatabase.getMessageSendJob(messageSendJobID) ?: return
+        jobQueue.get().resumePendingSendMessage(job)
+    }
+
+    override fun isJobCanceled(job: Job): Boolean {
+        return jobDatabase.isJobCanceled(job)
+    }
+
+    override fun cancelPendingMessageSendJobs(threadID: Long) {
+        val jobDb = jobDatabase
+        jobDb.cancelPendingMessageSendJobs(threadID)
+    }
+
+    override fun getAuthToken(room: String, server: String): String? {
+        val id = "$server.$room"
+        return lokiAPIDatabase.getAuthToken(id)
+    }
+
+
+    override fun canPerformConfigChange(variant: String, publicKey: String, changeTimestampMs: Long): Boolean {
+        return configFactory.canPerformChange(variant, publicKey, changeTimestampMs)
+    }
+
+    override fun isCheckingCommunityRequests(): Boolean {
+        return configFactory.withUserConfigs { it.userProfile.getCommunityMessageRequests() }
+    }
+
+    override fun setAuthToken(room: String, server: String, newValue: String) {
+        val id = "$server.$room"
+        lokiAPIDatabase.setAuthToken(id, newValue)
+    }
+
+    override fun removeAuthToken(room: String, server: String) {
+        val id = "$server.$room"
+        lokiAPIDatabase.setAuthToken(id, null)
+    }
+
+    override fun getOpenGroupPublicKey(server: String): String? {
+        return configFactory.withUserConfigs { it.userGroups.allCommunityInfo() }
+            .firstOrNull { it.community.baseUrl == server }
+            ?.community
+            ?.pubKeyHex
+    }
+
+    override fun getLastMessageServerID(room: String, server: String): Long? {
+        return lokiAPIDatabase.getLastMessageServerID(room, server)
+    }
+
+    override fun setLastMessageServerID(room: String, server: String, newValue: Long) {
+        lokiAPIDatabase.setLastMessageServerID(room, server, newValue)
+    }
+
+    override fun getLastDeletionServerID(room: String, server: String): Long? {
+        return lokiAPIDatabase.getLastDeletionServerID(room, server)
+    }
+
+    override fun setLastDeletionServerID(room: String, server: String, newValue: Long) {
+        lokiAPIDatabase.setLastDeletionServerID(room, server, newValue)
+    }
+
+    override fun setOpenGroupServerMessageID(messageID: MessageId, serverID: Long, threadID: Long) {
+        lokiMessageDatabase.setServerID(messageID, serverID)
+        lokiMessageDatabase.setOriginalThreadID(messageID.id, serverID, threadID)
+    }
+
+    override fun isDuplicateMessage(timestamp: Long): Boolean {
+        return getReceivedMessageTimestamps().contains(timestamp)
+    }
+
+    override fun updateTitle(groupID: String, newValue: String) {
+        groupDatabase.updateTitle(groupID, newValue)
+    }
+
+    override fun updateProfilePicture(groupID: String, newValue: ByteArray) {
+        groupDatabase.updateProfilePicture(groupID, newValue)
+    }
+
+    override fun removeProfilePicture(groupID: String) {
+        groupDatabase.removeProfilePicture(groupID)
+    }
+
+    override fun hasDownloadedProfilePicture(groupID: String): Boolean {
+        return groupDatabase.hasDownloadedProfilePicture(groupID)
+    }
+
+    override fun getReceivedMessageTimestamps(): Set<Long> {
+        return SessionMetaProtocol.getTimestamps()
+    }
+
+    override fun addReceivedMessageTimestamp(timestamp: Long) {
+        SessionMetaProtocol.addTimestamp(timestamp)
+    }
+
+    override fun removeReceivedMessageTimestamps(timestamps: Set<Long>) {
+        SessionMetaProtocol.removeTimestamps(timestamps)
+    }
+
+    override fun getMessageBy(threadId: Long, timestamp: Long, author: String): MessageRecord? {
+        val database = mmsSmsDatabase
+        val address = fromSerialized(author)
+        return database.getMessageFor(threadId, timestamp, address)
+    }
+
+    @Deprecated("We shouldn't be querying messages by timestamp alone. Use `getMessageBy` when possible ")
+    override fun getMessageByTimestamp(timestamp: Long, author: String, getQuote: Boolean): MessageRecord? {
+        val database = mmsSmsDatabase
+        return database.getMessageByTimestamp(timestamp, author, getQuote)
+    }
+
+    override fun updateSentTimestamp(
+        messageId: MessageId,
+        newTimestamp: Long
+    ) {
+        if (messageId.mms) {
+            mmsDatabase.updateSentTimestamp(messageId.id, newTimestamp)
+        } else {
+            smsDatabase.updateSentTimestamp(messageId.id, newTimestamp)
+        }
+    }
+
+    override fun markAsSent(messageId: MessageId) {
+        getMmsDatabaseElseSms(messageId.mms).markAsSent(messageId.id, true)
+    }
+
+    override fun markAsSyncing(messageId: MessageId) {
+        getMmsDatabaseElseSms(messageId.mms).markAsSyncing(messageId.id)
+    }
+
+    private fun getMmsDatabaseElseSms(isMms: Boolean) =
+        if (isMms) mmsDatabase
+        else smsDatabase
+
+    override fun markAsResyncing(messageId: MessageId) {
+        getMmsDatabaseElseSms(messageId.mms).markAsResyncing(messageId.id)
+    }
+
+    override fun markAsSending(messageId: MessageId) {
+        if (messageId.mms) {
+            mmsDatabase.markAsSending(messageId.id)
+        } else {
+            smsDatabase.markAsSending(messageId.id)
+        }
+    }
+
+    override fun markAsSentFailed(messageId: MessageId, error: Exception) {
+        if (messageId.mms) {
+            mmsDatabase.markAsSentFailed(messageId.id)
+        } else {
+            smsDatabase.markAsSentFailed(messageId.id)
+        }
+        if (error.localizedMessage != null) {
+            val message: String
+            if (error.findCause<UnhandledStatusCodeException>()?.code == 429) {
+                message = "429: Rate limited."
+            } else {
+                message = error.localizedMessage!!
+            }
+            lokiMessageDatabase.setErrorMessage(messageId, message)
+        } else {
+            lokiMessageDatabase.setErrorMessage(messageId, error.javaClass.simpleName)
+        }
+    }
+
+    override fun markAsSyncFailed(messageId: MessageId, error: Exception) {
+        getMmsDatabaseElseSms(messageId.mms).markAsSyncFailed(messageId.id)
+
+        if (error.localizedMessage != null) {
+            val message: String
+            if (error.findCause<UnhandledStatusCodeException>()?.code == 429) {
+                message = "429: Rate limited."
+            } else {
+                message = error.localizedMessage!!
+            }
+            lokiMessageDatabase.setErrorMessage(messageId, message)
+        } else {
+            lokiMessageDatabase.setErrorMessage(messageId, error.javaClass.simpleName)
+        }
+    }
+
+    override fun clearErrorMessage(messageID: MessageId) {
+        lokiMessageDatabase.clearErrorMessage(messageID)
+    }
+
+    override fun setMessageServerHash(messageId: MessageId, serverHash: String) {
+        lokiMessageDatabase.setMessageServerHash(messageId, serverHash)
+    }
+
+    override fun getGroup(groupID: String): GroupRecord? = groupDatabase.getGroup(groupID)
+
+    override fun createGroup(groupID: String, title: String?, members: List<Address>, avatar: SignalServiceAttachmentPointer?, relay: String?, admins: List<Address>, formationTimestamp: Long) {
+        groupDatabase.create(groupID, title, members, avatar, relay, admins, formationTimestamp)
+    }
+
+    override fun createInitialConfigGroup(groupPublicKey: String, name: String, members: Map<String, Boolean>, formationTimestamp: Long, encryptionKeyPair: ECKeyPair, expirationTimer: Int) {
+        configFactory.withMutableUserConfigs {
+            val volatiles = it.convoInfoVolatile
+            val userGroups = it.userGroups
+            if (volatiles.getLegacyClosedGroup(groupPublicKey) != null && userGroups.getLegacyGroupInfo(groupPublicKey) != null) {
+                return@withMutableUserConfigs
+            }
+
+            val groupVolatileConfig = volatiles.getOrConstructLegacyGroup(groupPublicKey)
+            groupVolatileConfig.lastRead = formationTimestamp
+            volatiles.set(groupVolatileConfig)
+            val groupInfo = GroupInfo.LegacyGroupInfo(
+                accountId = groupPublicKey,
+                name = name,
+                members = members,
+                priority = PRIORITY_VISIBLE,
+                encPubKey = Bytes((encryptionKeyPair.publicKey as DjbECPublicKey).publicKey),  // 'serialize()' inserts an extra byte
+                encSecKey = Bytes(encryptionKeyPair.privateKey.serialize()),
+                disappearingTimer = expirationTimer.toLong(),
+                joinedAtSecs = (formationTimestamp / 1000L)
+            )
+            // shouldn't exist, don't use getOrConstruct + copy
+            userGroups.set(groupInfo)
+        }
+    }
+
+    override fun isGroupActive(groupPublicKey: String): Boolean =
+        groupDatabase.getGroup(GroupUtil.doubleEncodeGroupID(groupPublicKey))?.isActive == true
+
+
+    override fun setActive(groupID: String, value: Boolean) {
+        groupDatabase.setActive(groupID, value)
+    }
+
+    override fun removeMember(groupID: String, member: Address) {
+        groupDatabase.removeMember(groupID, member)
+    }
+
+    override fun updateMembers(groupID: String, members: List<Address>) {
+        groupDatabase.updateMembers(groupID, members)
+    }
+
+    override fun getClosedGroupEncryptionKeyPairs(groupPublicKey: String): MutableList<ECKeyPair> {
+        return lokiAPIDatabase.getClosedGroupEncryptionKeyPairs(groupPublicKey).toMutableList()
+    }
+
+    override fun getLatestClosedGroupEncryptionKeyPair(groupPublicKey: String): ECKeyPair? {
+        return lokiAPIDatabase.getLatestClosedGroupEncryptionKeyPair(groupPublicKey)
+    }
+
+    override fun getAllLegacyGroupPublicKeys(): Set<String> {
+        return lokiAPIDatabase.getAllClosedGroupPublicKeys()
+    }
+
+    override fun getAllActiveClosedGroupPublicKeys(): Set<String> {
+        return lokiAPIDatabase.getAllClosedGroupPublicKeys().filter {
+            getGroup(GroupUtil.doubleEncodeGroupID(it))?.isActive == true
+        }.toSet()
+    }
+
+    override fun addClosedGroupPublicKey(groupPublicKey: String) {
+        lokiAPIDatabase.addClosedGroupPublicKey(groupPublicKey)
+    }
+
+    override fun removeClosedGroupPublicKey(groupPublicKey: String) {
+        lokiAPIDatabase.removeClosedGroupPublicKey(groupPublicKey)
+    }
+
+    override fun addClosedGroupEncryptionKeyPair(encryptionKeyPair: ECKeyPair, groupPublicKey: String, timestamp: Long) {
+        lokiAPIDatabase.addClosedGroupEncryptionKeyPair(encryptionKeyPair, groupPublicKey, timestamp)
+    }
+
+    override fun removeAllClosedGroupEncryptionKeyPairs(groupPublicKey: String) {
+        lokiAPIDatabase.removeAllClosedGroupEncryptionKeyPairs(groupPublicKey)
+    }
+
+    override fun updateFormationTimestamp(groupID: String, formationTimestamp: Long) {
+        groupDatabase
+            .updateFormationTimestamp(groupID, formationTimestamp)
+    }
+
+    override fun updateTimestampUpdated(groupID: String, updatedTimestamp: Long) {
+        groupDatabase
+            .updateTimestampUpdated(groupID, updatedTimestamp)
+    }
+
+    /**
+     * For new closed groups
+     */
+    override fun getMembers(groupPublicKey: String): List<LibSessionGroupMember> =
+        configFactory.withGroupConfigs(AccountId(groupPublicKey)) {
+            it.groupMembers.all()
+        }
+
+    override fun getClosedGroupDisplayInfo(groupAccountId: String): GroupDisplayInfo? {
+        val groupIsAdmin = configFactory.getGroup(AccountId(groupAccountId))?.hasAdminKey() ?: return null
+
+        return configFactory.withGroupConfigs(AccountId(groupAccountId)) { configs ->
+            val info = configs.groupInfo
+            GroupDisplayInfo(
+                id = AccountId(info.id()),
+                name = info.getName(),
+                profilePic = info.getProfilePic(),
+                expiryTimer = info.getExpiryTimer(),
+                destroyed = false,
+                created = info.getCreated(),
+                description = info.getDescription(),
+                isUserAdmin = groupIsAdmin
+            )
+        }
+    }
+
+    override fun insertGroupInfoChange(message: GroupUpdated, closedGroup: AccountId) {
+        val sentTimestamp = message.sentTimestamp ?: clock.currentTimeMillis()
+        val senderPublicKey = message.sender
+        val groupName = configFactory.withGroupConfigs(closedGroup) { it.groupInfo.getName() }
+            ?: configFactory.getGroup(closedGroup)?.name
+
+        val updateData = UpdateMessageData.buildGroupUpdate(message, groupName.orEmpty()) ?: return
+
+        insertUpdateControlMessage(updateData, sentTimestamp, senderPublicKey, closedGroup)
+    }
+
+    override fun insertGroupInfoLeaving(closedGroup: AccountId) {
+        val sentTimestamp = clock.currentTimeMillis()
+        val senderPublicKey = getUserPublicKey() ?: return
+        val updateData = UpdateMessageData.buildGroupLeaveUpdate(UpdateMessageData.Kind.GroupLeaving)
+
+        insertUpdateControlMessage(updateData, sentTimestamp, senderPublicKey, closedGroup)
+    }
+
+    override fun insertGroupInfoErrorQuit(closedGroup: AccountId) {
+        val sentTimestamp = clock.currentTimeMillis()
+        val senderPublicKey = getUserPublicKey() ?: return
+        val groupName = configFactory.withGroupConfigs(closedGroup) { it.groupInfo.getName() }
+            ?: configFactory.getGroup(closedGroup)?.name
+        val updateData = UpdateMessageData.buildGroupLeaveUpdate(UpdateMessageData.Kind.GroupErrorQuit(groupName.orEmpty()))
+
+        insertUpdateControlMessage(updateData, sentTimestamp, senderPublicKey, closedGroup)
+    }
+
+    override fun deleteGroupInfoMessages(groupId: AccountId, kind: Class<out UpdateMessageData.Kind>) {
+        mmsSmsDatabase.deleteGroupInfoMessage(groupId, kind)
+    }
+
+    override fun insertGroupInviteControlMessage(sentTimestamp: Long, senderPublicKey: String, senderName: String?, closedGroup: AccountId, groupName: String) {
+        val updateData = UpdateMessageData(UpdateMessageData.Kind.GroupInvitation(
+            groupAccountId = closedGroup.hexString,
+            invitingAdminId = senderPublicKey,
+            invitingAdminName = senderName,
+            groupName = groupName
+        ))
+        insertUpdateControlMessage(updateData, sentTimestamp, senderPublicKey, closedGroup)
+    }
+
+    private fun insertUpdateControlMessage(updateData: UpdateMessageData, sentTimestamp: Long, senderPublicKey: String?, closedGroup: AccountId): MessageId? {
+        val userPublicKey = getUserPublicKey()!!
+        val address = Address.Group(closedGroup)
+        val recipient = recipientRepository.getRecipientSync(address)
+        val threadDb = threadDatabase
+        val threadID = threadDb.getOrCreateThreadIdFor(address)
+        val expiryMode = recipient.expiryMode
+        val expiresInMillis = expiryMode.expiryMillis
+        val expireStartedAt = if (expiryMode is ExpiryMode.AfterSend) sentTimestamp else 0
+        val inviteJson = updateData.toJSON(json)
+
+        if (senderPublicKey == null || senderPublicKey == userPublicKey) {
+            val infoMessage = OutgoingMediaMessage(
+                recipient = address,
+                body = inviteJson,
+                group = address,
+                avatar = null,
+                sentTimeMillis = sentTimestamp,
+                expiresInMillis = expiresInMillis,
+                expireStartedAtMillis = expireStartedAt,
+                isGroupUpdateMessage = true,
+                quote = null,
+                previews = listOf(),
+                messageContent = null
+            )
+            val mmsDB = mmsDatabase
+            val mmsSmsDB = mmsSmsDatabase
+            // check for conflict here, not returning duplicate in case it's different
+            if (mmsSmsDB.getMessageFor(threadID, sentTimestamp, userPublicKey) != null) return null
+            val infoMessageID = mmsDB.insertMessageOutbox(
+                infoMessage,
+                threadID,
+                false
+            )
+            mmsDB.markAsSent(infoMessageID, true)
+            return MessageId(infoMessageID, mms = true)
+        } else {
+            val m = IncomingTextMessage(
+                message = inviteJson,
+                sender = fromSerialized(senderPublicKey),
+                sentTimestampMillis = sentTimestamp,
+                group = Address.Group(closedGroup),
+                push = true,
+                expiresInMillis = expiresInMillis,
+                expireStartedAt = expireStartedAt,
+                callType = -1,
+                hasMention = false,
+                isOpenGroupInvitation = false,
+                isSecureMessage = false,
+                proFeatures = emptySet(),
+                isGroupMessage = true,
+                isGroupUpdateMessage = true,
+            )
+            val smsDB = smsDatabase
+            val insertResult = smsDB.insertMessageInbox(
+                m.copy(
+                    isGroupUpdateMessage = true,
+                    message = inviteJson
+                ),
+                threadID
+            )
+            return insertResult?.messageId?.let { MessageId(it, mms = false) }
+        }
+    }
+
+    override fun setServerCapabilities(server: String, capabilities: List<String>) {
+        return lokiAPIDatabase.setServerCapabilities(server, capabilities)
+    }
+
+    override fun getServerCapabilities(server: String): List<String>? {
+        return lokiAPIDatabase.getServerCapabilities(server)
+    }
+
+    override fun clearServerCapabilities(server: String) {
+        lokiAPIDatabase.clearServerCapabilities(server)
+    }
+
+    override fun getAllGroups(includeInactive: Boolean): List<GroupRecord> {
+        return groupDatabase.getAllGroups(includeInactive)
+    }
+
+    override fun getOrCreateThreadIdFor(address: Address): Long {
+        return threadDatabase.getOrCreateThreadIdFor(address as Address.Conversable)
+    }
+
+    override fun getThreadId(address: Address): Long? {
+        if (address !is Address.Conversable) return null
+        return threadDatabase.getThreadId(address)
+    }
+
+    override fun getThreadIdForMms(mmsId: Long): Long {
+        return mmsDatabase.getThreadIdForMessage(mmsId) ?: -1L
+    }
+
+    override fun getRecipientForThread(threadId: Long): Recipient? {
+        return threadDatabase.getRecipientAddress(threadId)
+            ?.let(recipientRepository::getRecipientSync)
+    }
+    override fun setAutoDownloadAttachments(
+        recipient: Address,
+        shouldAutoDownloadAttachments: Boolean
+    ) {
+        recipientDatabase.save(recipient) {
+            it.copy(autoDownloadAttachments = shouldAutoDownloadAttachments)
+        }
+    }
+
+    override fun trimThreadBefore(threadID: Long, timestamp: Long) {
+        mmsSmsDatabase.trimThread(threadID, timestamp)
+    }
+
+    override fun getMessageCount(threadID: Long): Long {
+        val mmsSmsDb = mmsSmsDatabase
+        return mmsSmsDb.getConversationCount(threadID)
+    }
+
+    override fun getTotalPinned(): Int {
+        return configFactory.withUserConfigs {
+            var totalPins = 0
+
+            // check if the note to self is pinned
+            if (it.userProfile.getNtsPriority() == PRIORITY_PINNED) {
+                totalPins ++
+            }
+
+            // check for 1on1
+            it.contacts.all().forEach { contact ->
+                if (contact.priority == PRIORITY_PINNED) {
+                    totalPins ++
+                }
+            }
+
+            // check groups and communities
+            it.userGroups.all().forEach { group ->
+                when(group){
+                    is GroupInfo.ClosedGroupInfo -> {
+                        if (group.priority == PRIORITY_PINNED) {
+                            totalPins ++
+                        }
+                    }
+                    is GroupInfo.CommunityGroupInfo -> {
+                        if (group.priority == PRIORITY_PINNED) {
+                            totalPins ++
+                        }
+                    }
+
+                    is GroupInfo.LegacyGroupInfo -> {
+                        if (group.priority == PRIORITY_PINNED) {
+                            totalPins ++
+                        }
+                    }
+                }
+            }
+
+            totalPins
+        }
+    }
+
+    override suspend fun getTotalSentProBadges(): Int =
+        getTotalSentForFeature(ProProfileFeature.PRO_BADGE)
+
+    override suspend fun getTotalSentLongMessages(): Int =
+        getTotalSentForFeature(ProMessageFeature.HIGHER_CHARACTER_LIMIT)
+
+    /**
+     * A persisted running total, not a count over message rows — so deleting a message you have sent does
+     * not reduce the number of things you have sent, and opening the stats screen does not scan a table.
+     */
+    suspend fun getTotalSentForFeature(feature: ProFeature): Int = withContext(Dispatchers.IO) {
+        ProSendStats.total(proDatabase.get(), feature)
+    }
+
+    override fun setPinned(address: Address, isPinned: Boolean) {
+        val isLocalNumber = address.address == getUserPublicKey()
+        configFactory.withMutableUserConfigs { configs ->
+            val pinPriority = if (isPinned) PRIORITY_PINNED else PRIORITY_VISIBLE
+            when (address) {
+                is Address.Standard -> {
+                    if (isLocalNumber) {
+                        configs.userProfile.setNtsPriority(pinPriority)
+                    } else {
+                        configs.contacts.upsertContact(address) {
+                            priority = pinPriority
+                        }
+                    }
+                }
+
+                is Address.LegacyGroup -> {
+                    configs.userGroups.getOrConstructLegacyGroupInfo(address.groupPublicKeyHex)
+                        .copy(priority = pinPriority)
+                        .let(configs.userGroups::set)
+                }
+
+                is Address.Group -> {
+                    val newGroupInfo = configs.userGroups
+                        .getOrConstructClosedGroup(address.accountId.hexString)
+                        .copy(priority = pinPriority)
+                    configs.userGroups.set(newGroupInfo)
+                }
+
+                is Address.Community -> {
+                    configs.userGroups.getCommunityInfo(baseUrl = address.serverUrl, room = address.room)
+                        ?.let {
+                            configs.userGroups.set(it.copy(priority = pinPriority))
+                        }
+                }
+
+                else -> {}
+            }
+
+        }
+    }
+
+    override fun getLastLegacyRecipient(threadRecipient: String): String? =
+        lokiAPIDatabase.getLastLegacySenderAddress(threadRecipient)
+
+    override fun setLastLegacyRecipient(threadRecipient: String, senderRecipient: String?) {
+        lokiAPIDatabase.setLastLegacySenderAddress(threadRecipient, senderRecipient)
+    }
+    override fun clearMessages(threadID: Long, fromUser: Address?): Boolean {
+        val threadDb = threadDatabase
+        if (fromUser == null) {
+            // this deletes all *from* thread, not deleting the actual thread
+            smsDatabase.deleteThread(threadID)
+            mmsDatabase.deleteThread(threadID, updateThread = true) // threadDB update called from within
+        } else {
+            // this deletes all *from* thread, not deleting the actual thread
+            smsDatabase.deleteMessagesFrom(threadID, fromUser.toString())
+            mmsDatabase.deleteMessagesFrom(threadID, fromUser.toString())
+        }
+
+        return true
+    }
+
+    override fun clearMedia(threadID: Long, fromUser: Address?): Boolean {
+        mmsDatabase.deleteMediaFor(threadID, fromUser?.toString())
+        return true
+    }
+
+    override fun getAttachmentDataUri(attachmentId: AttachmentId): Uri {
+        return PartAuthority.getAttachmentDataUri(attachmentId)
+    }
+
+    override fun getAttachmentThumbnailUri(attachmentId: AttachmentId): Uri {
+        return PartAuthority.getAttachmentThumbnailUri(attachmentId)
+    }
+
+    override fun insertDataExtractionNotificationMessage(senderPublicKey: String, message: DataExtractionNotificationInfoMessage, sentTimestamp: Long) {
+        val address = fromSerialized(senderPublicKey)
+        val recipient = recipientRepository.getRecipientSync(address)
+
+        if (recipient.blocked) return
+        val threadId = getThreadId(address) ?: return
+        val expiresInMillis = recipient.expiryMode.expiryMillis
+        val expireStartedAt = if (recipient.expiryMode is ExpiryMode.AfterSend) sentTimestamp else 0
+        val mediaMessage = IncomingMediaMessage(
+            address,
+            sentTimestamp,
+            expiresInMillis,
+            expireStartedAt,
+            false,
+            false,
+            null,
+            null,
+            emptyList(),
+            emptySet(),
+            null,
+            null,
+            emptyList(),
+            message
+        )
+
+        mmsDatabase.insertSecureDecryptedMessageInbox(mediaMessage, threadId)
+    }
+
+    /**
+     * This will create a control message used to indicate that you have accepted a message request
+     */
+    override fun insertMessageRequestResponseFromYou(threadId: Long){
+        val userPublicKey = getUserPublicKey() ?: return
+
+        val message = IncomingMediaMessage(
+            from = fromSerialized(userPublicKey),
+            sentTimeMillis = clock.currentTimeMillis(),
+            expiresIn = 0,
+            expireStartedAt = 0,
+            isMessageRequestResponse = true,
+            hasMention = false,
+            body = null,
+            group = null,
+            attachments = emptyList(),
+            proFeatures = emptySet(),
+            messageContent = null,
+            quote = null,
+            linkPreviews = emptyList(),
+            dataExtractionNotification = null
+        )
+        mmsDatabase.insertSecureDecryptedMessageInbox(message, threadId)
+    }
+
+    override fun insertCallMessage(
+        senderPublicKey: String, callMessageType: CallMessageType,
+        sentTimestamp: Long, expiryMode: ExpiryMode,
+    ) {
+        val address = senderPublicKey.toConversableAddress()
+
+        val expiresInMillis = expiryMode.expiryMillis
+        val expireStartedAt = if (expiryMode != ExpiryMode.NONE) clock.currentTimeMillis() else 0
+        val callMessage = IncomingTextMessage(
+            callMessageType = callMessageType,
+            sender = address,
+            group = null,
+            sentTimestampMillis = sentTimestamp,
+            expiresInMillis = expiresInMillis,
+            expireStartedAt = expireStartedAt
+        )
+
+        smsDatabase.insertCallMessage(callMessage, threadDatabase.getOrCreateThreadIdFor(address))
+    }
+
+    override fun getLastInboxMessageId(server: String): Long? {
+        return lokiAPIDatabase.getLastInboxMessageId(server)
+    }
+
+    override fun setLastInboxMessageId(server: String, messageId: Long) {
+        lokiAPIDatabase.setLastInboxMessageId(server, messageId)
+    }
+
+    override fun getLastOutboxMessageId(server: String): Long? {
+        return lokiAPIDatabase.getLastOutboxMessageId(server)
+    }
+
+    override fun setLastOutboxMessageId(server: String, messageId: Long) {
+        lokiAPIDatabase.setLastOutboxMessageId(server, messageId)
+    }
+
+    override fun addReaction(
+        threadId: Long,
+        reaction: Reaction,
+        messageSender: String,
+        notifyUnread: Boolean
+    ) {
+        val timestamp = reaction.timestamp
+
+        val messageId = if (timestamp != null && timestamp > 0) {
+            val messageRecord = mmsSmsDatabase.getMessageForTimestamp(threadId, timestamp) ?: return
+            if (messageRecord.isDeleted) return
+            MessageId(messageRecord.id, messageRecord.isMms)
+        } else {
+            Log.d(TAG, "Invalid reaction timestamp: $timestamp. Not adding")
+            return
+        }
+
+        addReaction(messageId, reaction, messageSender)
+    }
+
+    override fun addReaction(messageId: MessageId, reaction: Reaction, messageSender: String) {
+        reactionDatabase.addReaction(
+            ReactionRecord(
+                messageId = messageId,
+                author = messageSender,
+                emoji = reaction.emoji!!,
+                serverId = reaction.serverId!!,
+                count = reaction.count!!,
+                sortId = reaction.index!!,
+                dateSent = reaction.dateSent!!,
+                dateReceived = reaction.dateReceived!!
+            )
+        )
+    }
+
+    override fun addReactions(
+        reactions: Map<MessageId, List<ReactionRecord>>,
+        replaceAll: Boolean,
+        notifyUnread: Boolean
+    ) {
+        reactionDatabase.addReactions(
+            reactionsByMessageId = reactions,
+            replaceAll = replaceAll
+        )
+    }
+
+    override fun removeReaction(
+        emoji: String,
+        messageTimestamp: Long,
+        threadId: Long,
+        author: String,
+        notifyUnread: Boolean
+    ) {
+        val messageRecord = mmsSmsDatabase.getMessageForTimestamp(threadId, messageTimestamp) ?: return
+        reactionDatabase.deleteReaction(
+            emoji,
+            MessageId(messageRecord.id, messageRecord.isMms),
+            author
+        )
+    }
+
+    override fun updateReactionIfNeeded(message: Message, sender: String, openGroupSentTimestamp: Long) {
+        val database = reactionDatabase
+        var reaction = database.getReactionFor(message.sentTimestamp!!, sender) ?: return
+        if (openGroupSentTimestamp != -1L) {
+            addReceivedMessageTimestamp(openGroupSentTimestamp)
+            reaction = reaction.copy(dateSent = openGroupSentTimestamp)
+        }
+        message.serverHash?.let {
+            reaction = reaction.copy(serverId = it)
+        }
+        message.openGroupServerMessageID?.let {
+            reaction = reaction.copy(serverId = "$it")
+        }
+        database.updateReaction(reaction)
+    }
+
+    override fun deleteReactions(messageId: MessageId) {
+        reactionDatabase.deleteMessageReactions(messageId)
+    }
+
+    override fun deleteReactions(messageIds: List<Long>, mms: Boolean) {
+        reactionDatabase.deleteMessageReactions(
+            messageIds.map { MessageId(it, mms) }
+        )
+    }
+
+    override fun setBlocked(recipients: Iterable<Address>, isBlocked: Boolean) {
+        configFactory.withMutableUserConfigs { configs ->
+            recipients.filterIsInstance<Address.Standard>()
+                .forEach { standard ->
+                    configs.contacts.upsertContact(standard) {
+                        this.blocked = isBlocked
+                        Log.d(TAG, "Setting contact ${standard.debugString} blocked state to $isBlocked")
+                    }
+                }
+        }
+    }
+
+    override fun setExpirationConfiguration(address: Address, expiryMode: ExpiryMode) {
+        if (expiryMode == ExpiryMode.NONE) {
+            // Clear the legacy recipients on updating config to be none
+            lokiAPIDatabase.setLastLegacySenderAddress(address.toString(), null)
+        }
+
+        when (address) {
+            is Address.LegacyGroup -> {
+                configFactory.withMutableUserConfigs {
+                    val groupInfo = it.userGroups.getLegacyGroupInfo(address.groupPublicKeyHex)
+                        ?.copy(disappearingTimer = expiryMode.expirySeconds) ?: return@withMutableUserConfigs
+                    it.userGroups.set(groupInfo)
+                }
+            }
+
+            is Address.Group -> {
+                configFactory.withMutableGroupConfigs(address.accountId) { configs ->
+                    configs.groupInfo.setExpiryTimer(expiryMode.expirySeconds)
+                }
+            }
+
+            is Address.Standard -> {
+                if (address.address == getUserPublicKey()) {
+                    configFactory.withMutableUserConfigs {
+                        it.userProfile.setNtsExpiry(expiryMode)
+                    }
+                } else {
+                    configFactory.withMutableUserConfigs {
+                        val contact = it.contacts.get(address.toString())?.copy(expiryMode = expiryMode) ?: return@withMutableUserConfigs
+                        it.contacts.set(contact)
+                    }
+                }
+            }
+
+            else -> {
+                Log.w(TAG, "setExpirationConfiguration called with unsupported address: ${address.debugString}")
+            }
+        }
+    }
+}

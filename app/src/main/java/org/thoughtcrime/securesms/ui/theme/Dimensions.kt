@@ -1,0 +1,67 @@
+package org.thoughtcrime.securesms.ui.theme
+
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+val LocalDimensions = staticCompositionLocalOf { Dimensions() }
+
+data class Dimensions(
+    val tinySpacing : Dp = 2.dp,
+    val xxxsSpacing: Dp = 4.dp,
+    val xxsSpacing: Dp = 8.dp,
+    val xsSpacing: Dp = 12.dp,
+    val smallSpacing: Dp = 16.dp,
+    val contentSpacing: Dp = 20.dp,
+    val spacing: Dp = 24.dp,
+    val mediumSpacing: Dp = 36.dp,
+    val xlargeSpacing: Dp = 64.dp,
+
+    val appBarHeight: Dp = 64.dp,
+    val minSearchInputHeight: Dp = 35.dp,
+    val itemButtonIconSpacing: Dp = 50.dp,
+    val minItemButtonHeight: Dp = 60.dp,
+    val minButtonWidth: Dp = 160.dp,
+    val minSmallButtonWidth: Dp = 50.dp,
+    val minMessageWidth: Dp = 200.dp,
+    val maxMessageWidth: Dp = 500.dp,
+
+    val indicatorHeight: Dp = 4.dp,
+
+    val borderStroke: Dp = 1.dp,
+
+    val iconStatus: Dp = 12.dp,
+    val iconXXSmall: Dp = 10.dp,
+    val iconXSmall: Dp = 14.dp,
+    val iconSmall: Dp = 20.dp,
+    val iconMedium: Dp = 24.dp,
+    val iconMediumAvatar: Dp = 26.dp,
+    val iconLargeAvatar: Dp = 36.dp,
+    val iconLarge: Dp = 46.dp,
+    val iconXLarge: Dp = 60.dp,
+    val iconXLargeAvatar: Dp = 128.dp,
+    val iconXXLarge: Dp = 90.dp,
+    val iconXXLargeAvatar: Dp = 190.dp,
+
+    val shapeXXSmall : Dp = 6.dp,
+    val shapeExtraSmall: Dp = 8.dp,
+    val shapeSmall: Dp = 12.dp,
+    val shapeMedium: Dp = 16.dp,
+
+    val messageCornerRadius: Dp = 16.dp,
+    val messageVerticalPadding: Dp = 10.dp,
+
+    val maxContentWidth: Dp = 410.dp,
+
+    val quoteIconSize: Dp = 40.dp,
+
+    val maxDialogWidth: Dp = 560.dp,
+    val maxTooltipWidth: Dp = 280.dp,
+
+    val minContentSizeSmall: Dp = 60.dp,
+    val maxContentSizeSmall: Dp = 420.dp,
+    val minContentSize: Dp = 80.dp,
+    val maxContentSize: Dp = 520.dp,
+    val minContentSizeMedium: Dp = 160.dp,
+    val maxContentSizeMedium: Dp = 620.dp,
+)

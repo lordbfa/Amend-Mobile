@@ -1,0 +1,87 @@
+package org.session.libsession.messaging.messages.visible
+
+import androidx.annotation.Keep
+import org.session.libsession.database.MessageDataProvider
+import org.session.libsession.messaging.sending_receiving.attachments.DatabaseAttachment
+import org.session.libsignal.utilities.Log
+import org.session.protos.SessionProtos
+import org.session.libsession.messaging.sending_receiving.quotes.QuoteModel as SignalQuote
+
+// R8: Must keep constructor for Kryo to work
+@Keep
+class Quote() {
+    var timestamp: Long? = 0
+    var publicKey: String? = null
+    var text: String? = null
+    var attachmentID: Long? = null
+
+    fun isValid(): Boolean =  timestamp != null && publicKey != null
+
+    companion object {
+        const val TAG = "Quote"
+
+        fun fromProto(proto: SessionProtos.DataMessage.Quote): Quote {
+            val timestamp = proto.id
+            val publicKey = proto.author
+            val text = proto.text
+            return Quote(timestamp, publicKey, text, null)
+        }
+
+        fun from(signalQuote: SignalQuote?): Quote? {
+            if (signalQuote == null) { return null }
+            val attachmentID = (signalQuote.attachments?.firstOrNull() as? DatabaseAttachment)?.attachmentId?.rowId
+            return Quote(signalQuote.id, signalQuote.author.toString(), "", attachmentID)
+        }
+    }
+
+    internal constructor(timestamp: Long, publicKey: String, text: String?, attachmentID: Long?) : this() {
+        this.timestamp    = timestamp
+        this.publicKey    = publicKey
+        this.text         = text
+        this.attachmentID = attachmentID
+    }
+
+    fun toProto(messageDataProvider: MessageDataProvider): SessionProtos.DataMessage.Quote? {
+        val timestamp = timestamp
+        val publicKey = publicKey
+        if (timestamp == null || publicKey == null) {
+            Log.w(TAG, "Couldn't construct quote proto from: $this")
+            return null
+        }
+        val quoteProto = SessionProtos.DataMessage.Quote.newBuilder()
+        quoteProto.id = timestamp
+        quoteProto.author = publicKey
+        text?.let { quoteProto.text = it }
+        addAttachmentsIfNeeded(quoteProto, messageDataProvider)
+
+        // Build
+        try {
+            return quoteProto.build()
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't construct quote proto from: $this", e)
+            return null
+        }
+    }
+
+    private fun addAttachmentsIfNeeded(quoteProto: SessionProtos.DataMessage.Quote.Builder, database: MessageDataProvider) {
+        val attachmentID = attachmentID ?: return Log.w(TAG, "Cannot add attachment with null attachmentID - bailing.")
+
+        val pointer = database.getSignalAttachmentPointer(attachmentID)
+        if (pointer == null) { return Log.w(TAG, "Ignoring invalid attachment for quoted message.") }
+
+        if (pointer.url.isNullOrEmpty()) {
+            return Log.w(TAG,"Cannot send a message before all associated attachments have been uploaded - bailing.")
+        }
+
+        val quotedAttachmentProto = SessionProtos.DataMessage.Quote.QuotedAttachment.newBuilder()
+        quotedAttachmentProto.contentType = pointer.contentType
+        quotedAttachmentProto.fileName    = pointer.filename
+        quotedAttachmentProto.thumbnail   = Attachment.createAttachmentPointer(pointer)
+
+        try {
+            quoteProto.addAttachments(quotedAttachmentProto.build())
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't construct quoted attachment proto from: $this", e)
+        }
+    }
+}

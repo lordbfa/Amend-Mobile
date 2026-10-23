@@ -1,0 +1,55 @@
+name: Build amend APK
+
+on:
+  push:
+    branches: [ "**" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # needed to attach APKs to a release on tag pushes
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle (with caching)
+        uses: gradle/actions/setup-gradle@v4
+
+      # websiteQa = release-optimised build (R8, shrunk) signed with the repo's debug key,
+      # so it installs without any secrets. websiteDebug is handy for testing.
+      - name: Build APKs
+        run: ./gradlew :app:assembleWebsiteQa :app:assembleWebsiteDebug --stacktrace
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk -name "*.apk" -exec cp {} out/ \;
+          ls -la out
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: amend-apks
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk

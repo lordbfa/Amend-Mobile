@@ -1,0 +1,211 @@
+package org.thoughtcrime.securesms.onboarding.messagenotifications
+
+import androidx.annotation.StringRes
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.compose.ui.unit.dp
+import org.session.libsession.utilities.Phrase
+import network.loki.messenger.BuildConfig
+import network.loki.messenger.R
+import org.thoughtcrime.securesms.onboarding.OnboardingBackPressAlertDialog
+import org.thoughtcrime.securesms.onboarding.messagenotifications.MessageNotificationsViewModel.UiState
+import org.thoughtcrime.securesms.onboarding.ui.ContinueAccentOutlineButton
+import org.thoughtcrime.securesms.ui.components.CircularProgressIndicator
+import org.thoughtcrime.securesms.ui.components.RadioButton
+import org.thoughtcrime.securesms.ui.qaTag
+import org.thoughtcrime.securesms.ui.theme.LocalColors
+import org.thoughtcrime.securesms.ui.theme.LocalDimensions
+import org.thoughtcrime.securesms.ui.theme.LocalType
+import org.thoughtcrime.securesms.ui.theme.PreviewTheme
+import org.thoughtcrime.securesms.ui.theme.SessionColorsParameterProvider
+import org.thoughtcrime.securesms.ui.theme.ThemeColors
+
+@Composable
+internal fun MessageNotificationsScreen(
+    state: UiState = UiState(),
+    selectFastMode: (Boolean) -> Unit = {},
+    onContinue: () -> Unit = {},
+    quit: () -> Unit = {},
+    dismissDialog: () -> Unit = {}
+) {
+    if (state.clearData) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = LocalColors.current.accent)
+        }
+
+        return
+    }
+
+    if (state.showingBackWarningDialogText != null) {
+        OnboardingBackPressAlertDialog(
+            dismissDialog,
+            textId = state.showingBackWarningDialogText,
+            quit = quit
+        )
+    }
+
+    val scroll = rememberScrollState()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(modifier = Modifier.padding(horizontal = LocalDimensions.current.mediumSpacing)) {
+                Text(stringResource(R.string.notificationsMessage), style = LocalType.current.h4)
+                Spacer(Modifier.height(LocalDimensions.current.smallSpacing))
+                Text(
+                    Phrase.from(stringResource(R.string.onboardingMessageNotificationExplanation))
+                        .format().toString(),
+                    style = LocalType.current.base
+                )
+                Spacer(Modifier.height(LocalDimensions.current.spacing))
+
+                NotificationRadioButton(
+                    R.string.notificationsFastMode,
+                    if (BuildConfig.FLAVOR == "huawei") R.string.notificationsFastModeDescriptionHuawei
+                    else R.string.notificationsFastModeDescription,
+                    modifier = Modifier
+                        .qaTag(R.string.AccessibilityId_notificationsFastMode)
+                        .fillMaxWidth(),
+                    tag = if(state.fastModeAvailable) R.string.recommended else R.string.unavailable,
+                    checked = state.fastModeSelected,
+                    enabled = state.fastModeAvailable,
+                    onClick = { selectFastMode(true) }
+                )
+
+                // spacing between buttons is provided by ripple/downstate of NotificationRadioButton
+
+                val explanationTxt =
+                    Phrase.from(stringResource(R.string.notificationsSlowModeDescription))
+                        .format().toString()
+
+                NotificationRadioButton(
+                    stringResource(R.string.notificationsSlowMode),
+                    explanationTxt,
+                    modifier = Modifier
+                        .qaTag(R.string.AccessibilityId_notificationsSlowMode)
+                        .fillMaxWidth(),
+                    checked = state.slowModeSelected,
+                    enabled = true,
+                    onClick = { selectFastMode(false) }
+                )
+            }
+        }
+
+        ContinueAccentOutlineButton(Modifier.align(Alignment.CenterHorizontally), onContinue)
+    }
+}
+
+@Composable
+private fun NotificationRadioButton(
+    @StringRes titleId: Int,
+    @StringRes explanationId: Int,
+    modifier: Modifier = Modifier,
+    @StringRes tag: Int? = null,
+    checked: Boolean = false,
+    enabled: Boolean = false,
+    onClick: () -> Unit = {}
+) {
+    // Pass-through from this string ID version to the version that takes strings
+    NotificationRadioButton(
+        titleTxt = stringResource(titleId),
+        explanationTxt = stringResource(explanationId),
+        modifier = modifier,
+        tag = tag,
+        checked = checked,
+        enabled = enabled,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun NotificationRadioButton(
+    titleTxt: String,
+    explanationTxt: String,
+    modifier: Modifier = Modifier,
+    @StringRes tag: Int? = null,
+    checked: Boolean = false,
+    enabled: Boolean = false,
+    onClick: () -> Unit = {}
+) {
+    RadioButton(
+        onClick = onClick,
+        modifier = modifier,
+        selected = checked,
+        enabled = enabled,
+        contentPadding = PaddingValues(
+            vertical = 7.dp
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .border(
+                    LocalDimensions.current.borderStroke,
+                    LocalColors.current.borders,
+                    MaterialTheme.shapes.extraSmall
+                ),
+        ) {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = LocalDimensions.current.smallSpacing,
+                    vertical = LocalDimensions.current.xsSpacing
+                )
+            ) {
+                Text(
+                    titleTxt,
+                    style = LocalType.current.h8
+                )
+
+                Text(
+                    explanationTxt,
+                    style = LocalType.current.small,
+                    modifier = Modifier.padding(top = LocalDimensions.current.xxsSpacing)
+                )
+
+                tag?.let {
+                    Text(
+                        stringResource(it),
+                        modifier = Modifier.padding(top = LocalDimensions.current.xxsSpacing),
+                        color = if(enabled) LocalColors.current.accent else LocalColors.current.disabled,
+                        style = LocalType.current.h9
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun MessageNotificationsScreenPreview(
+    @PreviewParameter(SessionColorsParameterProvider::class) colors: ThemeColors
+) {
+    PreviewTheme(colors) {
+        MessageNotificationsScreen()
+    }
+}

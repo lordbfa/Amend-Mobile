@@ -1,0 +1,321 @@
+package org.thoughtcrime.securesms.migration
+
+import android.app.Application
+import android.os.Build
+import android.os.SystemClock
+import androidx.annotation.RequiresApi
+import androidx.annotation.StringRes
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import net.zetetic.database.sqlcipher.SQLiteConnection
+import net.zetetic.database.sqlcipher.SQLiteDatabase
+import net.zetetic.database.sqlcipher.SQLiteDatabaseHook
+import network.loki.messenger.R
+import org.session.libsession.utilities.TextSecurePreferences
+import org.session.libsignal.utilities.Log
+import org.thoughtcrime.securesms.auth.LoginStateRepository
+import org.thoughtcrime.securesms.crypto.DatabaseSecretProvider
+import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper
+import org.thoughtcrime.securesms.dependencies.ManagerScope
+import org.thoughtcrime.securesms.dependencies.OnAppStartupComponent
+import javax.inject.Inject
+import javax.inject.Provider
+import javax.inject.Singleton
+
+@Singleton
+class DatabaseMigrationManager @Inject constructor(
+    private val application: Application,
+    private val prefs: TextSecurePreferences,
+    private val databaseSecretProvider: DatabaseSecretProvider,
+    private val loginStateRepository: Provider<LoginStateRepository>,
+    jsonProvider: Provider<Json>,
+    @param:ManagerScope private val scope: CoroutineScope,
+) : OnAppStartupComponent {
+    private val dbSecret by lazy {
+        databaseSecretProvider.getOrCreateDatabaseSecret()
+    }
+
+    // Access to openHelper: it's guaranteed to be created after the migration is done.
+    val openHelper: SQLCipherOpenHelper by lazy {
+        requestMigration(false)
+
+        // First perform a cheap check to see if the migration is done, if so we can skip the wait.
+        if (mutableMigrationState.value != MigrationState.Completed) {
+            // Callers cannot do anything sensible with a half-migrated database, so they wait
+            // here rather than be handed one, and a retry that succeeds releases them.
+            //
+            // Known hazard: Error is terminal and is not a terminating condition for this wait, so
+            // a caller arriving after a failed migration blocks for the life of the process and its
+            // thread is never returned. Deferring database-backed startup work keeps the usual
+            // arrivals away from it, but callers reached from login-state flows are not covered.
+            runBlocking {
+                migrationState.first { it == MigrationState.Completed }
+            }
+        }
+
+        SQLCipherOpenHelper(application, dbSecret, jsonProvider)
+    }
+
+    private val mutableMigrationState = MutableStateFlow<MigrationState>(MigrationState.Idle)
+
+    val migrationState: StateFlow<MigrationState>
+        get() = mutableMigrationState
+
+    @Synchronized
+    private fun migrateDatabaseIfNeeded(fromRetry: Boolean) {
+        val currState = mutableMigrationState.value
+        if (currState == MigrationState.Completed || currState is MigrationState.Migrating) {
+            Log.w(TAG, "Already completed or in progress")
+            return
+        }
+
+        if (!fromRetry && currState is MigrationState.Error) {
+            Log.w(TAG, "Migration failed before, aborting as it's not an explicit retry")
+            return
+        }
+
+        // List steps to be performed: pair of action name string res id and the action lambda
+        val stepDescriptors: List<ProgressStepDescriptor> = listOf(
+            ProgressStepDescriptor("Migrate cipher settings", R.string.databaseOptimizing, R.string.waitFewMinutes, ::migrateCipherSettings)
+        )
+
+        // Accumulated progress steps
+        val steps = MutableList(stepDescriptors.size) {
+            ProgressStep(
+                title = application.getString(stepDescriptors[it].title),
+                subtitle = application.getString(stepDescriptors[it].subtitle),
+                percentage = 0
+            )
+        }
+
+        mutableMigrationState.value = MigrationState.Migrating(steps.toList())
+
+        try {
+            // Resolving the secret here is what puts a failed KeyStoreHelper.unseal into
+            // MigrationState.Error, where the user is offered retry and log export. Its only other
+            // dereference is in openHelper, which sits outside every handler on this path, so left
+            // to happen there the AssertionError kills the process on every launch instead (#2213).
+            dbSecret
+
+            for ((index, desc) in stepDescriptors.withIndex()) {
+                Log.d(TAG, "Starting migration step: ${desc.name}")
+                val stepStartedAt = SystemClock.elapsedRealtime()
+                try {
+                    (desc.action)(fromRetry)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Error performing migration step: ${desc.name}", e)
+                    throw e
+                }
+
+                steps[index] = steps[index].copy(percentage = 100)
+                Log.d(TAG, "Completed migration step: ${desc.name}, time taken = ${SystemClock.elapsedRealtime() - stepStartedAt}ms")
+
+                mutableMigrationState.value = MigrationState.Migrating(steps.toList())
+            }
+
+            // Reaching Completed after a failure means the keystore is working again, and the login
+            // state is only read once when its repository is built — so an account left unreadable
+            // by the same fault has to be re-read before anything routes on it, or a recovered user
+            // is sent to onboarding on top of their own data.
+            loginStateRepository.get().reloadUnreadableState()
+
+            mutableMigrationState.value = MigrationState.Completed
+        } catch (ec: Exception) {
+            recordMigrationFailure(ec)
+            return
+        } catch (ec: AssertionError) {
+            // AssertionError is caught alongside Exception because KeyStoreHelper throws it on
+            // purpose — it is how every crypto failure is reported, a deliberate signal rather than
+            // a symptom of a dying VM. Errors that do mean the process is already lost
+            // (OutOfMemoryError, StackOverflowError, LinkageError) are deliberately left to kill it.
+            recordMigrationFailure(ec)
+            return
+        }
+    }
+
+    private fun recordMigrationFailure(error: Throwable) {
+        logKeyStoreFailure(error)
+        mutableMigrationState.value = MigrationState.Error(error)
+    }
+
+    /**
+     * Records the keystore error code behind a crypto failure, if there is one.
+     *
+     * The code distinguishes a transient keystore fault, where the data is intact and a retry may
+     * succeed, from a key that can no longer decrypt what it sealed. Nothing else in the crash
+     * reaching us carries that distinction.
+     */
+    private fun logKeyStoreFailure(error: Throwable) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            logKeyStoreExceptionDetails(error)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun logKeyStoreExceptionDetails(error: Throwable) {
+        val keyStoreError = generateSequence(error) { it.cause }
+            .filterIsInstance<android.security.KeyStoreException>()
+            .firstOrNull() ?: return
+
+        Log.w(
+            TAG,
+            "Keystore failure: code=${keyStoreError.numericErrorCode}, " +
+                "transient=${keyStoreError.isTransientFailure}, " +
+                "systemError=${keyStoreError.isSystemError}"
+        )
+    }
+
+    private fun migrateCipherSettings(fromRetry: Boolean) {
+        if (prefs.migratedToDisablingKDF) {
+            Log.i(TAG, "Already migrated to latest cipher settings")
+            return
+        }
+
+        // List of the possible old databases and their settings. The order
+        // is important: we start from the latest version and go to the oldest.
+        // This is because we only migrate the latest version, since they have the
+        // latest user data.
+        val oldDatabasesAndSettings = listOf(
+            CIPHER4_DB_NAME to mapOf(
+                "kdf_iter" to "256000",
+                "cipher_page_size" to "4096",
+            ),
+
+            CIPHER3_DB_NAME to mapOf(
+                "kdf_iter" to "1",
+                "cipher_page_size" to "4096",
+                "cipher_compatibility" to "3",
+            )
+        )
+
+        val newDb = application.getDatabasePath(SQLCipherOpenHelper.DATABASE_NAME)
+        val newDbSettings = mapOf(
+            "kdf_iter" to "1",
+            "cipher_page_size" to "4096",
+        )
+
+        // Try to find an old db to update, if not, bail.
+        val (oldDb, oldDbSettings) = oldDatabasesAndSettings.firstNotNullOfOrNull { (db, settings) ->
+            val dbFile = application.getDatabasePath(db)
+            if (dbFile.exists()) {
+                dbFile to settings
+            } else {
+                null
+            }
+        } ?: run {
+            Log.i(TAG, "No database to migrate")
+            prefs.migratedToDisablingKDF = true
+            return
+        }
+
+        Log.d(TAG, "Start migrating ${oldDb.path}")
+
+        val hook = object : SQLiteDatabaseHook {
+            override fun preKey(connection: SQLiteConnection) {
+                // Set the new settings
+                oldDbSettings.forEach { (key, value) ->
+                    connection.executeRaw("PRAGMA $key = '$value';", null, null)
+                }
+            }
+
+            override fun postKey(connection: SQLiteConnection) = preKey(connection)
+        }
+
+        if (newDb.exists()) {
+            Log.d(
+                TAG,
+                "New database exists but we haven't done our migration, it's likely corrupted. Deleting."
+            )
+            application.deleteDatabase(SQLCipherOpenHelper.DATABASE_NAME)
+        }
+
+        SQLiteDatabase.openDatabase(
+            oldDb.absolutePath,
+            dbSecret.asString(),
+            null,
+            SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY,
+            hook
+        ).use { db ->
+            db.rawExecSQL(
+                "ATTACH DATABASE ? AS new_db KEY ?",
+                newDb.absolutePath,
+                dbSecret.asString()
+            )
+
+            // Apply new cipher settings
+            for ((key, value) in newDbSettings) {
+                db.rawExecSQL("PRAGMA new_db.$key = '$value'")
+            }
+
+            // Apply the same user version as the old database
+            db.rawExecSQL("PRAGMA new_db.user_version = ${db.version}")
+
+            // Export the old database to the new one
+            db.rawExecSQL("SELECT sqlcipher_export('new_db')")
+
+            // Detach the new database
+            db.rawExecSQL("DETACH DATABASE new_db")
+
+//            // Delay and fail at first
+//            if (BuildConfig.DEBUG && !fromRetry) {
+//                Thread.sleep(2000)
+//                throw RuntimeException("Fail")
+//            }
+        }
+
+        check(newDb.exists()) { "New database was not created" }
+        prefs.migratedToDisablingKDF = true
+    }
+
+    fun requestMigration(fromRetry: Boolean) {
+        scope.launch(Dispatchers.IO) {
+            migrateDatabaseIfNeeded(fromRetry)
+        }
+    }
+
+    private data class ProgressStepDescriptor(
+        val name: String,
+
+        @StringRes
+        val title: Int,
+
+        @StringRes
+        val subtitle: Int,
+
+        val action: (fromRetry: Boolean) -> Unit,
+    )
+
+    override fun onPostAppStarted() {
+        requestMigration(fromRetry = false)
+    }
+
+    data class ProgressStep(
+        val title: String,
+        val subtitle: String,
+        val percentage: Int,
+    )
+
+    sealed interface MigrationState {
+        data object Idle : MigrationState
+        data class Migrating(val steps: List<ProgressStep>) : MigrationState {
+            init {
+                check(steps.isNotEmpty()) { "Steps must not be empty" }
+            }
+        }
+        data class Error(val throwable: Throwable) : MigrationState
+        data object Completed : MigrationState
+    }
+
+    companion object {
+        const val CIPHER3_DB_NAME = "signal.db"
+        const val CIPHER4_DB_NAME = "signal_v4.db"
+
+        private const val TAG = "DatabaseMigrationManager"
+    }
+}

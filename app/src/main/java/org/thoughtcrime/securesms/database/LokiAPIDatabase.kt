@@ -1,0 +1,547 @@
+package org.thoughtcrime.securesms.database
+
+import android.content.ContentValues
+import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import org.session.libsignal.crypto.ecc.DjbECPrivateKey
+import org.session.libsignal.crypto.ecc.DjbECPublicKey
+import org.session.libsignal.crypto.ecc.ECKeyPair
+import org.session.libsignal.database.LastMessageHashEpoch
+import org.session.libsignal.database.LastMessageHashResets
+import org.session.libsignal.database.LokiAPIDatabaseProtocol
+import org.session.libsignal.utilities.ForkInfo
+import org.session.libsignal.utilities.Hex
+import org.session.libsignal.utilities.Snode
+import org.session.libsignal.utilities.removingIdPrefixIfNeeded
+import org.session.libsignal.utilities.toHexString
+import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper
+import org.thoughtcrime.securesms.util.asSequence
+import javax.inject.Provider
+
+class LokiAPIDatabase(context: Context, helper: Provider<SQLCipherOpenHelper>) : Database(context, helper), LokiAPIDatabaseProtocol {
+
+    companion object {
+        // Shared
+        private const val publicKey = "public_key"
+        private const val timestamp = "timestamp"
+        private const val snode = "snode"
+        // Snode pool
+        @Deprecated("Only available for migration purposes. The table is already deleted")
+        val snodePoolTable = "loki_snode_pool_cache"
+        private val dummyKey = "dummy_key"
+        private val snodePool = "snode_pool_key"
+        @JvmStatic val createSnodePoolTableCommand = "CREATE TABLE $snodePoolTable ($dummyKey TEXT PRIMARY KEY, $snodePool TEXT);"
+        @Deprecated("Only available for migration purposes. The table is already deleted")
+        // Onion request paths
+        val onionRequestPathTable = "loki_path_cache"
+        private val indexPath = "index_path"
+        @JvmStatic val createOnionRequestPathTableCommand = "CREATE TABLE $onionRequestPathTable ($indexPath TEXT PRIMARY KEY, $snode TEXT);"
+        // Swarms
+        @Deprecated("Only available for migration purposes. The table is already deleted")
+        public val swarmTable = "loki_api_swarm_cache"
+        private val swarmPublicKey = "hex_encoded_public_key"
+        private val swarm = "swarm"
+        @JvmStatic val createSwarmTableCommand = "CREATE TABLE $swarmTable ($swarmPublicKey TEXT PRIMARY KEY, $swarm TEXT);"
+        // Last message hash values
+        private const val legacyLastMessageHashValueTable2 = "last_message_hash_value_table"
+        private const val lastMessageHashValueTable2 = "session_last_message_hash_value_table"
+        private const val lastMessageHashValue = "last_message_hash_value"
+        private const val lastMessageHashNamespace = "last_message_namespace"
+        @JvmStatic val createLastMessageHashValueTable2Command
+            = "CREATE TABLE $legacyLastMessageHashValueTable2 ($snode TEXT, $publicKey TEXT, $lastMessageHashValue TEXT, PRIMARY KEY ($snode, $publicKey));"
+        // Received message hash values
+        private const val legacyReceivedMessageHashValuesTable3 = "received_message_hash_values_table_3"
+
+        @Deprecated("This table is deleted and replaced by ReceivedMessageHashDatabase")
+        private const val receivedMessageHashValuesTable = "session_received_message_hash_values_table"
+        private const val receivedMessageHashValues = "received_message_hash_values"
+        private const val receivedMessageHashNamespace = "received_message_namespace"
+        @JvmStatic val createReceivedMessageHashValuesTable3Command
+            = "CREATE TABLE $legacyReceivedMessageHashValuesTable3 ($publicKey STRING PRIMARY KEY, $receivedMessageHashValues TEXT);"
+        // Open group auth tokens
+        private val openGroupAuthTokenTable = "loki_api_group_chat_auth_token_database"
+        private val server = "server"
+        private val token = "token"
+        @JvmStatic val createOpenGroupAuthTokenTableCommand = "CREATE TABLE $openGroupAuthTokenTable ($server TEXT PRIMARY KEY, $token TEXT);"
+        // Last message server IDs
+        private const val lastMessageServerIDTable = "loki_api_last_message_server_id_cache"
+        private const val lastMessageServerIDTableIndex = "loki_api_last_message_server_id_cache_index"
+        private const val lastMessageServerID = "last_message_server_id"
+        @JvmStatic val createLastMessageServerIDTableCommand = "CREATE TABLE $lastMessageServerIDTable ($lastMessageServerIDTableIndex STRING PRIMARY KEY, $lastMessageServerID INTEGER DEFAULT 0);"
+        // Last deletion server IDs
+        private val lastDeletionServerIDTable = "loki_api_last_deletion_server_id_cache"
+        private val lastDeletionServerIDTableIndex = "loki_api_last_deletion_server_id_cache_index"
+        private val lastDeletionServerID = "last_deletion_server_id"
+        @JvmStatic val createLastDeletionServerIDTableCommand = "CREATE TABLE $lastDeletionServerIDTable ($lastDeletionServerIDTableIndex STRING PRIMARY KEY, $lastDeletionServerID INTEGER DEFAULT 0);"
+        // User counts
+        @Deprecated("This table is no longer used")
+        val userCountTable = "loki_user_count_cache"
+        private val publicChatID = "public_chat_id"
+        private val userCount = "user_count"
+        @JvmStatic val createUserCountTableCommand = "CREATE TABLE $userCountTable ($publicChatID STRING PRIMARY KEY, $userCount INTEGER DEFAULT 0);"
+        // Session request sent timestamps
+        private val sessionRequestSentTimestampTable = "session_request_sent_timestamp_cache"
+        @JvmStatic val createSessionRequestSentTimestampTableCommand = "CREATE TABLE $sessionRequestSentTimestampTable ($publicKey STRING PRIMARY KEY, $timestamp INTEGER DEFAULT 0);"
+        // Session request processed timestamp cache
+        private val sessionRequestProcessedTimestampTable = "session_request_processed_timestamp_cache"
+        @JvmStatic val createSessionRequestProcessedTimestampTableCommand = "CREATE TABLE $sessionRequestProcessedTimestampTable ($publicKey STRING PRIMARY KEY, $timestamp INTEGER DEFAULT 0);"
+        // Open group public keys
+        private val openGroupPublicKeyTable = "open_group_public_keys"
+        @JvmStatic val createOpenGroupPublicKeyTableCommand = "CREATE TABLE $openGroupPublicKeyTable ($server STRING PRIMARY KEY, $publicKey INTEGER DEFAULT 0);"
+        // Open group profile picture cache
+        public val openGroupProfilePictureTable = "open_group_avatar_cache"
+        private val openGroupProfilePicture = "open_group_avatar"
+        @JvmStatic val createOpenGroupProfilePictureTableCommand = "CREATE TABLE $openGroupProfilePictureTable ($publicChatID STRING PRIMARY KEY, $openGroupProfilePicture TEXT NULLABLE DEFAULT NULL);"
+        // Closed groups (V2)
+        public val closedGroupEncryptionKeyPairsTable = "closed_group_encryption_key_pairs_table"
+        public val closedGroupsEncryptionKeyPairIndex = "closed_group_encryption_key_pair_index"
+        public val encryptionKeyPairPublicKey = "encryption_key_pair_public_key"
+        public val encryptionKeyPairPrivateKey = "encryption_key_pair_private_key"
+        @JvmStatic
+        val createClosedGroupEncryptionKeyPairsTable = "CREATE TABLE $closedGroupEncryptionKeyPairsTable ($closedGroupsEncryptionKeyPairIndex STRING PRIMARY KEY, $encryptionKeyPairPublicKey STRING, $encryptionKeyPairPrivateKey STRING)"
+        public val closedGroupPublicKeysTable = "closed_group_public_keys_table"
+        public val groupPublicKey = "group_public_key"
+        @JvmStatic
+        val createClosedGroupPublicKeysTable = "CREATE TABLE $closedGroupPublicKeysTable ($groupPublicKey STRING PRIMARY KEY)"
+
+        private const val LAST_LEGACY_MESSAGE_TABLE = "last_legacy_messages"
+        // The overall "thread recipient
+        private const val LAST_LEGACY_THREAD_RECIPIENT = "last_legacy_thread_recipient"
+        // The individual 'last' person who sent the message with legacy expiration attached
+        private const val LAST_LEGACY_SENDER_RECIPIENT = "last_legacy_sender_recipient"
+        private const val LEGACY_THREAD_RECIPIENT_QUERY = "$LAST_LEGACY_THREAD_RECIPIENT = ?"
+
+        const val CREATE_LAST_LEGACY_MESSAGE_TABLE = "CREATE TABLE $LAST_LEGACY_MESSAGE_TABLE ($LAST_LEGACY_THREAD_RECIPIENT STRING PRIMARY KEY, $LAST_LEGACY_SENDER_RECIPIENT STRING NOT NULL);"
+
+        // Hard fork service node info
+        const val FORK_INFO_TABLE = "fork_info"
+        const val DUMMY_KEY = "dummy_key"
+        const val DUMMY_VALUE = "1"
+        const val HF_VALUE = "hf_value"
+        const val SF_VALUE = "sf_value"
+        const val CREATE_FORK_INFO_TABLE_COMMAND = "CREATE TABLE $FORK_INFO_TABLE ($DUMMY_KEY INTEGER PRIMARY KEY, $HF_VALUE INTEGER, $SF_VALUE INTEGER);"
+        const val CREATE_DEFAULT_FORK_INFO_COMMAND = "INSERT INTO $FORK_INFO_TABLE ($DUMMY_KEY, $HF_VALUE, $SF_VALUE) VALUES ($DUMMY_VALUE, 18, 1);"
+
+        const val UPDATE_HASHES_INCLUDE_NAMESPACE_COMMAND = """
+            CREATE TABLE IF NOT EXISTS $lastMessageHashValueTable2(
+                $snode TEXT, $publicKey TEXT, $lastMessageHashValue TEXT, $lastMessageHashNamespace INTEGER DEFAULT 0, PRIMARY KEY ($snode, $publicKey, $lastMessageHashNamespace)
+            );
+            INSERT INTO $lastMessageHashValueTable2($snode, $publicKey, $lastMessageHashValue) SELECT $snode, $publicKey, $lastMessageHashValue FROM $legacyLastMessageHashValueTable2);
+            DROP TABLE $legacyLastMessageHashValueTable2;
+        """
+        const val INSERT_LAST_HASH_DATA = "INSERT OR IGNORE INTO $lastMessageHashValueTable2($snode, $publicKey, $lastMessageHashValue) SELECT $snode, $publicKey, $lastMessageHashValue FROM $legacyLastMessageHashValueTable2;"
+        const val DROP_LEGACY_LAST_HASH = "DROP TABLE $legacyLastMessageHashValueTable2;"
+
+        @Deprecated("This table is deleted and replaced by ReceivedMessageHashDatabase, keeping here just for migration purpose")
+        const val UPDATE_RECEIVED_INCLUDE_NAMESPACE_COMMAND = """
+            CREATE TABLE IF NOT EXISTS $receivedMessageHashValuesTable(
+                $publicKey STRING, $receivedMessageHashValues TEXT, $receivedMessageHashNamespace INTEGER DEFAULT 0, PRIMARY KEY ($publicKey, $receivedMessageHashNamespace)
+            );
+            
+            INSERT INTO $receivedMessageHashValuesTable($publicKey, $receivedMessageHashValues) SELECT $publicKey, $receivedMessageHashValues FROM $legacyReceivedMessageHashValuesTable3;
+            
+            DROP TABLE $legacyReceivedMessageHashValuesTable3;
+        """
+        const val INSERT_RECEIVED_HASHES_DATA = "INSERT OR IGNORE INTO $receivedMessageHashValuesTable($publicKey, $receivedMessageHashValues) SELECT $publicKey, $receivedMessageHashValues FROM $legacyReceivedMessageHashValuesTable3;"
+        const val DROP_LEGACY_RECEIVED_HASHES = "DROP TABLE $legacyReceivedMessageHashValuesTable3;"
+        // Open group server capabilities
+        private val serverCapabilitiesTable = "open_group_server_capabilities"
+        private val capabilities = "capabilities"
+        @JvmStatic
+        val createServerCapabilitiesCommand = "CREATE TABLE $serverCapabilitiesTable($server STRING PRIMARY KEY, $capabilities STRING)"
+        // Last inbox message server IDs
+        private val lastInboxMessageServerIdTable = "open_group_last_inbox_message_server_id_cache"
+        private val lastInboxMessageServerId = "last_inbox_message_server_id"
+        @JvmStatic
+        val createLastInboxMessageServerIdCommand = "CREATE TABLE $lastInboxMessageServerIdTable($server STRING PRIMARY KEY, $lastInboxMessageServerId INTEGER DEFAULT 0)"
+        // Last outbox message server IDs
+        private val lastOutboxMessageServerIdTable = "open_group_last_outbox_message_server_id_cache"
+        private val lastOutboxMessageServerId = "last_outbox_message_server_id"
+        @JvmStatic
+        val createLastOutboxMessageServerIdCommand = "CREATE TABLE $lastOutboxMessageServerIdTable($server STRING PRIMARY KEY, $lastOutboxMessageServerId INTEGER DEFAULT 0)"
+
+        // region Deprecated
+        private val deviceLinkCache = "loki_pairing_authorisation_cache"
+        private val masterPublicKey = "primary_device"
+        private val slavePublicKey = "secondary_device"
+        private val requestSignature = "request_signature"
+        private val authorizationSignature = "grant_signature"
+        @JvmStatic val createDeviceLinkCacheCommand = "CREATE TABLE $deviceLinkCache ($masterPublicKey STRING, $slavePublicKey STRING, " +
+            "$requestSignature STRING NULLABLE DEFAULT NULL, $authorizationSignature STRING NULLABLE DEFAULT NULL, PRIMARY KEY ($masterPublicKey, $slavePublicKey));"
+        private val sessionRequestTimestampCache = "session_request_timestamp_cache"
+        @JvmStatic val createSessionRequestTimestampCacheCommand = "CREATE TABLE $sessionRequestTimestampCache ($publicKey STRING PRIMARY KEY, $timestamp STRING);"
+
+        const val RESET_SEQ_NO = "UPDATE $lastMessageServerIDTable SET $lastMessageServerID = 0;"
+
+        // endregion
+
+        @Deprecated("Only available for migration purposes")
+        fun getSnodePool(database: SupportSQLiteDatabase): List<Snode> {
+            return database.query("SELECT * FROM $snodePoolTable WHERE ${dummyKey} = ?", wrap("dummy_key")).use { cursor ->
+                if (cursor.moveToNext()) {
+                    val snodePoolAsString =
+                        cursor.getString(cursor.getColumnIndexOrThrow(snodePool))
+                    snodePoolAsString.split(", ").mapNotNull(::Snode)
+                } else {
+                    null
+                }
+            }?.toList().orEmpty()
+        }
+
+        @Deprecated("Only available for migration purposes")
+        fun getOnionRequestPaths(database: SupportSQLiteDatabase): List<List<Snode>> {
+            fun get(indexPath: String): Snode? {
+                return database.query("SELECT * FROM $onionRequestPathTable WHERE ${Companion.indexPath} = ?", wrap(indexPath)).use { cursor ->
+                    if (cursor.moveToNext()) {
+                        Snode(cursor.getString(cursor.getColumnIndexOrThrow(snode)))
+                    } else {
+                        null
+                    }
+                }
+            }
+            val result = mutableListOf<List<Snode>>()
+            val path0Snode0 = get("0-0"); val path0Snode1 = get("0-1"); val path0Snode2 = get("0-2")
+            if (path0Snode0 != null && path0Snode1 != null && path0Snode2 != null) {
+                result.add(listOf( path0Snode0, path0Snode1, path0Snode2 ))
+            }
+            val path1Snode0 = get("1-0"); val path1Snode1 = get("1-1"); val path1Snode2 = get("1-2")
+            if (path1Snode0 != null && path1Snode1 != null && path1Snode2 != null) {
+                result.add(listOf( path1Snode0, path1Snode1, path1Snode2 ))
+            }
+            return result
+        }
+
+
+        @Deprecated("Only available for migration purposes")
+        fun getSwarms(database: SupportSQLiteDatabase): Map<String, List<Snode>> {
+            return database.query("SELECT * FROM $swarmTable").use { cursor ->
+                val swarmIndex = cursor.getColumnIndexOrThrow(swarm)
+                val pubKeyIndex = cursor.getColumnIndexOrThrow(swarmPublicKey)
+
+                cursor.asSequence()
+                    .associate {
+                        val pubKey = cursor.getString(pubKeyIndex)
+                        val swarmNodes =
+                            cursor.getString(swarmIndex)
+                                .splitToSequence(", ")
+                                .mapNotNull(::Snode)
+                                .toList()
+
+                        pubKey to swarmNodes
+                    }
+            }
+        }
+    }
+
+
+    override fun getLastMessageHashValue(snode: Snode, publicKey: String, namespace: Int): String? {
+        val database = readableDatabase
+        val query = "${Companion.snode} = ? AND ${Companion.publicKey} = ? AND $lastMessageHashNamespace = ?"
+        return database.get(lastMessageHashValueTable2, query, arrayOf(snode.toString(), publicKey, namespace.toString())) { cursor ->
+            cursor.getString(cursor.getColumnIndexOrThrow(lastMessageHashValue))
+        }
+    }
+
+    private val lastMessageHashResets = LastMessageHashResets()
+
+    override fun lastMessageHashEpoch(): LastMessageHashEpoch = lastMessageHashResets.epoch()
+
+    override fun setLastMessageHashValue(
+        snode: Snode,
+        publicKey: String,
+        newValue: String,
+        namespace: Int,
+        since: LastMessageHashEpoch,
+    ): Boolean = lastMessageHashResets.writeUnlessResetSince(publicKey, since) {
+        val database = writableDatabase
+        val row = wrap(mapOf(
+            Companion.snode to snode.toString(),
+            Companion.publicKey to publicKey,
+            lastMessageHashValue to newValue,
+            lastMessageHashNamespace to namespace.toString()
+        ))
+        val query = "${Companion.snode} = ? AND ${Companion.publicKey} = ? AND $lastMessageHashNamespace = ?"
+        database.insertOrUpdate(lastMessageHashValueTable2, row, query, arrayOf( snode.toString(), publicKey, namespace.toString() ))
+    }
+
+    override fun clearLastMessageHashes(publicKey: String) = lastMessageHashResets.reset(publicKey) {
+        writableDatabase
+            .delete(lastMessageHashValueTable2, "${Companion.publicKey} = ?", arrayOf(publicKey))
+    }
+
+    // Counted as a reset of every swarm: the namespaces are not scoped to one, so any in-flight poll may
+    // be writing one of them.
+    override fun clearLastMessageHashesByNamespaces(vararg namespaces: Int) = lastMessageHashResets.reset(null) {
+        // Note that we don't use SQL parameter as the given namespaces are integer anyway so there's little chance of SQL injection
+        writableDatabase
+            .delete(lastMessageHashValueTable2, "$lastMessageHashNamespace IN (${namespaces.joinToString(",")})", null)
+    }
+
+    override fun clearAllLastMessageHashes() = lastMessageHashResets.reset(null) {
+        val database = writableDatabase
+        database.delete(lastMessageHashValueTable2, null, null)
+    }
+
+    override fun getAuthToken(server: String): String? {
+        val database = readableDatabase
+        return database.get(openGroupAuthTokenTable, "${Companion.server} = ?", wrap(server)) { cursor ->
+            cursor.getString(cursor.getColumnIndexOrThrow(token))
+        }
+    }
+
+    override fun setAuthToken(server: String, newValue: String?) {
+        val database = writableDatabase
+        if (newValue != null) {
+            val row = wrap(mapOf( Companion.server to server, token to newValue ))
+            database.insertOrUpdate(openGroupAuthTokenTable, row, "${Companion.server} = ?", wrap(server))
+        } else {
+            database.delete(openGroupAuthTokenTable, "${Companion.server} = ?", wrap(server))
+        }
+    }
+
+    override fun getLastMessageServerID(room: String, server: String): Long? {
+        val database = readableDatabase
+        val index = "$server.$room"
+        return database.get(lastMessageServerIDTable, "$lastMessageServerIDTableIndex = ?", wrap(index)) { cursor ->
+            cursor.getInt(lastMessageServerID)
+        }?.toLong()
+    }
+
+    /**
+     * Attempts to set the last message server ID for the given room and server, but
+     * only if the new value is more recent than the previous value.
+     */
+    override fun setLastMessageServerID(room: String, server: String, newValue: Long) {
+        writableDatabase.execSQL("""
+           INSERT INTO $lastMessageServerIDTable ($lastMessageServerIDTableIndex, $lastMessageServerID)
+           VALUES (?1, ?2)
+           ON CONFLICT($lastMessageServerIDTableIndex) DO UPDATE SET $lastMessageServerID = EXCLUDED.$lastMessageServerID 
+           WHERE EXCLUDED.$lastMessageServerID > $lastMessageServerID
+        """, arrayOf<Any>("$server.$room", newValue))
+    }
+
+    fun removeLastMessageServerID(room: String, server:String) {
+        val database = writableDatabase
+        val index = "$server.$room"
+        database.delete(lastMessageServerIDTable, "$lastMessageServerIDTableIndex = ?", wrap(index))
+    }
+
+    override fun getLastDeletionServerID(room: String, server: String): Long? {
+        val database = readableDatabase
+        val index = "$server.$room"
+        return database.get(lastDeletionServerIDTable, "$lastDeletionServerIDTableIndex = ?", wrap(index)) { cursor ->
+            cursor.getInt(lastDeletionServerID)
+        }?.toLong()
+    }
+
+    override fun setLastDeletionServerID(room: String, server: String, newValue: Long) {
+        val database = writableDatabase
+        val index = "$server.$room"
+        val row = wrap(mapOf(lastDeletionServerIDTableIndex to index, lastDeletionServerID to newValue.toString()))
+        database.insertOrUpdate(lastDeletionServerIDTable, row, "$lastDeletionServerIDTableIndex = ?", wrap(index))
+    }
+
+    fun removeLastDeletionServerID(room: String, server: String) {
+        val database = writableDatabase
+        val index = "$server.$room"
+        database.delete(lastDeletionServerIDTable, "$lastDeletionServerIDTableIndex = ?", wrap(index))
+    }
+
+    override fun migrateLegacyOpenGroup(legacyServerId: String, newServerId: String) {
+        val database = writableDatabase
+        database.beginTransaction()
+        val authRow = wrap(mapOf(server to newServerId))
+        database.update(openGroupAuthTokenTable, authRow, "$server = ?", wrap(legacyServerId))
+        val lastMessageRow = wrap(mapOf(lastMessageServerIDTableIndex to newServerId))
+        database.update(lastMessageServerIDTable, lastMessageRow,
+            "$lastMessageServerIDTableIndex = ?", wrap(legacyServerId))
+        val lastDeletionRow = wrap(mapOf(lastDeletionServerIDTableIndex to newServerId))
+        database.update(
+            lastDeletionServerIDTable, lastDeletionRow,
+            "$lastDeletionServerIDTableIndex = ?", wrap(legacyServerId))
+        val userCountRow = wrap(mapOf(publicChatID to newServerId))
+        database.update(
+            userCountTable, userCountRow,
+            "$publicChatID = ?", wrap(legacyServerId)
+        )
+        val publicKeyRow = wrap(mapOf(server to newServerId))
+        database.update(
+            openGroupPublicKeyTable, publicKeyRow,
+            "$server = ?", wrap(legacyServerId)
+        )
+        database.endTransaction()
+    }
+
+    override fun getLastLegacySenderAddress(threadRecipientAddress: String): String? =
+        readableDatabase.get(LAST_LEGACY_MESSAGE_TABLE, LEGACY_THREAD_RECIPIENT_QUERY, wrap(threadRecipientAddress)) { cursor ->
+            cursor.getString(LAST_LEGACY_SENDER_RECIPIENT)
+        }
+
+    override fun setLastLegacySenderAddress(
+        threadRecipientAddress: String,
+        senderRecipientAddress: String?
+    ) {
+        val database = writableDatabase
+        if (senderRecipientAddress == null) {
+            // delete
+            database.delete(LAST_LEGACY_MESSAGE_TABLE, LEGACY_THREAD_RECIPIENT_QUERY, wrap(threadRecipientAddress))
+        } else {
+            // just update the value to a new one
+            val values = wrap(
+                mapOf(
+                    LAST_LEGACY_THREAD_RECIPIENT to threadRecipientAddress,
+                    LAST_LEGACY_SENDER_RECIPIENT to senderRecipientAddress
+                )
+            )
+            database.insertOrUpdate(LAST_LEGACY_MESSAGE_TABLE, values, LEGACY_THREAD_RECIPIENT_QUERY, wrap(threadRecipientAddress))
+        }
+    }
+
+    override fun getOpenGroupPublicKey(server: String): String? {
+        val database = readableDatabase
+        return database.get(openGroupPublicKeyTable, "${LokiAPIDatabase.server} = ?", wrap(server)) { cursor ->
+            cursor.getString(LokiAPIDatabase.publicKey)
+        }
+    }
+
+    override fun setOpenGroupPublicKey(server: String, newValue: String) {
+        val database = writableDatabase
+        val row = wrap(mapOf( LokiAPIDatabase.server to server, LokiAPIDatabase.publicKey to newValue ))
+        database.insertOrUpdate(openGroupPublicKeyTable, row, "${LokiAPIDatabase.server} = ?", wrap(server))
+    }
+
+    fun addClosedGroupEncryptionKeyPair(encryptionKeyPair: ECKeyPair, groupPublicKey: String, timestamp: Long) {
+        val database = writableDatabase
+        val index = "$groupPublicKey-$timestamp"
+        val encryptionKeyPairPublicKey = encryptionKeyPair.publicKey.serialize().toHexString().removingIdPrefixIfNeeded()
+        val encryptionKeyPairPrivateKey = encryptionKeyPair.privateKey.serialize().toHexString()
+        val row = wrap(mapOf(closedGroupsEncryptionKeyPairIndex to index, Companion.encryptionKeyPairPublicKey to encryptionKeyPairPublicKey,
+                Companion.encryptionKeyPairPrivateKey to encryptionKeyPairPrivateKey ))
+        database.insertOrUpdate(closedGroupEncryptionKeyPairsTable, row, "${Companion.closedGroupsEncryptionKeyPairIndex} = ?", wrap(index))
+    }
+
+    override fun getClosedGroupEncryptionKeyPairs(groupPublicKey: String): List<ECKeyPair> {
+        val database = readableDatabase
+        val timestampsAndKeyPairs = database.getAll(closedGroupEncryptionKeyPairsTable, "${Companion.closedGroupsEncryptionKeyPairIndex} LIKE ?", wrap("$groupPublicKey%")) { cursor ->
+            val timestamp = cursor.getString(cursor.getColumnIndexOrThrow(Companion.closedGroupsEncryptionKeyPairIndex)).split("-").last()
+            val encryptionKeyPairPublicKey = cursor.getString(cursor.getColumnIndexOrThrow(Companion.encryptionKeyPairPublicKey))
+            val encryptionKeyPairPrivateKey = cursor.getString(cursor.getColumnIndexOrThrow(Companion.encryptionKeyPairPrivateKey))
+            val keyPair = ECKeyPair(DjbECPublicKey(Hex.fromStringCondensed(encryptionKeyPairPublicKey)), DjbECPrivateKey(Hex.fromStringCondensed(encryptionKeyPairPrivateKey)))
+            Pair(timestamp, keyPair)
+        }
+        return timestampsAndKeyPairs.sortedBy { it.first.toLong() }.map { it.second }
+    }
+
+    override fun getLatestClosedGroupEncryptionKeyPair(groupPublicKey: String): ECKeyPair? {
+        return getClosedGroupEncryptionKeyPairs(groupPublicKey).lastOrNull()
+    }
+
+    fun removeAllClosedGroupEncryptionKeyPairs(groupPublicKey: String) {
+        val database = writableDatabase
+        database.delete(closedGroupEncryptionKeyPairsTable, "${Companion.closedGroupsEncryptionKeyPairIndex} LIKE ?", wrap("$groupPublicKey%"))
+    }
+
+    fun addClosedGroupPublicKey(groupPublicKey: String) {
+        val database = writableDatabase
+        val row = wrap(mapOf( Companion.groupPublicKey to groupPublicKey ))
+        database.insertOrUpdate(closedGroupPublicKeysTable, row, "${Companion.groupPublicKey} = ?", wrap(groupPublicKey))
+    }
+
+    fun getAllClosedGroupPublicKeys(): Set<String> {
+        val database = readableDatabase
+        return database.getAll(closedGroupPublicKeysTable, null, null) { cursor ->
+            cursor.getString(cursor.getColumnIndexOrThrow(Companion.groupPublicKey))
+        }.toSet()
+    }
+
+    fun removeClosedGroupPublicKey(groupPublicKey: String) {
+        val database = writableDatabase
+        database.delete(closedGroupPublicKeysTable, "${Companion.groupPublicKey} = ?", wrap(groupPublicKey))
+    }
+
+    fun setServerCapabilities(serverName: String, serverCapabilities: List<String>) {
+        val database = writableDatabase
+        val row = wrap(mapOf(server to serverName, capabilities to serverCapabilities.joinToString(",")))
+        database.insertOrUpdate(serverCapabilitiesTable, row, "$server = ?", wrap(serverName))
+    }
+
+    fun getServerCapabilities(serverName: String): List<String>? {
+        val database = readableDatabase
+        return database.get(serverCapabilitiesTable, "$server = ?", wrap(serverName)) { cursor ->
+            cursor.getString(capabilities)
+        }?.split(",")
+    }
+
+    fun clearServerCapabilities(serverName: String) {
+        writableDatabase.delete(serverCapabilitiesTable, "$server = ?", wrap(serverName))
+    }
+
+    fun setLastInboxMessageId(serverName: String, newValue: Long) {
+        val database = writableDatabase
+        val row = wrap(mapOf(server to serverName, lastInboxMessageServerId to newValue.toString()))
+        database.insertOrUpdate(lastInboxMessageServerIdTable, row, "$server = ?", wrap(serverName))
+    }
+
+    fun getLastInboxMessageId(serverName: String): Long? {
+        val database = readableDatabase
+        return database.get(lastInboxMessageServerIdTable, "$server = ?", wrap(serverName)) { cursor ->
+            cursor.getInt(lastInboxMessageServerId)
+        }?.toLong()
+    }
+
+    fun removeLastInboxMessageId(serverName: String) {
+        writableDatabase.delete(lastInboxMessageServerIdTable, "$server = ?", wrap(serverName))
+    }
+
+    fun setLastOutboxMessageId(serverName: String, newValue: Long) {
+        val database = writableDatabase
+        val row = wrap(mapOf(server to serverName, lastOutboxMessageServerId to newValue.toString()))
+        database.insertOrUpdate(lastOutboxMessageServerIdTable, row, "$server = ?", wrap(serverName))
+    }
+
+    fun getLastOutboxMessageId(serverName: String): Long? {
+        val database = readableDatabase
+        return database.get(lastOutboxMessageServerIdTable, "$server = ?", wrap(serverName)) { cursor ->
+            cursor.getInt(lastOutboxMessageServerId)
+        }?.toLong()
+    }
+
+    fun removeLastOutboxMessageId(serverName: String) {
+        writableDatabase.delete(lastOutboxMessageServerIdTable, "$server = ?", wrap(serverName))
+    }
+
+    override fun getForkInfo(): ForkInfo {
+        val database = readableDatabase
+        val queryCursor = database.query(FORK_INFO_TABLE, arrayOf(HF_VALUE, SF_VALUE), "$DUMMY_KEY = $DUMMY_VALUE", null, null, null, null)
+        val forkInfo = queryCursor.use { cursor ->
+            if (!cursor.moveToNext()) {
+                ForkInfo(18, 1) // no HF info, none set will at least be the version
+            } else {
+                ForkInfo(cursor.getInt(0), cursor.getInt(1))
+            }
+        }
+        return forkInfo
+    }
+
+    override fun setForkInfo(forkInfo: ForkInfo) {
+        val database = writableDatabase
+        val query = "$DUMMY_KEY = $DUMMY_VALUE"
+        val contentValues = ContentValues(3)
+        contentValues.put(DUMMY_KEY, DUMMY_VALUE)
+        contentValues.put(HF_VALUE, forkInfo.hf)
+        contentValues.put(SF_VALUE, forkInfo.sf)
+        database.insertOrUpdate(FORK_INFO_TABLE, contentValues, query, emptyArray())
+    }
+}
+
+// region Convenience
+private inline fun <reified T> wrap(x: T): Array<T> {
+    return Array(1) { x }
+}
+
+private fun wrap(x: Map<String, String>): ContentValues {
+    val result = ContentValues(x.size)
+    x.iterator().forEach { result.put(it.key, it.value) }
+    return result
+}
+// endregion

@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    amend theme family: "Grape" (dark) and "Bubblegum" (light).
+    Mirrors the structure of the Ocean themes so every view-based screen gets a value for each attribute.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Amend">
+        <item name="dividerVertical">?android:textColorTertiary</item>
+        <item name="dividerHorizontal">?dividerVertical</item>
+        <item name="message_received_background_color">#F2F2F2</item>
+        <item name="colorAccent">@color/accent_amend</item>
+        <item name="tabStyle">@style/Widget.Session.TabLayout</item>
+    </style>
+
+    <style name="Amend.Dark">
+        <!-- Main styles -->
+        <item name="sessionLogoTint">@color/amend_dark_7</item>
+        <item name="colorPrimary">@color/amend_dark_2</item>
+        <item name="colorPrimaryDark">@color/amend_dark_2</item>
+        <item name="backgroundSecondary">@color/amend_dark_1</item>
+        <item name="colorControlNormal">@color/amend_dark_7</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="warning">@color/accent_orange</item>
+        <item name="danger">@color/danger_dark</item>
+        <item name="disabled">@color/classic_light_1</item>
+        <item name="android:textColorPrimary">@color/amend_dark_7</item>
+        <item name="android:textColorSecondary">@color/amend_dark_5</item>
+        <item name="android:textColorTertiary">@color/amend_dark_5</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/amend_dark_5</item>
+        <item name="textColorAlert">@color/amend_dark_7</item>
+        <item name="accentText">?colorAccent</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="colorCellBackground">@color/amend_dark_3</item>
+        <item name="colorDividerBackground">@color/amend_dark_4</item>
+        <item name="android:colorControlHighlight">@color/amend_dark_4</item>
+        <item name="colorControlHighlight">@color/amend_dark_4</item>
+        <item name="bottomSheetDialogTheme">@style/Amend.Dark.BottomSheet</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="actionBarPopupTheme">@style/Dark.Popup</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar</item>
+        <item name="accentColor">?colorAccent</item>
+        <item name="onInvertedBackgroundPrimary">?colorPrimary</item>
+        <item name="prominentButtonColor">?colorAccent</item>
+        <item name="elementBorderColor">@color/amend_dark_4</item>
+        <item name="crown">@color/black</item>
+        <item name="crownBg">@color/accent_yellow</item>
+
+        <item name="lightCell">@color/white</item>
+        <item name="onLightCell">@color/amend_dark_2</item>
+
+        <item name="isLightTheme">false</item>
+
+        <!-- Home screen -->
+        <item name="searchBackgroundColor">@color/amend_dark_3</item>
+        <item name="searchIconColor">@color/amend_dark_7</item>
+        <item name="searchHintColor">@color/amend_dark_5</item>
+        <item name="searchTextColor">?android:textColorPrimary</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/amend_dark_3</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/amend_dark_3</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/amend_dark_0</item>
+        <item name="conversation_menu_background_color">@color/amend_dark_3</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/amend_dark_2</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/amend_dark_4</item>
+        <item name="message_received_text_color">@color/amend_dark_7</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/amend_dark_0</item>
+        <item name="message_status_color">@color/amend_dark_5</item>
+        <item name="input_bar_text_hint">@color/amend_dark_5</item>
+        <item name="input_bar_text_user">@color/amend_dark_7</item>
+        <item name="input_bar_button_background">@color/amend_dark_2</item>
+        <item name="input_bar_button_text_color">@color/amend_dark_7</item>
+        <item name="input_bar_button_background_opaque">@color/amend_dark_4</item>
+        <item name="input_bar_button_background_opaque_border">@color/amend_dark_2</item>
+        <item name="input_bar_lock_view_background">?colorPrimary</item>
+        <item name="input_bar_lock_view_border">?colorPrimary</item>
+        <item name="mention_candidates_view_background">@color/amend_dark_2</item>
+        <item name="scroll_to_bottom_button_background">@color/amend_dark_4</item>
+        <item name="scroll_to_bottom_button_border">?colorPrimary</item>
+        <item name="message_selected">@color/amend_dark_1</item>
+
+    </style>
+
+    <style name="Amend.Light">
+        <!-- Main styles -->
+        <item name="sessionLogoTint">@color/amend_light_1</item>
+        <item name="colorPrimary">@color/amend_light_7</item>
+        <item name="colorPrimaryDark">@color/amend_light_6</item>
+        <item name="backgroundSecondary">@color/amend_light_6</item>
+        <item name="colorControlNormal">@color/amend_light_1</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="warning">@color/rust</item>
+        <item name="danger">@color/danger_light</item>
+        <item name="disabled">@color/classic_dark_5</item>
+        <item name="android:textColorPrimary">@color/amend_light_1</item>
+        <item name="android:textColorSecondary">@color/amend_light_2</item>
+        <item name="android:textColorTertiary">@color/amend_light_2</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/amend_light_6</item>
+        <item name="textColorAlert">@color/amend_light_0</item>
+        <item name="accentText">?android:textColorPrimary</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="colorCellBackground">@color/amend_light_5</item>
+        <item name="colorDividerBackground">@color/amend_light_3</item>
+        <item name="android:colorControlHighlight">@color/amend_light_4</item>
+        <item name="colorControlHighlight">@color/amend_light_4</item>
+        <item name="bottomSheetDialogTheme">@style/Amend.Light.BottomSheet</item>
+        <item name="actionBarPopupTheme">@style/Light.Popup</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar.Flat</item>
+        <item name="accentColor">?colorAccent</item>
+        <item name="onInvertedBackgroundPrimary">?colorAccent</item>
+        <item name="prominentButtonColor">?android:textColorPrimary</item>
+        <item name="elementBorderColor">@color/amend_light_3</item>
+        <item name="crown">@color/accent_yellow</item>
+        <item name="crownBg">@color/black</item>
+
+        <item name="lightCell">@color/amend_light_6</item>
+        <item name="onLightCell">@color/amend_light_1</item>
+
+        <!-- Light mode -->
+        <item name="theme_type">light</item>
+        <item name="android:colorBackgroundFloating">?colorPrimary</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="O_MR1">true</item>
+        <item name="isLightTheme">true</item>
+        <item name="android:isLightTheme" tools:targetApi="Q">true</item>
+
+
+        <item name="searchBackgroundColor">@color/amend_light_5</item>
+        <item name="searchIconColor">@color/amend_light_1</item>
+        <item name="searchHintColor">@color/amend_light_2</item>
+        <item name="searchTextColor">@color/amend_light_1</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/amend_light_7</item>
+        <item name="conversation_menu_background_color">@color/amend_light_7</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/amend_light_7</item>
+
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/amend_light_1</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/amend_light_4</item>
+        <item name="message_received_text_color">@color/amend_light_1</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/amend_light_1</item>
+        <item name="message_status_color">@color/amend_light_2</item>
+        <item name="input_bar_text_hint">@color/amend_light_2</item>
+        <item name="input_bar_text_user">@color/amend_light_1</item>
+        <item name="input_bar_button_background">@color/amend_light_5</item>
+        <item name="input_bar_button_background_opaque">@color/amend_light_5</item>
+        <item name="input_bar_button_text_color">@color/amend_light_1</item>
+        <item name="input_bar_button_background_opaque_border">@color/amend_light_1</item>
+        <item name="input_bar_lock_view_background">@color/amend_light_5</item>
+        <item name="input_bar_lock_view_border">@color/amend_light_1</item>
+        <item name="mention_candidates_view_background">?colorCellBackground</item>
+        <item name="scroll_to_bottom_button_background">?input_bar_button_background_opaque</item>
+        <item name="scroll_to_bottom_button_border">?input_bar_button_background_opaque_border</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/amend_light_5</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="message_selected">@color/amend_light_5</item>
+    </style>
+
+    <style name="Amend.Dark.BottomSheet" parent="Theme.Session.BottomSheet">
+        <item name="colorPrimary">@color/amend_dark_3</item>
+        <item name="dialog_border">@color/transparent_black_15</item>
+        <item name="android:textColorPrimary">@color/amend_dark_7</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/amend_dark_5</item>
+    </style>
+
+    <style name="Amend.Light.BottomSheet" parent="Theme.Session.BottomSheet">
+        <item name="colorPrimary">@color/amend_light_6</item>
+        <item name="dialog_border">@color/transparent_black_15</item>
+        <item name="android:textColorPrimary">@color/amend_light_1</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/amend_light_2</item>
+    </style>
+
+    <style name="PrimaryAmend">
+        <item name="colorAccent">@color/accent_amend</item>
+    </style>
+    <style name="PrimaryLime">
+        <item name="colorAccent">@color/accent_lime</item>
+    </style>
+
+</resources>

@@ -1,0 +1,80 @@
+package org.thoughtcrime.securesms.dependencies
+
+import android.content.Context
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.GlobalScope
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.plus
+import org.session.libsession.messaging.groups.GroupManagerV2
+import org.session.libsession.utilities.AppTextSecurePreferences
+import org.session.libsession.utilities.ConfigFactoryProtocol
+import org.session.libsession.utilities.TextSecurePreferences
+import org.session.libsession.utilities.TypingIndicatorsProtocol
+import org.thoughtcrime.securesms.groups.GroupManagerV2Impl
+import org.thoughtcrime.securesms.repository.ConversationRepository
+import org.thoughtcrime.securesms.repository.DefaultConversationRepository
+import org.thoughtcrime.securesms.sskenvironment.TypingStatusRepository
+import org.thoughtcrime.securesms.tokenpage.TokenRepository
+import org.thoughtcrime.securesms.tokenpage.TokenRepositoryImpl
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+class AppModule {
+    @Provides
+    @Singleton
+    fun provideJson(modules: Set<@JvmSuppressWildcards SerializersModule>): Json {
+        return Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            serializersModule += SerializersModule {
+                modules.forEach { include(it) }
+            }
+        }
+    }
+
+    @Provides
+    @ManagerScope
+    fun provideGlobalCoroutineScope(): CoroutineScope {
+        return GlobalScope
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class AppBindings {
+
+    @Binds
+    abstract fun bindTextSecurePreferences(preferences: AppTextSecurePreferences): TextSecurePreferences
+
+    @Binds
+    abstract fun bindConversationRepository(repository: DefaultConversationRepository): ConversationRepository
+
+    @Binds
+    abstract fun bindTokenRepository(repository: TokenRepositoryImpl): TokenRepository
+
+    @Binds
+    abstract fun bindGroupManager(groupManager: GroupManagerV2Impl): GroupManagerV2
+
+    @Binds
+    abstract fun bindConfigFactory(configFactory: ConfigFactory): ConfigFactoryProtocol
+
+    @Binds
+    abstract fun bindTypingIndicators(typingIndicators: TypingStatusRepository): TypingIndicatorsProtocol
+
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+class ToasterModule {
+    @Provides
+    @Singleton
+    fun provideToaster(@ApplicationContext context: Context): org.thoughtcrime.securesms.ApplicationContext = (context as org.thoughtcrime.securesms.ApplicationContext)
+}

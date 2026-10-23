@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:gravity="center">
+
+    <TextView
+        android:id="@+id/pathDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="@dimen/large_spacing"
+        android:layout_marginTop="@dimen/large_spacing"
+        android:layout_marginRight="@dimen/large_spacing"
+        android:textSize="@dimen/small_font_size"
+        android:textColor="?android:textColorPrimary"
+        android:alpha="0.6"
+        android:textAlignment="center"
+        android:text="@string/onionRoutingPathDescription" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_margin="@dimen/large_spacing"
+        android:clipChildren="false">
+
+        <ScrollView
+            android:id="@+id/pathScroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_centerInParent="true"
+            android:paddingBottom="@dimen/large_spacing">
+
+            <LinearLayout
+                android:id="@+id/pathRowsContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:orientation="vertical" />
+
+        </ScrollView>
+
+        <View
+            android:id="@+id/gradientView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/fade_gradient" />
+
+        <ProgressBar
+            android:id="@+id/spinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:indeterminateTint="?colorAccent"
+            android:indeterminate="true"/>
+
+    </RelativeLayout>
+
+    <Button
+        style="@style/Widget.Session.Button.Common.ProminentOutline"
+        android:id="@+id/learnMoreButton"
+        android:layout_width="196dp"
+        android:layout_height="@dimen/medium_button_height"
+        android:layout_marginBottom="@dimen/medium_spacing"
+        android:text="@string/learnMore" />
+
+</LinearLayout>

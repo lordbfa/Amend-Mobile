@@ -1,0 +1,241 @@
+package org.thoughtcrime.securesms.preferences.prosettings
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment.Companion.CenterHorizontally
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import org.session.libsession.utilities.Phrase
+import network.loki.messenger.R
+import org.session.libsession.utilities.NonTranslatableStringConstants.NETWORK_NAME
+import org.session.libsession.utilities.StringSubstitutionConstants.DATE_KEY
+import org.thoughtcrime.securesms.pro.ProDataState
+import org.thoughtcrime.securesms.pro.ProStatus
+import org.thoughtcrime.securesms.pro.previewAutoRenewingApple
+import org.thoughtcrime.securesms.pro.previewExpiredApple
+import org.thoughtcrime.securesms.ui.qaTag
+import org.thoughtcrime.securesms.ui.SessionProSettingsHeader
+import org.thoughtcrime.securesms.ui.components.AccentFillButtonRect
+import org.thoughtcrime.securesms.ui.components.annotatedStringResource
+import org.thoughtcrime.securesms.ui.safeContentWidth
+import org.thoughtcrime.securesms.ui.theme.LocalColors
+import org.thoughtcrime.securesms.ui.theme.LocalDimensions
+import org.thoughtcrime.securesms.ui.theme.LocalType
+import org.thoughtcrime.securesms.ui.theme.PreviewTheme
+import org.thoughtcrime.securesms.ui.theme.SessionColorsParameterProvider
+import org.thoughtcrime.securesms.ui.theme.ThemeColors
+import org.thoughtcrime.securesms.util.State
+
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun PlanConfirmationScreen(
+    viewModel: ProSettingsViewModel,
+    onBack: () -> Unit,
+) {
+    val proData by viewModel.proSettingsUIState.collectAsState()
+    val previousState by viewModel.choosePlanState.collectAsState()
+
+    PlanConfirmation(
+        proData = proData,
+        previousProState = (previousState as? State.Success<ProSettingsViewModel.ChoosePlanState>)
+            ?.value?.proStatus ?: ProStatus.NeverSubscribed,
+        sendCommand = viewModel::onCommand,
+        onBack = onBack,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@Composable
+fun PlanConfirmation(
+    proData: ProSettingsViewModel.ProSettingsState,
+    previousProState: ProStatus,
+    sendCommand: (ProSettingsViewModel.Commands) -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler {
+        sendCommand(ProSettingsViewModel.Commands.OnPostPlanConfirmation)
+    }
+
+    Scaffold(
+        topBar = {},
+        contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+    ) { paddings ->
+        val context = LocalContext.current
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(paddings)
+                .qaTag(R.string.qa_pro_screen_plan_confirmation)
+                .padding(
+                    horizontal = LocalDimensions.current.spacing,
+                )
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = CenterHorizontally
+        ) {
+            Spacer(Modifier.weight(1f))
+
+            SessionProSettingsHeader(
+                disabled = false,
+            )
+
+            Spacer(Modifier.height(LocalDimensions.current.spacing))
+
+            Text(
+                modifier = Modifier.align(CenterHorizontally)
+                    .qaTag(R.string.qa_pro_screen_title),
+                text = stringResource(R.string.proAllSet),
+                style = LocalType.current.h6,
+                color = LocalColors.current.text,
+            )
+
+            Spacer(Modifier.height(LocalDimensions.current.xsSpacing))
+
+            val description = when (previousProState) {
+                is ProStatus.Active -> {
+                    Phrase.from(context.getText(R.string.proAllSetDescription))
+                        .put(DATE_KEY, proData.subscriptionExpiryDate)
+                        .format()
+                }
+
+                is ProStatus.NeverSubscribed -> {
+                    Phrase.from(context.getText(R.string.proUpgraded))
+                        .format()
+                }
+
+                is ProStatus.Expired -> {
+                    Phrase.from(context.getText(R.string.proPlanRenewSupport))
+                        .format()
+                }
+            }
+
+            Text(
+                modifier = Modifier.align(CenterHorizontally)
+                    .safeContentWidth()
+                    .qaTag(R.string.qa_pro_screen_description),
+                text = annotatedStringResource(description),
+                textAlign = TextAlign.Center,
+                style = LocalType.current.base,
+                color = LocalColors.current.text,
+            )
+
+            Spacer(Modifier.height(LocalDimensions.current.spacing))
+
+            val buttonLabel = when (previousProState) {
+                is ProStatus.Active -> stringResource(R.string.theReturn)
+
+                else -> {
+                    Phrase.from(context.getText(R.string.proStartUsing))
+                        .format()
+                        .toString()
+                }
+            }
+
+            AccentFillButtonRect(
+                modifier = Modifier.fillMaxWidth()
+                    .widthIn(max = LocalDimensions.current.maxContentWidth)
+                    .qaTag(R.string.qa_pro_screen_action),
+                text = buttonLabel,
+                onClick = {
+                    sendCommand(ProSettingsViewModel.Commands.OnPostPlanConfirmation)
+                }
+            )
+
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+
+@Preview
+@Composable
+private fun PreviewPlanConfirmationActive(
+    @PreviewParameter(SessionColorsParameterProvider::class) colors: ThemeColors
+) {
+    PreviewTheme(colors) {
+        PlanConfirmation(
+            proData = ProSettingsViewModel.ProSettingsState(
+                subscriptionExpiryDate = "20th June 2026",
+                proDataState = ProDataState(
+                    type = previewAutoRenewingApple,
+                    refreshState = State.Success(Unit),
+                    showProBadge = false,
+                ),
+            ),
+            previousProState = previewAutoRenewingApple,
+            sendCommand = {},
+            onBack = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun PreviewPlanConfirmationExpired(
+    @PreviewParameter(SessionColorsParameterProvider::class) colors: ThemeColors
+) {
+    PreviewTheme(colors) {
+        PlanConfirmation(
+            proData = ProSettingsViewModel.ProSettingsState(
+                proDataState = ProDataState(
+                    type = previewExpiredApple,
+                    refreshState = State.Success(Unit),
+                    showProBadge = true,
+                    ),
+            ),
+            previousProState = previewExpiredApple,
+            sendCommand = {},
+            onBack = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun PreviewPlanConfirmationNeverSub(
+    @PreviewParameter(SessionColorsParameterProvider::class) colors: ThemeColors
+) {
+    PreviewTheme(colors) {
+        PlanConfirmation(
+            proData = ProSettingsViewModel.ProSettingsState(
+                proDataState = ProDataState(
+                    type = ProStatus.NeverSubscribed,
+                    refreshState = State.Success(Unit),
+                    showProBadge = true,
+                ),
+            ),
+            previousProState = ProStatus.NeverSubscribed,
+            sendCommand = {},
+            onBack = {},
+        )
+    }
+}
+
+
+
+

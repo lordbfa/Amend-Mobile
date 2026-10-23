@@ -1,0 +1,37 @@
+package org.thoughtcrime.securesms.dependencies
+
+import android.content.Context
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import org.session.libsession.database.MessageDataProvider
+import org.session.libsession.database.StorageProtocol
+import org.thoughtcrime.securesms.ApplicationContext
+import org.thoughtcrime.securesms.database.*
+import org.thoughtcrime.securesms.database.MmsSmsDatabase
+import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface DatabaseComponent {
+
+    companion object {
+        @JvmStatic
+        @Deprecated("Use Hilt to inject your dependencies instead")
+        fun get(context: Context) = ApplicationContext.getInstance(context).databaseComponent
+    }
+
+    fun openHelper(): SQLCipherOpenHelper
+
+    fun smsDatabase(): SmsDatabase
+    fun mmsDatabase(): MmsDatabase
+    fun attachmentDatabase(): AttachmentDatabase
+    fun mediaDatabase(): MediaDatabase
+    fun threadDatabase(): ThreadDatabase
+    fun mmsSmsDatabase(): MmsSmsDatabase
+    fun groupDatabase(): GroupDatabase
+    fun lokiAPIDatabase(): LokiAPIDatabase
+    fun lokiMessageDatabase(): LokiMessageDatabase
+    fun reactionDatabase(): ReactionDatabase
+    fun storage(): Storage
+}
