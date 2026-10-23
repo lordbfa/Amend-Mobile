@@ -1,0 +1,51 @@
+package org.thoughtcrime.securesms.conversation.v2
+
+import android.app.Application
+import android.database.ContentObserver
+import android.database.Cursor
+import android.database.MatrixCursor
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import org.session.libsession.utilities.Address
+import org.thoughtcrime.securesms.database.MmsSmsDatabase
+import org.thoughtcrime.securesms.database.MmsSmsDatabaseExt.getUnreadCount
+import org.thoughtcrime.securesms.util.AbstractCursorLoader
+
+class ConversationLoader @AssistedInject constructor(
+    @Assisted private val threadID: Long?,
+    @Assisted private val threadAddress: Address.Conversable,
+    @Assisted private val reverse: Boolean,
+    application: Application,
+    private val mmsSmsDatabase: MmsSmsDatabase,
+) : AbstractCursorLoader<ConversationLoader.Data>(application) {
+
+    override fun getData(): Data {
+        // Return an empty cursor
+        val id = threadID ?: return Data(
+            messageCursor = MatrixCursor(emptyArray<String>()),
+            threadUnreadCount = 0
+        )
+
+        return Data(
+            messageCursor = mmsSmsDatabase.getConversation(id, reverse),
+            threadUnreadCount = mmsSmsDatabase.getUnreadCount(threadAddress),
+        )
+    }
+
+    data class Data(
+        val messageCursor: Cursor,
+        val threadUnreadCount: Int,
+    ) : CursorLike {
+        override fun close() = messageCursor.close()
+        override fun isClosed() = messageCursor.isClosed
+        override fun getCount() = messageCursor.count
+        override fun registerContentObserver(observer: ContentObserver?)
+            = messageCursor.registerContentObserver(observer)
+    }
+    
+    @AssistedFactory
+    interface Factory {
+        fun create(threadID: Long?, threadAddress: Address.Conversable, reverse: Boolean): ConversationLoader
+    }
+}

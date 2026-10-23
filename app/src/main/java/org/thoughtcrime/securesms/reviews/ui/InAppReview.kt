@@ -1,0 +1,257 @@
+package org.thoughtcrime.securesms.reviews.ui
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import org.session.libsession.utilities.Phrase
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import network.loki.messenger.BuildConfig
+import network.loki.messenger.R
+import org.session.libsession.utilities.StringSubstitutionConstants.EMOJI_KEY
+import org.session.libsession.utilities.StringSubstitutionConstants.STORE_VARIANT_KEY
+import org.thoughtcrime.securesms.reviews.StoreReviewManager
+import org.thoughtcrime.securesms.ui.dialog.AlertDialog
+import org.thoughtcrime.securesms.ui.dialog.AlertDialogContent
+import org.thoughtcrime.securesms.ui.dialog.DialogButtonData
+import org.thoughtcrime.securesms.ui.GetString
+import org.thoughtcrime.securesms.ui.dialog.OpenURLAlertDialog
+import org.thoughtcrime.securesms.ui.theme.LocalColors
+import org.thoughtcrime.securesms.ui.theme.PreviewTheme
+import org.thoughtcrime.securesms.ui.theme.SessionColorsParameterProvider
+import org.thoughtcrime.securesms.ui.theme.ThemeColors
+
+private const val SESSION_FEEDBACK_BASE_URL = "https://getsession.org/feedback?platform=android"
+
+@Composable
+fun InAppReview(
+    uiStateFlow: Flow<InAppReviewViewModel.UiState>,
+    storeReviewManager: StoreReviewManager,
+    sendCommands: (InAppReviewViewModel.UiCommand) -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+
+    var isInForeground by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+
+    DisposableEffect(lifecycle) {
+        val observer = object : LifecycleEventObserver {
+            override fun onStateChanged(
+                source: LifecycleOwner,
+                event: Lifecycle.Event
+            ) {
+                isInForeground = event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+        }
+    }
+
+    var uiState by remember { mutableStateOf(InAppReviewViewModel.UiState.Hidden) }
+
+    // Only subscribe to the flow when the app is in the foreground
+    LaunchedEffect(uiStateFlow, isInForeground) {
+        if (isInForeground) {
+            uiStateFlow.collectLatest {
+                uiState = it
+            }
+        }
+    }
+
+    val extraAnimationDelay = if (uiState == InAppReviewViewModel.UiState.StartPrompt) 1000 else 0
+
+    AnimatedContent(uiState, transitionSpec = {
+        (fadeIn(animationSpec = tween(220, delayMillis = 90 + extraAnimationDelay)) +
+                scaleIn(initialScale = 0.92f, animationSpec = tween(220, delayMillis = 90 + extraAnimationDelay)))
+            .togetherWith(fadeOut(animationSpec = tween(90 + extraAnimationDelay)))
+    }) { st ->
+        when (st) {
+            InAppReviewViewModel.UiState.StartPrompt -> {
+                InAppReviewStartPrompt(sendCommands)
+            }
+
+            InAppReviewViewModel.UiState.ConfirmOpeningSurvey -> OpenURLAlertDialog(
+                onDismissRequest = { sendCommands(InAppReviewViewModel.UiCommand.CloseButtonClicked) },
+                url = SESSION_FEEDBACK_BASE_URL
+                    .toUri()
+                    .buildUpon()
+                    .appendQueryParameter("version", BuildConfig.VERSION_NAME)
+                    .build()
+                    .toString(),
+            )
+            InAppReviewViewModel.UiState.ReviewLimitReached -> AlertDialog(
+                onDismissRequest = { sendCommands(InAppReviewViewModel.UiCommand.CloseButtonClicked) },
+                showCloseButton = true,
+                title = context.getString(R.string.reviewLimit),
+                text = Phrase.from(context, R.string.reviewLimitDescription)
+                    .format()
+                    .toString(),
+            )
+
+            InAppReviewViewModel.UiState.PositivePrompt -> InAppReviewPositivePrompt(
+                storeReviewManager = storeReviewManager,
+                sendCommands = sendCommands
+            )
+            InAppReviewViewModel.UiState.NegativePrompt -> InAppReviewNegativePrompt(sendCommands)
+            InAppReviewViewModel.UiState.Hidden -> {}
+        }
+    }
+}
+
+@Composable
+private fun InAppReviewDialog(
+    title: String,
+    message: String,
+    positiveButtonText: String,
+    negativeButtonText: String? = null,
+    positiveButtonTextColor: Color = LocalColors.current.accentText,
+    negativeButtonTextColor: Color = LocalColors.current.text,
+    positiveButtonQaTag: String,
+    negativeButtonQaTag: String? = null,
+    sendCommands: (InAppReviewViewModel.UiCommand) -> Unit,
+) {
+    val buttons = mutableListOf(
+        DialogButtonData(
+            text = GetString.FromString(positiveButtonText),
+            color = positiveButtonTextColor,
+            qaTag = positiveButtonQaTag,
+            dismissOnClick = false
+        ) {
+            sendCommands(InAppReviewViewModel.UiCommand.PositiveButtonClicked)
+        },
+    )
+
+    if (negativeButtonText != null) {
+        buttons.add(
+            DialogButtonData(
+                text = GetString.FromString(negativeButtonText),
+                color = negativeButtonTextColor,
+                qaTag = negativeButtonQaTag,
+                dismissOnClick = false
+            ) {
+                sendCommands(InAppReviewViewModel.UiCommand.NegativeButtonClicked)
+            },
+        )
+    }
+
+    AlertDialogContent(
+        showCloseButton = true,
+        onDismissRequest = { sendCommands(InAppReviewViewModel.UiCommand.CloseButtonClicked) },
+        title = AnnotatedString(title),
+        text = AnnotatedString(message),
+        buttons = buttons
+    )
+}
+
+@Composable
+private fun InAppReviewStartPrompt(
+    sendCommands: (InAppReviewViewModel.UiCommand) -> Unit = {}
+) {
+    val context = LocalContext.current
+
+    InAppReviewDialog(
+        title = Phrase.from(context, R.string.enjoyingSession)
+            .format()
+            .toString(),
+        message = Phrase.from(context, R.string.enjoyingSessionDescription)
+            .format()
+            .toString(),
+        negativeButtonText = Phrase.from(context, R.string.enjoyingSessionButtonPositive)
+            .put(EMOJI_KEY, "❤\uFE0F")
+            .format()
+            .toString(),
+        negativeButtonTextColor = LocalColors.current.accentText,
+        positiveButtonText = Phrase.from(context, R.string.enjoyingSessionButtonNegative)
+            .put(EMOJI_KEY, "\uD83D\uDE15")
+            .format()
+            .toString(),
+        positiveButtonTextColor = LocalColors.current.text,
+        negativeButtonQaTag = stringResource(R.string.qa_inapp_review_dialog_button_great),
+        positiveButtonQaTag = stringResource(R.string.qa_inapp_review_dialog_button_work),
+        sendCommands = sendCommands
+    )
+}
+
+@Composable
+private fun InAppReviewPositivePrompt(
+    storeReviewManager: StoreReviewManager? = null,
+    sendCommands: (InAppReviewViewModel.UiCommand) -> Unit = {}
+) {
+    val context = LocalContext.current
+
+    InAppReviewDialog(
+        title = Phrase.from(context, R.string.rateSession)
+            .format()
+            .toString(),
+        message = Phrase.from(context, R.string.rateSessionModalDescriptionUpdated)
+            .put(STORE_VARIANT_KEY, storeReviewManager?.storeName ?: "Google Play Store")
+            .format()
+            .toString(),
+        positiveButtonText = context.getString(R.string.rateUs),
+        positiveButtonQaTag = stringResource(R.string.qa_inapp_review_dialog_button_rate),
+        sendCommands = sendCommands
+    )
+}
+
+@Composable
+private fun InAppReviewNegativePrompt(
+    sendCommands: (InAppReviewViewModel.UiCommand) -> Unit = {}
+) {
+
+    val context = LocalContext.current
+
+    InAppReviewDialog(
+        title = context.getString(R.string.giveFeedback),
+        message = Phrase.from(context, R.string.giveFeedbackDescription)
+            .format()
+            .toString(),
+        positiveButtonText = context.getString(R.string.openSurvey),
+        negativeButtonText = context.getString(R.string.notNow),
+        positiveButtonQaTag = stringResource(R.string.qa_inapp_review_dialog_button_survey),
+        negativeButtonQaTag = stringResource(R.string.qa_inapp_review_dialog_button_not_now),
+        sendCommands = sendCommands
+    )
+}
+
+@Composable
+@Preview
+fun PreviewInAppReviewPrompt(
+    @PreviewParameter(SessionColorsParameterProvider::class) colors: ThemeColors
+){
+    PreviewTheme(colors = colors) {
+        InAppReviewStartPrompt()
+    }
+}
+
+@Composable
+@Preview
+fun PreviewInAppReviewPromptPositive(
+    @PreviewParameter(SessionColorsParameterProvider::class) colors: ThemeColors
+){
+    PreviewTheme(colors = colors) {
+        InAppReviewPositivePrompt()
+    }
+}

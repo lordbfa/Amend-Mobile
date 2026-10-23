@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_delete_message_request"
+        android:icon="@drawable/ic_trash_2"
+        android:contentDescription="@string/AccessibilityId_deleteButton"
+        android:title="@string/delete"/>
+
+    <item
+        android:id="@+id/menu_block_message_request"
+        android:icon="@drawable/ic_user_round_block"
+        android:contentDescription="@string/AccessibilityId_blockButton"
+        android:title="@string/block"/>
+
+</menu>

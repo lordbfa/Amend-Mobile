@@ -1,0 +1,329 @@
+package org.thoughtcrime.securesms.home
+
+import android.content.Context
+import android.os.Bundle
+import android.util.AttributeSet
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.RelativeLayout
+import android.widget.TextView
+import androidx.annotation.ColorRes
+import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
+import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import network.loki.messenger.R
+import network.loki.messenger.databinding.ActivityPathBinding
+import org.session.libsession.network.model.PathStatus
+import org.session.libsession.network.onion.PathManager
+import org.session.libsession.utilities.NonTranslatableStringConstants.APP_NAME
+import org.session.libsession.utilities.getColorFromAttr
+import org.session.libsignal.utilities.Snode
+import org.thoughtcrime.securesms.ScreenLockActionBarActivity
+import org.thoughtcrime.securesms.reviews.InAppReviewManager
+import org.thoughtcrime.securesms.ui.openUrl
+import org.thoughtcrime.securesms.util.GlowViewUtilities
+import org.thoughtcrime.securesms.util.IP2Country
+import org.thoughtcrime.securesms.util.PathDotView
+import org.thoughtcrime.securesms.util.UiModeUtilities
+import org.thoughtcrime.securesms.util.animateSizeChange
+import org.thoughtcrime.securesms.util.disableClipping
+import org.thoughtcrime.securesms.util.fadeIn
+import org.thoughtcrime.securesms.util.fadeOut
+import org.thoughtcrime.securesms.util.getAccentColor
+import javax.inject.Inject
+
+typealias CountryName = String
+
+@AndroidEntryPoint
+class PathActivity : ScreenLockActionBarActivity() {
+    private lateinit var binding: ActivityPathBinding
+
+    @Inject
+    lateinit var inAppReviewManager: InAppReviewManager
+
+    @Inject
+    lateinit var pathManager: PathManager
+
+    @Inject
+    lateinit var iP2Country: IP2Country
+
+    private val pathState: StateFlow<List<Pair<Snode, CountryName?>>> by lazy {
+        pathManager
+            .paths
+            .mapNotNull { paths ->
+                val path = paths.firstOrNull() ?: return@mapNotNull null
+
+                path.map { snode ->
+                    val countryName = iP2Country.lookupCountry(snode.ip)
+                    snode to countryName
+                }
+            }
+            .stateIn(lifecycleScope, SharingStarted.Lazily, emptyList())
+    }
+
+    // region Lifecycle
+    override fun onCreate(savedInstanceState: Bundle?, isReady: Boolean) {
+        super.onCreate(savedInstanceState, isReady)
+        binding = ActivityPathBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        supportActionBar!!.title = resources.getString(R.string.onionRoutingPath)
+
+        val txt = applicationContext.getString(R.string.onionRoutingPathDescription)
+        binding.pathDescription.text = txt
+
+        binding.pathRowsContainer.disableClipping()
+        binding.learnMoreButton.setOnClickListener {
+            openUrl("https://getsession.org/faq/#onion-routing")
+        }
+        registerObservers()
+
+        binding.pathScroll.doOnLayout {
+            val child: View = binding.pathScroll.getChildAt(0)
+            val isScrollable: Boolean = child.height > binding.pathScroll.height
+            val params = binding.pathRowsContainer.layoutParams as FrameLayout.LayoutParams
+
+            if(isScrollable){
+                params.gravity = Gravity.CENTER_HORIZONTAL
+            } else {
+                params.gravity = Gravity.CENTER
+            }
+
+            binding.pathRowsContainer.layoutParams = params
+        }
+
+        inAppReviewManager.onEvent(InAppReviewManager.Event.PathScreenVisited)
+    }
+
+    private fun registerObservers() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                pathState.collectLatest(::update)
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                pathManager.status
+                    .map { it == PathStatus.BUILDING || it == PathStatus.ERROR }
+                    .collectLatest { isLoading ->
+                    if (isLoading) {
+                        binding.spinner.fadeIn()
+                    } else {
+                        binding.spinner.fadeOut()
+                    }
+
+                    binding.pathRowsContainer.isVisible = !isLoading
+                }
+            }
+        }
+    }
+    // endregion
+
+    // region Updating
+
+    private fun update(path: List<Pair<Snode, CountryName?>>) {
+        binding.pathRowsContainer.removeAllViews()
+
+        if (path.isNotEmpty()) {
+            val dotAnimationRepeatInterval = path.count().toLong() * 1000 + 1000
+            val pathRows = path.mapIndexed { index, snode ->
+                getPathRow(snode, LineView.Location.Middle, index.toLong() * 1000 + 2000, dotAnimationRepeatInterval, index == 0)
+            }
+            val youRow = getPathRow(resources.getString(R.string.you), null, LineView.Location.Top, 1000, dotAnimationRepeatInterval)
+            val destinationRow = getPathRow(resources.getString(R.string.onionRoutingPathDestination), null, LineView.Location.Bottom, path.count().toLong() * 1000 + 2000, dotAnimationRepeatInterval)
+            val rows = listOf( youRow ) + pathRows + listOf( destinationRow )
+            for (row in rows) {
+                binding.pathRowsContainer.addView(row)
+            }
+        }
+    }
+    // endregion
+
+    // region General
+    private fun getPathRow(title: String, subtitle: String?, location: LineView.Location, dotAnimationStartDelay: Long, dotAnimationRepeatInterval: Long): LinearLayout {
+        val mainContainer = LinearLayout(this)
+        mainContainer.orientation = LinearLayout.HORIZONTAL
+        mainContainer.gravity = Gravity.CENTER_VERTICAL
+        mainContainer.disableClipping()
+        val mainContainerLayoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        mainContainer.layoutParams = mainContainerLayoutParams
+        val lineView = LineView(this, location, dotAnimationStartDelay, dotAnimationRepeatInterval)
+        val lineViewLayoutParams = LinearLayout.LayoutParams(resources.getDimensionPixelSize(R.dimen.path_row_expanded_dot_size), resources.getDimensionPixelSize(R.dimen.path_row_height))
+        lineView.layoutParams = lineViewLayoutParams
+        mainContainer.addView(lineView)
+        val titleTextView = TextView(this)
+        titleTextView.setTextColor(getColorFromAttr(android.R.attr.textColorPrimary))
+        titleTextView.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.medium_font_size))
+        titleTextView.text = title
+        titleTextView.textAlignment = TextView.TEXT_ALIGNMENT_VIEW_START
+        val titleContainer = LinearLayout(this)
+        titleContainer.orientation = LinearLayout.VERTICAL
+        titleContainer.addView(titleTextView)
+        val titleContainerLayoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        titleContainerLayoutParams.marginStart = resources.getDimensionPixelSize(R.dimen.large_spacing)
+        titleContainer.layoutParams = titleContainerLayoutParams
+        mainContainer.addView(titleContainer)
+        if (subtitle != null) {
+            val subtitleTextView = TextView(this)
+            subtitleTextView.setTextColor(getColorFromAttr(android.R.attr.textColorPrimary))
+            subtitleTextView.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.small_font_size))
+            subtitleTextView.text = subtitle
+            subtitleTextView.textAlignment = TextView.TEXT_ALIGNMENT_VIEW_START
+            titleContainer.addView(subtitleTextView)
+        }
+        return mainContainer
+    }
+
+    private fun getPathRow(
+        entry: Pair<Snode, CountryName?>?,
+        location: LineView.Location,
+        dotAnimationStartDelay: Long,
+        dotAnimationRepeatInterval: Long,
+        isGuardSnode: Boolean
+    ): LinearLayout {
+        val title = if (isGuardSnode) resources.getString(R.string.onionRoutingPathEntryNode) else resources.getString(R.string.onionRoutingPathServiceNode)
+        val subtitle = entry?.second ?:  resources.getString(R.string.resolving)
+        return getPathRow(title, subtitle, location, dotAnimationStartDelay, dotAnimationRepeatInterval)
+    }
+    // endregion
+
+    // region Line View
+    private class LineView : RelativeLayout {
+        private lateinit var location: Location
+        private var dotAnimationStartDelay: Long = 0
+        private var dotAnimationRepeatInterval: Long = 0
+        private var job: Job? = null
+
+        private val validColor by lazy {
+            ContextCompat.getColor(context, R.color.accent_green)
+        }
+
+        private val dotView by lazy {
+            val result = PathDotView(context)
+            result.setBackgroundResource(R.drawable.accent_dot)
+            result.mainColor = validColor
+            result
+        }
+
+        enum class Location {
+            Top, Middle, Bottom
+        }
+
+        constructor(context: Context, location: Location, dotAnimationStartDelay: Long, dotAnimationRepeatInterval: Long) : super(context) {
+            this.location = location
+            this.dotAnimationStartDelay = dotAnimationStartDelay
+            this.dotAnimationRepeatInterval = dotAnimationRepeatInterval
+            setUpViewHierarchy()
+        }
+
+        constructor(context: Context) : super(context) {
+            throw Exception("Use LineView(context:location:dotAnimationStartDelay:dotAnimationRepeatInterval:) instead.")
+        }
+
+        constructor(context: Context, attrs: AttributeSet) : super(context, attrs) {
+            throw Exception("Use LineView(context:location:dotAnimationStartDelay:dotAnimationRepeatInterval:) instead.")
+        }
+
+        constructor(context: Context, attrs: AttributeSet, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
+            throw Exception("Use LineView(context:location:dotAnimationStartDelay:dotAnimationRepeatInterval:) instead.")
+        }
+
+        constructor(context: Context, attrs: AttributeSet, defStyleAttr: Int, defStyleRes: Int) : super(context, attrs, defStyleAttr, defStyleRes) {
+            throw Exception("Use LineView(context:location:dotAnimationStartDelay:dotAnimationRepeatInterval:) instead.")
+        }
+
+        private fun setUpViewHierarchy() {
+            disableClipping()
+            val lineView = View(context)
+            lineView.setBackgroundColor(context.getColorFromAttr(android.R.attr.textColorPrimary))
+            val lineViewHeight = when (location) {
+                Location.Top, Location.Bottom -> resources.getDimensionPixelSize(R.dimen.path_row_height) / 2
+                Location.Middle -> resources.getDimensionPixelSize(R.dimen.path_row_height)
+            }
+            val lineViewLayoutParams = LayoutParams(1, lineViewHeight)
+            when (location) {
+                Location.Top -> lineViewLayoutParams.addRule(ALIGN_PARENT_BOTTOM)
+                Location.Middle, Location.Bottom -> lineViewLayoutParams.addRule(ALIGN_PARENT_TOP)
+            }
+            lineViewLayoutParams.addRule(CENTER_HORIZONTAL)
+            lineView.layoutParams = lineViewLayoutParams
+            addView(lineView)
+            val dotViewSize = resources.getDimensionPixelSize(R.dimen.path_row_dot_size)
+            val dotViewLayoutParams = LayoutParams(dotViewSize, dotViewSize)
+            dotViewLayoutParams.addRule(CENTER_IN_PARENT)
+            dotView.layoutParams = dotViewLayoutParams
+            addView(dotView)
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            startAnimation()
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            stopAnimation()
+        }
+
+        private fun startAnimation() {
+            job?.cancel()
+            job = GlobalScope.launch {
+                withContext(Dispatchers.Main) {
+                    delay(dotAnimationStartDelay)
+                    while (isActive) {
+                        expand()
+                        delay(EXPAND_ANIM_DELAY_MILLS)
+                        collapse()
+                        delay(dotAnimationRepeatInterval)
+                    }
+                }
+            }
+        }
+
+        private fun stopAnimation() {
+            job?.cancel()
+            job = null
+        }
+
+        private fun expand() {
+            dotView.animateSizeChange(R.dimen.path_row_dot_size, R.dimen.path_row_expanded_dot_size)
+            @ColorRes val startColorID = if (UiModeUtilities.isDayUiMode(context)) R.color.transparent_black_30 else R.color.black
+            val startColor = ContextCompat.getColor(context, startColorID)
+            val endColor = context.getAccentColor()
+            GlowViewUtilities.animateShadowColorChange(dotView, startColor, endColor)
+        }
+
+        private fun collapse() {
+            dotView.animateSizeChange(R.dimen.path_row_expanded_dot_size, R.dimen.path_row_dot_size)
+            @ColorRes val endColorID = if (UiModeUtilities.isDayUiMode(context)) R.color.transparent_black_30 else R.color.black
+            val startColor = context.getAccentColor()
+            val endColor = ContextCompat.getColor(context, endColorID)
+            GlowViewUtilities.animateShadowColorChange(dotView, startColor, endColor)
+        }
+
+        companion object {
+            private const val EXPAND_ANIM_DELAY_MILLS = 1000L
+        }
+    }
+    // endregion
+}

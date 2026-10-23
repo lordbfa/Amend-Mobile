@@ -1,0 +1,316 @@
+/*
+ * Copyright (C) 2011 Whisper Systems
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package org.thoughtcrime.securesms.service;
+
+
+import android.annotation.SuppressLint;
+import android.app.AlarmManager;
+import android.app.Notification;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.pm.ServiceInfo;
+import android.os.Binder;
+import android.os.Build;
+import android.os.IBinder;
+import android.os.SystemClock;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.ServiceCompat;
+
+import org.session.libsession.utilities.Phrase;
+
+import org.session.libsession.utilities.ServiceUtil;
+import org.session.libsession.utilities.TextSecurePreferences;
+import org.session.libsignal.utilities.Log;
+import org.thoughtcrime.securesms.ApplicationContext;
+import org.thoughtcrime.securesms.DummyActivity;
+import org.thoughtcrime.securesms.home.HomeActivity;
+import org.thoughtcrime.securesms.notifications.NotificationChannelManager;
+import org.thoughtcrime.securesms.notifications.NotificationId;
+
+import java.util.concurrent.TimeUnit;
+
+import javax.inject.Inject;
+
+import dagger.hilt.android.AndroidEntryPoint;
+import network.loki.messenger.BuildConfig;
+import network.loki.messenger.R;
+
+/**
+ * Small service that stays running to keep a key cached in memory.
+ *
+ * @author Moxie Marlinspike
+ */
+// TODO: This service does only serve one purpose now - to track the screen lock state and handle the timer.
+// We need to refactor it and cleanup from all the old Signal code.
+@AndroidEntryPoint
+public class KeyCachingService extends Service {
+
+  private static final String TAG = KeyCachingService.class.getSimpleName();
+
+  public static final int SERVICE_RUNNING_ID = NotificationId.KEY_CACHING_SERVICE;
+
+  public  static final String KEY_PERMISSION           = "network.loki.messenger.ACCESS_SESSION_SECRETS" + BuildConfig.AUTHORITY_POSTFIX;
+  public  static final String CLEAR_KEY_EVENT          = "org.thoughtcrime.securesms.service.action.CLEAR_KEY_EVENT";
+  public  static final String LOCK_TOGGLED_EVENT       = "org.thoughtcrime.securesms.service.action.LOCK_ENABLED_EVENT";
+  private static final String PASSPHRASE_EXPIRED_EVENT = "org.thoughtcrime.securesms.service.action.PASSPHRASE_EXPIRED_EVENT";
+  public  static final String CLEAR_KEY_ACTION         = "org.thoughtcrime.securesms.service.action.CLEAR_KEY";
+
+  private final IBinder binder  = new KeySetBinder();
+
+  // This is a temporal drop off replacement for the refactoring time being.
+  // This field only indicates if the app was unlocked or not (null means locked).
+  private static Object masterSecret = null;
+
+  @Inject
+  NotificationChannelManager notificationChannelManager;
+
+  /**
+   * A temporal utility method to quickly call {@link KeyCachingService#setMasterSecret(Object)}
+   * without explicitly binding to the service.
+   */
+  public static void setMasterSecret(Context context, Object masterSecret) {
+    // Start and bind to the KeyCachingService instance.
+    Intent bindIntent = new Intent(context, KeyCachingService.class);
+    context.startService(bindIntent);
+    context.bindService(bindIntent, new ServiceConnection() {
+      @Override
+      public void onServiceConnected(ComponentName name, IBinder binder) {
+        KeyCachingService service = ((KeySetBinder) binder).getService();
+        service.setMasterSecret(masterSecret);
+        context.unbindService(this);
+      }
+      @Override
+      public void onServiceDisconnected(ComponentName name) {
+
+      }
+    }, Context.BIND_AUTO_CREATE);
+
+  }
+
+  public KeyCachingService() {}
+
+  public static synchronized boolean isLocked(Context context) {
+    boolean enabled = !TextSecurePreferences.isPasswordDisabled(context) || TextSecurePreferences.isScreenLockEnabled(context);
+    return getMasterSecret(context) == null && enabled;
+  }
+
+  public static void onAppForegrounded(@NonNull Context context) {
+    ServiceUtil.getAlarmManager(context).cancel(buildExpirationPendingIntent(context));
+  }
+
+  public static void onAppBackgrounded(@NonNull Context context) {
+    startTimeoutIfAppropriate(context);
+  }
+
+  public static synchronized @Nullable Object getMasterSecret(Context context) {
+    return masterSecret;
+  }
+
+  @SuppressLint("StaticFieldLeak")
+  public void setMasterSecret(final Object masterSecret) {
+    synchronized (KeyCachingService.class) {
+      KeyCachingService.masterSecret = masterSecret;
+
+      foregroundService();
+
+      // Notifications are now handled reactively by NotificationProcessor
+    }
+  }
+
+  @Override
+  public int onStartCommand(Intent intent, int flags, int startId) {
+    if (intent == null) return START_NOT_STICKY;
+    Log.d(TAG, "onStartCommand, " + intent.getAction());
+
+    if (intent.getAction() != null) {
+      switch (intent.getAction()) {
+        case CLEAR_KEY_ACTION:         handleClearKey();        break;
+        case PASSPHRASE_EXPIRED_EVENT: handleClearKey();        break;
+        case LOCK_TOGGLED_EVENT:       handleLockToggled();     break;
+      }
+    }
+
+    return START_NOT_STICKY;
+  }
+
+  @Override
+  public void onCreate() {
+    Log.i(TAG, "onCreate()");
+    super.onCreate();
+
+    if (TextSecurePreferences.isPasswordDisabled(this) && !TextSecurePreferences.isScreenLockEnabled(this)) {
+        setMasterSecret(new Object());
+    }
+  }
+
+  @Override
+  public void onDestroy() {
+    super.onDestroy();
+    Log.w(TAG, "KCS Is Being Destroyed!");
+    handleClearKey();
+  }
+
+  /**
+   * Workaround for Android bug:
+   * https://code.google.com/p/android/issues/detail?id=53313
+   */
+  @Override
+  public void onTaskRemoved(Intent rootIntent) {
+    Intent intent = new Intent(this, DummyActivity.class);
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    startActivity(intent);
+  }
+
+  @SuppressLint("StaticFieldLeak")
+  private void handleClearKey() {
+    Log.i(TAG, "handleClearKey()");
+    KeyCachingService.masterSecret = null;
+    stopForeground(true);
+
+    Intent intent = new Intent(CLEAR_KEY_EVENT);
+    intent.setPackage(getApplicationContext().getPackageName());
+
+    sendBroadcast(intent, KEY_PERMISSION);
+
+    // Notifications are now handled reactively by NotificationProcessor
+  }
+
+  private void handleLockToggled() {
+    stopForeground(true);
+    setMasterSecret(masterSecret);
+  }
+
+  private static void startTimeoutIfAppropriate(@NonNull Context context) {
+    boolean appVisible       = ApplicationContext.getInstance(context).isAppVisible();
+    boolean secretSet        = KeyCachingService.masterSecret != null;
+
+    boolean timeoutEnabled   = TextSecurePreferences.isPassphraseTimeoutEnabled(context);
+    boolean passLockActive   = timeoutEnabled && !TextSecurePreferences.isPasswordDisabled(context);
+
+    long    screenTimeout    = TextSecurePreferences.getScreenLockTimeout(context);
+    boolean screenLockActive = screenTimeout >= 0 && TextSecurePreferences.isScreenLockEnabled(context);
+
+    if (!appVisible && secretSet && (passLockActive || screenLockActive)) {
+      long passphraseTimeoutMinutes = TextSecurePreferences.getPassphraseTimeoutInterval(context);
+      long screenLockTimeoutSeconds = TextSecurePreferences.getScreenLockTimeout(context);
+
+      long timeoutMillis;
+
+      if (!TextSecurePreferences.isPasswordDisabled(context)) timeoutMillis = TimeUnit.MINUTES.toMillis(passphraseTimeoutMinutes);
+      else                                                    timeoutMillis = TimeUnit.SECONDS.toMillis(screenLockTimeoutSeconds);
+
+      PendingIntent expirationIntent = buildExpirationPendingIntent(context);
+
+      // With no timeout there is nothing to schedule, and scheduling anyway is what left the lock
+      // unreliable: AlarmManager batches non-wakeup alarms, so an alarm for "now" was still arriving
+      // seconds later, and onAppForegrounded cancels it on the way back in. A quick trip to another app
+      // and straight back therefore never locked at all. Deliver it directly instead - the service is
+      // necessarily foregrounded here, because we only get this far with a secret set.
+      if (timeoutMillis <= 0) {
+        Log.i(TAG, "No timeout, expiring immediately");
+
+        try {
+          expirationIntent.send();
+        } catch (PendingIntent.CanceledException e) {
+          Log.w(TAG, "Immediate expiry was cancelled, falling back to an alarm", e);
+          ServiceUtil.getAlarmManager(context).set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime(), expirationIntent);
+        }
+
+        return;
+      }
+
+      Log.i(TAG, "Starting timeout: " + timeoutMillis);
+
+      AlarmManager alarmManager = ServiceUtil.getAlarmManager(context);
+
+      alarmManager.cancel(expirationIntent);
+      alarmManager.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + timeoutMillis, expirationIntent);
+    }
+  }
+
+  private void foregroundService() {
+    if (TextSecurePreferences.isPasswordDisabled(this) && !TextSecurePreferences.isScreenLockEnabled(this)) {
+      stopForeground(true);
+      return;
+    }
+
+    Log.i(TAG, "foregrounding KCS");
+    NotificationCompat.Builder builder = new NotificationCompat.Builder(this,
+            notificationChannelManager.getNotificationChannelId(NotificationChannelManager.ChannelDescription.LOCK_STATUS));
+
+    // Replace app name in title string
+    Context c = getApplicationContext();
+    String unlockedTxt = Phrase.from(c, R.string.lockAppUnlocked)
+            .format().toString();
+    builder.setContentTitle(unlockedTxt);
+    builder.setSmallIcon(R.drawable.ic_lock_keyhole_open);
+    builder.setWhen(0);
+    builder.setPriority(Notification.PRIORITY_MIN);
+
+    builder.addAction(R.drawable.ic_lock_keyhole, getString(R.string.lockApp), buildLockIntent());
+    builder.setContentIntent(buildLaunchIntent());
+
+    stopForeground(true);
+
+    int type = 0;
+    if (Build.VERSION.SDK_INT >= 34) {
+      type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+    }
+
+    ServiceCompat.startForeground(
+        this,
+        SERVICE_RUNNING_ID,
+        builder.build(),
+        type
+    );
+  }
+
+  private PendingIntent buildLockIntent() {
+    Intent intent = new Intent(this, KeyCachingService.class);
+    intent.setAction(PASSPHRASE_EXPIRED_EVENT);
+    return PendingIntent.getService(getApplicationContext(), 0, intent, PendingIntent.FLAG_IMMUTABLE);
+  }
+
+  private PendingIntent buildLaunchIntent() {
+    Intent intent              = new Intent(this, HomeActivity.class);
+    intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    return PendingIntent.getActivity(getApplicationContext(), 0, intent, PendingIntent.FLAG_IMMUTABLE);
+  }
+
+  private static PendingIntent buildExpirationPendingIntent(@NonNull Context context) {
+    Intent expirationIntent = new Intent(PASSPHRASE_EXPIRED_EVENT, null, context, KeyCachingService.class);
+    return PendingIntent.getService(context, 0, expirationIntent, PendingIntent.FLAG_IMMUTABLE);
+  }
+
+  @Override
+  public IBinder onBind(Intent arg0) {
+    return binder;
+  }
+
+  public class KeySetBinder extends Binder {
+    public KeyCachingService getService() {
+      return KeyCachingService.this;
+    }
+  }
+}

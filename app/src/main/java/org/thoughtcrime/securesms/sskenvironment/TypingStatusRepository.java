@@ -1,0 +1,227 @@
+package org.thoughtcrime.securesms.sskenvironment;
+
+import android.annotation.SuppressLint;
+
+import androidx.annotation.NonNull;
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MutableLiveData;
+
+import org.jetbrains.annotations.NotNull;
+import org.session.libsession.utilities.Address;
+import org.session.libsession.utilities.TypingIndicatorsProtocol;
+import org.session.libsession.utilities.Util;
+import org.session.libsignal.utilities.Log;
+import org.thoughtcrime.securesms.auth.LoginStateRepository;
+import org.thoughtcrime.securesms.database.RecipientRepository;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+
+@SuppressLint("UseSparseArrays")
+@Singleton
+public class TypingStatusRepository implements TypingIndicatorsProtocol {
+
+  private static final String TAG = TypingStatusRepository.class.getSimpleName();
+
+  private static final long RECIPIENT_TYPING_TIMEOUT = TimeUnit.SECONDS.toMillis(15);
+
+  private final Map<Long, Set<Typist>>                  typistMap;
+  private final Map<Typist, Runnable>                   timers;
+  private final Map<Long, MutableLiveData<TypingState>> notifiers;
+  private final MutableLiveData<Set<Long>>              threadsNotifier;
+  private final RecipientRepository recipientRepository;
+  private final LoginStateRepository loginStateRepository;
+
+  @Inject
+  public TypingStatusRepository(
+          RecipientRepository recipientRepository,
+          LoginStateRepository loginStateRepository){
+    this.recipientRepository = recipientRepository;
+    this.typistMap       = new HashMap<>();
+    this.timers          = new HashMap<>();
+    this.notifiers       = new HashMap<>();
+    this.threadsNotifier = new MutableLiveData<>();
+    this.loginStateRepository = loginStateRepository;
+  }
+
+  @Override
+  public synchronized void didReceiveTypingStartedMessage(long threadId, @NotNull Address author, int device) {
+    if (author.toString().equals(loginStateRepository.getLocalNumber())) {
+      return;
+    }
+
+    if (recipientRepository.getRecipientSync(author).getBlocked()) {
+      return;
+    }
+
+    Set<Typist> typists = Util.getOrDefault(typistMap, threadId, new LinkedHashSet<>());
+    Typist      typist  = new Typist(author, device, threadId);
+
+    if (!typists.contains(typist)) {
+      typists.add(typist);
+      typistMap.put(threadId, typists);
+      notifyThread(threadId, typists, false);
+    }
+
+    Runnable timer = timers.get(typist);
+    if (timer != null) {
+      Util.cancelRunnableOnMain(timer);
+    }
+
+    timer = () -> didReceiveTypingStoppedMessage(threadId, author, device, false);
+    Util.runOnMainDelayed(timer, RECIPIENT_TYPING_TIMEOUT);
+    timers.put(typist, timer);
+  }
+
+  @Override
+  public synchronized void didReceiveTypingStoppedMessage(long threadId, @NotNull Address author, int device, boolean isReplacedByIncomingMessage) {
+    if (author.toString().equals(loginStateRepository.getLocalNumber())) {
+      return;
+    }
+
+    if (recipientRepository.getRecipientSync(author).getBlocked()) {
+      return;
+    }
+
+    Set<Typist> typists = Util.getOrDefault(typistMap, threadId, new LinkedHashSet<>());
+    Typist      typist  = new Typist(author, device, threadId);
+
+    if (typists.contains(typist)) {
+      typists.remove(typist);
+      notifyThread(threadId, typists, isReplacedByIncomingMessage);
+    }
+
+    if (typists.isEmpty()) {
+      typistMap.remove(threadId);
+    }
+
+    Runnable timer = timers.get(typist);
+    if (timer != null) {
+      Util.cancelRunnableOnMain(timer);
+      timers.remove(typist);
+    }
+  }
+
+  @Override
+  public synchronized void didReceiveIncomingMessage(long threadId, @NotNull Address author, int device) {
+    didReceiveTypingStoppedMessage(threadId, author, device, true);
+  }
+
+  public synchronized LiveData<TypingState> getTypists(long threadId) {
+    MutableLiveData<TypingState> notifier = Util.getOrDefault(notifiers, threadId, new MutableLiveData<>());
+    notifiers.put(threadId, notifier);
+    return notifier;
+  }
+
+  public synchronized LiveData<Set<Long>> getTypingThreads() {
+    return threadsNotifier;
+  }
+
+  public synchronized void clear() {
+    TypingState empty = new TypingState(Collections.emptyList(), false);
+    for (MutableLiveData<TypingState> notifier : notifiers.values()) {
+      notifier.postValue(empty);
+    }
+    
+    notifiers.clear();
+    typistMap.clear();
+    timers.clear();
+
+    threadsNotifier.postValue(Collections.emptySet());
+  }
+
+  private void notifyThread(long threadId, @NonNull Set<Typist> typists, boolean isReplacedByIncomingMessage) {
+    Log.d(TAG, "notifyThread() threadId: " + threadId + "  typists: " + typists.size() + "  isReplaced: " + isReplacedByIncomingMessage);
+
+    MutableLiveData<TypingState> notifier = Util.getOrDefault(notifiers, threadId, new MutableLiveData<>());
+    notifiers.put(threadId, notifier);
+
+    Set<Address> uniqueTypists = new LinkedHashSet<>();
+    for (Typist typist : typists) {
+      uniqueTypists.add(typist.getAuthor());
+    }
+
+    notifier.postValue(new TypingState(new ArrayList<>(uniqueTypists), isReplacedByIncomingMessage));
+
+      Set<Long> activeThreads = new HashSet<>();
+      for (Map.Entry<Long, Set<Typist>> entry : typistMap.entrySet()) {
+          Set<Typist> value = entry.getValue();
+          if (value != null && !value.isEmpty()) {
+              activeThreads.add(entry.getKey());
+          }
+      }
+      threadsNotifier.postValue(activeThreads);
+  }
+
+  public static class TypingState {
+    private final List<Address> typists;
+    private final boolean         replacedByIncomingMessage;
+
+    public TypingState(List<Address> typists, boolean replacedByIncomingMessage) {
+      this.typists                   = typists;
+      this.replacedByIncomingMessage = replacedByIncomingMessage;
+    }
+
+    public List<Address> getTypists() {
+      return typists;
+    }
+
+    public boolean isReplacedByIncomingMessage() {
+      return replacedByIncomingMessage;
+    }
+  }
+
+  private static class Typist {
+    private final Address author;
+    private final int       device;
+    private final long      threadId;
+
+    private Typist(@NonNull Address author, int device, long threadId) {
+      this.author   = author;
+      this.device   = device;
+      this.threadId = threadId;
+    }
+
+    public Address getAuthor() {
+      return author;
+    }
+
+    public int getDevice() {
+      return device;
+    }
+
+    public long getThreadId() {
+      return threadId;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      Typist typist = (Typist) o;
+
+      if (device != typist.device) return false;
+      if (threadId != typist.threadId) return false;
+      return author.equals(typist.author);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = author.getAddress().hashCode();
+      result = 31 * result + device;
+      result = 31 * result + (int) (threadId ^ (threadId >>> 32));
+      return result;
+    }
+  }
+}

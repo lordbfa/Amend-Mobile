@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- amend palette -->
+<resources>
+    <color name="accent_amend">#FFFF5CA8</color>
+    <color name="accent_lime">#FFC6FF3D</color>
+
+    <!-- Grape (dark) -->
+    <color name="amend_dark_0">#0B0716</color>
+    <color name="amend_dark_1">#150E29</color>
+    <color name="amend_dark_2">#1D1436</color>
+    <color name="amend_dark_3">#2A1D4D</color>
+    <color name="amend_dark_4">#3D2C6B</color>
+    <color name="amend_dark_5">#BBAEE6</color>
+    <color name="amend_dark_6">#FF5CA8</color>
+    <color name="amend_dark_7">#FFFFFF</color>
+
+    <!-- Bubblegum (light) -->
+    <color name="amend_light_0">#000000</color>
+    <color name="amend_light_1">#1E0F3D</color>
+    <color name="amend_light_2">#6E5C93</color>
+    <color name="amend_light_3">#C9A8F0</color>
+    <color name="amend_light_4">#EADBFF</color>
+    <color name="amend_light_5">#F8EEFB</color>
+    <color name="amend_light_6">#FDF4FA</color>
+    <color name="amend_light_7">#FFFCFE</color>
+</resources>

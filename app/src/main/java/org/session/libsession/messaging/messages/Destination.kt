@@ -1,0 +1,64 @@
+package org.session.libsession.messaging.messages
+
+import org.session.libsession.utilities.Address
+import org.session.libsession.utilities.ConfigFactoryProtocol
+import org.session.libsession.utilities.withUserConfigs
+
+sealed class Destination {
+
+    data class Contact @JvmOverloads constructor(var publicKey: String = "") : Destination()
+
+    data class ClosedGroup @JvmOverloads constructor(var publicKey: String = ""): Destination()
+
+    class OpenGroup @JvmOverloads constructor(
+        var roomToken: String = "",
+        var server: String = "",
+        var whisperTo: List<String> = emptyList(),
+        var whisperMods: Boolean = false,
+        var fileIds: List<String> = emptyList()
+    ) : Destination()
+
+    class OpenGroupInbox @JvmOverloads constructor(
+        var server: String = "",
+        var serverPublicKey: String = "",
+        var blindedPublicKey: String = ""
+    ) : Destination()
+
+    companion object {
+
+        fun from(address: Address,
+                 configFactory: ConfigFactoryProtocol,
+                 fileIds: List<String> = emptyList()): Destination {
+            return when (address) {
+                is Address.Standard -> {
+                    Contact(address.address)
+                }
+                is Address.Community -> {
+                    OpenGroup(roomToken = address.room, server = address.serverUrl, fileIds = fileIds)
+                }
+                is Address.CommunityBlindedId -> {
+                    val serverPublicKey = configFactory
+                        .withUserConfigs { configs ->
+                            configs.userGroups.allCommunityInfo()
+                                .first { it.community.baseUrl == address.serverUrl }
+                                .community
+                                .pubKeyHex
+                        }
+
+                    OpenGroupInbox(
+                        server = address.serverUrl,
+                        serverPublicKey = serverPublicKey,
+                        blindedPublicKey = address.blindedId.blindedId.hexString,
+                    )
+                }
+                is Address.Group -> {
+                    ClosedGroup(address.accountId.hexString)
+                }
+
+                is Address.Blinded,
+                is Address.LegacyGroup,
+                is Address.Unknown -> error("Unsupported address as destination: $address")
+            }
+        }
+    }
+}

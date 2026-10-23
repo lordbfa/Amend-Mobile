@@ -1,0 +1,132 @@
+package org.thoughtcrime.securesms.onboarding.messagenotifications
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import network.loki.messenger.R
+import org.thoughtcrime.securesms.notifications.NotificationPreferences.PUSH_ENABLED
+import org.thoughtcrime.securesms.onboarding.manager.CreateAccountManager
+import org.thoughtcrime.securesms.preferences.PreferenceStorage
+import org.thoughtcrime.securesms.util.ClearDataUtils
+
+internal class MessageNotificationsViewModel(
+    private val state: State,
+    private val application: Application,
+    private val prefs: PreferenceStorage,
+    private val createAccountManager: CreateAccountManager,
+    private val clearDataUtils: ClearDataUtils,
+): AndroidViewModel(application) {
+    private val _uiStates = MutableStateFlow(createInitialState())
+    val uiStates = _uiStates.asStateFlow()
+
+    private val _events = MutableSharedFlow<Event>()
+    val events = _events.asSharedFlow()
+
+    private fun createInitialState(): UiState {
+        val fastModeAvailable = application.isFastModeAvailable()
+        return UiState(
+            fastModeSelected = fastModeAvailable,
+            fastModeAvailable = fastModeAvailable,
+        )
+    }
+
+    fun selectFastMode(enabled: Boolean) {
+        _uiStates.update {
+            it.copy(fastModeSelected = enabled && it.fastModeAvailable)
+        }
+    }
+
+    fun onContinue() {
+        viewModelScope.launch {
+            if (state is State.CreateAccount) createAccountManager.createAccount(state.displayName)
+
+            prefs[PUSH_ENABLED] = uiStates.value.fastModeSelected
+
+            _events.emit(
+                when (state) {
+                    is State.CreateAccount -> Event.OnboardingComplete
+                    else -> Event.Loading
+                }
+            )
+        }
+    }
+
+    /**
+     * @return [true] if the back press was handled.
+     */
+    fun onBackPressed(): Boolean = when (state) {
+        is State.CreateAccount -> false
+        is State.LoadAccount -> {
+            _uiStates.update { it.copy(showingBackWarningDialogText = R.string.onboardingBackLoadAccount) }
+
+            true
+        }
+    }
+
+    fun dismissDialog() {
+        _uiStates.update {
+            it.copy(showingBackWarningDialogText = null)
+        }
+    }
+
+    fun quit() {
+        _uiStates.update { it.copy(clearData = true) }
+
+        viewModelScope.launch {
+            clearDataUtils.clearAllDataAndRestart()
+        }
+    }
+
+    data class UiState(
+        val fastModeSelected: Boolean = true,
+        val showingBackWarningDialogText: Int? = null,
+        val clearData: Boolean = false,
+        val fastModeAvailable: Boolean = false,
+    ) {
+        val slowModeSelected get() = !fastModeSelected
+    }
+
+    sealed interface State {
+        class CreateAccount(val displayName: String): State
+        object LoadAccount: State
+    }
+
+    @dagger.assisted.AssistedFactory
+    interface AssistedFactory {
+        fun create(profileName: String?): Factory
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    class Factory @AssistedInject constructor(
+        @Assisted private val profileName: String?,
+        private val application: Application,
+        private val prefs: PreferenceStorage,
+        private val createAccountManager: CreateAccountManager,
+        private val clearDataUtils: ClearDataUtils,
+    ) : ViewModelProvider.Factory {
+
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return MessageNotificationsViewModel(
+                state = profileName?.let(State::CreateAccount) ?: State.LoadAccount,
+                application = application,
+                prefs = prefs,
+                createAccountManager = createAccountManager,
+                clearDataUtils = clearDataUtils,
+            ) as T
+        }
+    }
+}
+
+enum class Event {
+    OnboardingComplete, Loading
+}
