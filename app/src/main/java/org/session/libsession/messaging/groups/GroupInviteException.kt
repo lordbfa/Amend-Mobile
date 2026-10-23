@@ -1,0 +1,70 @@
+package org.session.libsession.messaging.groups
+
+import android.content.Context
+import org.session.libsession.utilities.Phrase
+import network.loki.messenger.R
+import org.session.libsession.utilities.Address
+import org.session.libsession.utilities.StringSubstitutionConstants.COUNT_KEY
+import org.session.libsession.utilities.StringSubstitutionConstants.GROUP_NAME_KEY
+import org.session.libsession.utilities.StringSubstitutionConstants.NAME_KEY
+import org.session.libsession.utilities.StringSubstitutionConstants.OTHER_NAME_KEY
+import org.session.libsession.utilities.recipients.displayName
+import org.thoughtcrime.securesms.database.RecipientRepository
+
+/**
+ * Exception that occurs during a group invite.
+ *
+ * @param isPromotion Whether the invite was a promotion.
+ * @param inviteeAccountIds The account IDs of the invitees that failed.
+ * @param groupName The name of the group.
+ * @param underlying The underlying exception.
+ */
+class GroupInviteException(
+    val isPromotion: Boolean,
+    val inviteeAccountIds: List<String>,
+    val groupName: String,
+    val isReinvite: Boolean,
+    underlying: Throwable
+) : RuntimeException(underlying) {
+    init {
+        check(inviteeAccountIds.isNotEmpty()) {
+            "Can not fail a group invite if there are no invitees"
+        }
+    }
+
+    fun format(context: Context, recipientRepository: RecipientRepository): CharSequence {
+        val getInviteeName = { accountId: String ->
+            recipientRepository.getRecipientSync(Address.fromSerialized(accountId)).displayName()
+        }
+
+        val first = inviteeAccountIds.first().let(getInviteeName)
+        val second = inviteeAccountIds.getOrNull(1)?.let(getInviteeName)
+        val third = inviteeAccountIds.getOrNull(2)?.let(getInviteeName)
+
+        if (second != null && third != null) {
+            val errorString =
+                if (isPromotion)  if (isReinvite) R.string.failedResendPromotionMultiple else R.string.adminPromotionFailedDescriptionMultiple else
+                    if (isReinvite) R.string.failedResendInviteMultiple else R.string.groupInviteFailedMultiple
+            return Phrase.from(context, errorString)
+                .put(NAME_KEY, first)
+                .put(COUNT_KEY, inviteeAccountIds.size - 1)
+                .put(GROUP_NAME_KEY, groupName)
+                .format()
+        } else if (second != null) {
+            val errorString = if (isPromotion) if (isReinvite) R.string.failedResendPromotionTwo else  R.string.adminPromotionFailedDescriptionTwo else
+                if (isReinvite) R.string.failedResendInviteTwo else R.string.groupInviteFailedTwo
+            return Phrase.from(context, errorString)
+                .put(NAME_KEY, first)
+                .put(OTHER_NAME_KEY, second)
+                .put(GROUP_NAME_KEY, groupName)
+                .format()
+        } else {
+            val errorString = if (isPromotion) if (isReinvite) R.string.failedResendPromotion else R.string.adminPromotionFailedDescription else
+                if (isReinvite) R.string.failedResendInvite else R.string.groupInviteFailedUser
+            return Phrase.from(context, errorString)
+                .put(NAME_KEY, first)
+                .put(GROUP_NAME_KEY, groupName)
+                .format()
+        }
+    }
+}

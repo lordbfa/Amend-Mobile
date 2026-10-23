@@ -1,0 +1,623 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+   <style name="Base.Theme.Session" parent="@style/Theme.AppCompat.DayNight">
+       <item name="actionModeBackground">?colorPrimary</item>
+       <item name="android:colorBackground">?colorPrimary</item>
+       <item name="backgroundSecondary">@color/classic_dark_1</item>
+       <item name="theme_preview_incoming">?message_received_background_color</item>
+       <item name="theme_preview_outgoing">?message_sent_background_color</item>
+       <item name="theme_preview_background">?colorPrimary</item>
+       <item name="theme_type">dark</item>
+       <item name="android:preferenceLayoutChild">@layout/preference_divider</item>
+       <item name="preferenceCornerRadius">@dimen/medium_spacing</item>
+       <item name="reactionsPillSelectedTextColor">?android:textColorPrimary</item>
+       <item name="reactionsPillSelectedBackground">?message_received_background_color</item>
+       <item name="reactionsPillNormalBackground">?message_received_background_color</item>
+       <item name="colorDividerBackground">@color/gray50</item>
+       <item name="colorPrimaryVariant">?colorPrimary</item>
+       <item name="bottomSheetDialogTheme">@style/Theme.Session.BottomSheet</item>
+       <item name="dialogCornerRadius">@dimen/dialog_corner_radius</item>
+       <item name="android:alertDialogTheme">@style/ThemeOverlay.Session.AlertDialog</item>
+       <item name="alertDialogTheme">@style/ThemeOverlay.Session.AlertDialog</item>
+       <item name="conversationMenuSearchTintColor">?android:textColorPrimary</item>
+       <item name="conversation_menu_background_color">?colorPrimary</item>
+       <item name="android:colorControlNormal">?android:textColorPrimary</item>
+       <item name="preferenceTheme">@style/PreferenceThemeOverlay.Fix.Settings</item>
+       <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.MaterialComponents.SmallComponent</item>
+       <item name="elementBorderColor">?android:textColorSecondary</item>
+       <item name="colorOnSurface">?android:textColorPrimary</item>
+       <item name="colorSurface">?backgroundSecondary</item>
+       <item name="menu_trash_icon">@drawable/ic_trash_2</item>
+       <item name="menu_ban_icon">@drawable/ic_user_round_x</item>
+       <item name="menu_unban_icon">@drawable/ic_user_round_tick</item>
+       <item name="menu_save_icon">@drawable/ic_arrow_down_to_line</item>=
+       <item name="menu_copy_icon">@drawable/ic_copy</item>
+       <item name="menu_reply_icon">@drawable/ic_reply</item>
+       <item name="menu_select_icon">@drawable/ic_circle_check</item>
+       <item name="menu_info_icon">@drawable/ic_info</item>
+       <item name="accentColor">?colorAccent</item>
+       <item name="onInvertedBackgroundPrimary">?colorPrimary</item>
+       <item name="prominentButtonColor">?colorAccent</item>
+       <item name="colorError">?danger</item>
+       <item name="transparent">@color/transparent</item>
+
+       <item name="android:actionMenuTextAppearance">@style/MenuTextAppearance</item>
+   </style>
+
+    <!-- This should be the default theme for the application. -->
+    <style name="Theme.Session.DayNight" parent="Base.Theme.Session">
+        <!-- leave empty to allow overriding -->
+    </style>
+
+    <style name="Theme.Session.DayNight.NoActionBar" parent="Base.Theme.Session">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="windowActionModeOverlay">true</item>
+    </style>
+
+    <style name="Theme.Session.DayNight.FlatActionBar">
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar.Flat</item>
+    </style>
+
+    <!--
+    This is a temporary theme that is used by any activity
+    which doesn't have support for light theme
+    (like some old Signal screens or third-party libs with white only icons)
+    -->
+    <!-- TODO: Refactor this to use color resources -->
+    <style name="Base.Theme.Session.ForceDark" parent="Theme.Session.DayNight">
+        <item name="colorPrimary">#171717</item>
+        <item name="colorAccent">@color/accent_green</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#DFFFFFFF</item>
+        <item name="android:textColorTertiary">#90FFFFFF</item>
+        <item name="colorControlNormal">?android:textColorPrimary</item>
+        <item name="android:colorBackground">#121212</item>
+        <item name="android:windowBackground">?android:colorBackground</item>
+
+        <item name="actionBarPopupTheme">@style/ThemeOverlay.AppCompat.Dark</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.AppCompat.ActionBar</item>
+    </style>
+    <style name="Theme.Session.ForceDark" parent="Base.Theme.Session.ForceDark">
+        <!-- leave empty to allow overriding -->
+    </style>
+
+    <style name="Theme.Session.BottomSheet" parent="@style/ThemeOverlay.MaterialComponents.BottomSheetDialog">
+        <item name="colorControlNormal">?android:textColorPrimary</item>
+        <item name="bottomSheetStyle">@style/Widget.Session.BottomSheetDialog</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+
+    <style name="Base.Theme.TextSecure" parent="@style/Theme.Session.DayNight">
+
+        <item name="windowActionModeOverlay">true</item>
+
+        <item name="conversation_list_item_subject_color">#ffdddddd</item>
+
+        <item name="fab_color">?colorAccent</item>
+
+        <item name="emoji_text_color">@color/white</item>
+
+        <item name="emoji_category_recent">@drawable/ic_recent_dark_20</item>
+        <item name="emoji_category_people">@drawable/ic_emoji_people_dark_20</item>
+        <item name="emoji_category_nature">@drawable/ic_emoji_animal_dark_20</item>
+        <item name="emoji_category_foods">@drawable/ic_emoji_food_dark_20</item>
+        <item name="emoji_category_activity">@drawable/ic_emoji_activity_dark_20</item>
+        <item name="emoji_category_places">@drawable/ic_emoji_travel_dark_20</item>
+        <item name="emoji_category_objects">@drawable/ic_emoji_object_dark_20</item>
+        <item name="emoji_category_symbol">@drawable/ic_emoji_symbol_dark_20</item>
+        <item name="emoji_category_flags">@drawable/ic_emoji_flag_dark_20</item>
+        <item name="emoji_category_emoticons">@drawable/ic_emoji_emoticon_dark_20</item>
+
+        <item name="sticker_view_missing_background">@drawable/sticker_missing_background_dark</item>
+
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.Fix</item>
+    </style>
+
+    <style name="Theme.TextSecure.DayNight" parent="Base.Theme.TextSecure">
+        <!-- leave empty to allow overriding -->
+    </style>
+
+    <style name="Theme.TextSecure.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="windowActionModeOverlay">true</item>
+    </style>
+
+    <style name="Theme.TextSecure.Dialog.MediaSendProgress" parent="@android:style/Theme.Dialog">
+        <item name="android:colorBackground">?backgroundSecondary</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <style name="Classic.Dark.BottomSheet" parent="Theme.Session.BottomSheet">
+        <item name="colorPrimary">@color/classic_dark_0</item>
+        <item name="dialog_border">@color/transparent_black_15</item>
+        <item name="android:textColorPrimary">@color/classic_dark_6</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/classic_dark_5</item>
+    </style>
+    <style name="Classic.Light.BottomSheet" parent="Theme.Session.BottomSheet">
+        <item name="colorPrimary">@color/classic_light_5</item>
+        <item name="dialog_border">@color/transparent_black_15</item>
+        <item name="android:textColorPrimary">@color/classic_light_0</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/classic_light_1</item>
+    </style>
+    <style name="Ocean.Dark.BottomSheet" parent="Theme.Session.BottomSheet">
+        <item name="colorPrimary">@color/ocean_dark_3</item>
+        <item name="dialog_border">@color/transparent_black_15</item>
+        <item name="android:textColorPrimary">@color/ocean_dark_7</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/ocean_dark_5</item>
+    </style>
+    <style name="Ocean.Light.BottomSheet" parent="Theme.Session.BottomSheet">
+        <item name="colorPrimary">@color/ocean_light_6</item>
+        <item name="dialog_border">@color/transparent_black_15</item>
+        <item name="android:textColorPrimary">@color/ocean_light_1</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/ocean_light_2</item>
+    </style>
+
+    <style name="Dark.Popup" parent="@style/ThemeOverlay.AppCompat.Dark">
+        <item name="android:actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="colorBackgroundFloating">?colorPrimary</item>
+        <item name="android:colorBackground">?colorPrimary</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+    </style>
+
+    <style name="Light.Popup" parent="@style/ThemeOverlay.AppCompat.Light">
+        <item name="android:actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="colorBackgroundFloating">?colorPrimary</item>
+        <item name="android:colorBackground">?colorPrimary</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+    </style>
+
+    <style name="Classic">
+        <item name="dividerVertical">?android:textColorTertiary</item>
+        <item name="dividerHorizontal">?dividerVertical</item>
+        <item name="message_received_background_color">#F2F2F2</item>
+        <item name="colorAccent">@color/accent_green</item>
+        <item name="tabStyle">@style/Widget.Session.TabLayout</item>
+    </style>
+
+    <style name="Ocean">
+        <item name="dividerVertical">?android:textColorTertiary</item>
+        <item name="dividerHorizontal">?dividerVertical</item>
+        <item name="message_received_background_color">#F2F2F2</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="tabStyle">@style/Widget.Session.TabLayout</item>
+    </style>
+
+    <style name="Classic.Dark">
+        <!-- Main styles -->
+        <item name="sessionLogoTint">@color/classic_dark_6</item>
+        <item name="colorPrimary">@color/classic_dark_0</item>
+        <item name="colorPrimaryDark">@color/classic_dark_0</item>
+        <item name="backgroundSecondary">@color/classic_dark_1</item>
+        <item name="colorControlNormal">?android:textColorPrimary</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="warning">@color/accent_orange</item>
+        <item name="danger">@color/danger_dark</item>
+        <item name="disabled">@color/classic_light_1</item>
+        <item name="android:textColorPrimary">@color/classic_dark_6</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/classic_dark_5</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/gray27</item>
+        <item name="textColorAlert">@color/classic_dark_6</item>
+        <item name="accentText">?colorAccent</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="bottomSheetDialogTheme">@style/Classic.Dark.BottomSheet</item>
+        <item name="actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="colorCellBackground">@color/classic_dark_1</item>
+        <item name="colorDividerBackground">@color/classic_dark_3</item>
+        <item name="android:colorControlHighlight">@color/classic_dark_3</item>
+        <item name="colorControlHighlight">@color/classic_dark_3</item>
+        <item name="actionBarPopupTheme">@style/Dark.Popup</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar</item>
+        <item name="accentColor">?colorAccent</item>
+        <item name="onInvertedBackgroundPrimary">?colorPrimary</item>
+        <item name="prominentButtonColor">?colorAccent</item>
+        <item name="elementBorderColor">@color/classic_dark_3</item>
+        <item name="crown">@color/black</item>
+        <item name="crownBg">@color/accent_yellow</item>
+
+        <item name="lightCell">@color/white</item>
+        <item name="onLightCell">@color/black</item>
+
+        <item name="isLightTheme">false</item>
+
+        <!-- Home screen -->
+        <item name="searchBackgroundColor">#1B1B1B</item>
+        <item name="searchIconColor">#E5E5E8</item>
+        <item name="searchHintColor">@color/classic_dark_5</item>
+        <item name="searchTextColor">?android:textColorPrimary</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/classic_dark_1</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/classic_dark_1</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/classic_dark_0</item>
+        
+        <!-- New conversation button -->
+        <item name="conversation_menu_background_color">@color/classic_dark_1</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/classic_dark_0</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/classic_dark_2</item>
+        <item name="message_received_text_color">@color/classic_dark_6</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/classic_dark_0</item>
+        <item name="message_status_color">@color/classic_dark_5</item>
+        <item name="input_bar_text_hint">@color/classic_dark_5</item>
+        <item name="input_bar_text_user">@color/classic_dark_6</item>
+        <item name="input_bar_button_background">@color/classic_dark_2</item>
+        <item name="input_bar_button_text_color">@color/classic_dark_6</item>
+        <item name="input_bar_button_background_opaque">@color/classic_dark_2</item>
+        <item name="input_bar_button_background_opaque_border">@color/classic_dark_3</item>
+        <item name="input_bar_lock_view_background">@color/classic_dark_2</item>
+        <item name="input_bar_lock_view_border">@color/classic_dark_3</item>
+        <item name="mention_candidates_view_background">@color/classic_dark_2</item>
+        <item name="scroll_to_bottom_button_background">@color/classic_dark_1</item>
+        <item name="scroll_to_bottom_button_border">@color/classic_dark_3</item>
+        <item name="message_selected">@color/classic_dark_2</item>
+    </style>
+
+    <style name="Classic.Light">
+        <!-- Main styles -->
+        <item name="sessionLogoTint">@color/classic_light_0</item>
+        <item name="colorPrimary">@color/classic_light_6</item>
+        <item name="backgroundSecondary">@color/classic_light_5</item>
+        <item name="colorPrimaryDark">@color/classic_light_6</item>
+        <item name="colorControlNormal">?android:textColorPrimary</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="warning">@color/rust</item>
+        <item name="danger">@color/danger_light</item>
+        <item name="disabled">@color/classic_dark_5</item>
+        <item name="android:textColorPrimary">@color/classic_light_0</item>
+        <item name="android:textColorSecondary">@color/classic_light_1</item>
+        <item name="android:textColorTertiary">@color/classic_light_1</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/gray27</item>
+        <item name="textColorAlert">@color/classic_light_0</item>
+        <item name="accentText">?android:textColorPrimary</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="colorCellBackground">@color/classic_light_6</item>
+        <item name="colorDividerBackground">@color/classic_light_3</item>
+        <item name="android:colorControlHighlight">@color/classic_light_3</item>
+        <item name="colorControlHighlight">@color/classic_light_3</item>
+        <item name="bottomSheetDialogTheme">@style/Classic.Light.BottomSheet</item>
+        <item name="android:actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="actionBarPopupTheme">@style/Light.Popup</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar.Flat</item>
+        <item name="accentColor">?colorAccent</item>
+        <item name="onInvertedBackgroundPrimary">?colorAccent</item>
+        <item name="prominentButtonColor">?android:textColorPrimary</item>
+        <item name="elementBorderColor">@color/classic_light_3</item>
+        <item name="crown">@color/accent_yellow</item>
+        <item name="crownBg">@color/black</item>
+
+        <item name="lightCell">@color/classic_light_5</item>
+        <item name="onLightCell">@color/black</item>
+
+        <!-- Light mode -->
+        <item name="theme_type">light</item>
+        <item name="android:colorBackgroundFloating">?colorPrimary</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="O_MR1">true</item>
+        <item name="isLightTheme">true</item>
+        <item name="android:isLightTheme" tools:targetApi="Q">true</item>
+
+        <!-- Home screen -->
+        <item name="searchBackgroundColor">@color/classic_light_4</item>
+        <item name="searchIconColor">@color/classic_light_0</item>
+        <item name="searchHintColor">@color/classic_light_1</item>
+        <item name="searchTextColor">?android:textColorPrimary</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/classic_light_5</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/classic_light_6</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/classic_light_0</item>
+        <!-- New conversation button -->
+        <item name="conversation_menu_background_color">@color/classic_light_6</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/classic_light_6</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/classic_light_4</item>
+        <item name="message_received_text_color">@color/classic_light_0</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/classic_light_0</item>
+        <item name="message_status_color">@color/classic_light_1</item>
+        <item name="input_bar_text_hint">@color/classic_light_1</item>
+        <item name="input_bar_text_user">@color/classic_light_0</item>
+        <item name="input_bar_button_background">@color/classic_light_4</item>
+        <item name="input_bar_button_text_color">@color/classic_light_0</item>
+        <item name="input_bar_button_background_opaque">@color/classic_light_4</item>
+        <item name="input_bar_button_background_opaque_border">@color/classic_light_2</item>
+        <item name="input_bar_lock_view_background">@color/classic_light_4</item>
+        <item name="input_bar_lock_view_border">@color/classic_light_2</item>
+        <item name="mention_candidates_view_background">?colorCellBackground</item>
+        <item name="scroll_to_bottom_button_background">@color/classic_light_4</item>
+        <item name="scroll_to_bottom_button_border">@color/classic_light_2</item>
+        <item name="message_selected">@color/classic_light_3</item>
+
+    </style>
+
+    <style name="Ocean.Dark">
+        <!-- Main styles -->
+        <item name="sessionLogoTint">@color/ocean_dark_7</item>
+        <item name="colorPrimary">@color/ocean_dark_2</item>
+        <item name="colorPrimaryDark">@color/ocean_dark_2</item>
+        <item name="backgroundSecondary">@color/ocean_dark_1</item>
+        <item name="colorControlNormal">@color/ocean_dark_7</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="warning">@color/accent_orange</item>
+        <item name="danger">@color/danger_dark</item>
+        <item name="disabled">@color/classic_light_1</item>
+        <item name="android:textColorPrimary">@color/ocean_dark_7</item>
+        <item name="android:textColorSecondary">@color/ocean_dark_5</item>
+        <item name="android:textColorTertiary">@color/ocean_dark_5</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/ocean_dark_5</item>
+        <item name="textColorAlert">@color/ocean_dark_7</item>
+        <item name="accentText">?colorAccent</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="colorCellBackground">@color/ocean_dark_3</item>
+        <item name="colorDividerBackground">@color/ocean_dark_4</item>
+        <item name="android:colorControlHighlight">@color/ocean_dark_4</item>
+        <item name="colorControlHighlight">@color/ocean_dark_4</item>
+        <item name="bottomSheetDialogTheme">@style/Ocean.Dark.BottomSheet</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="actionBarPopupTheme">@style/Dark.Popup</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar</item>
+        <item name="accentColor">?colorAccent</item>
+        <item name="onInvertedBackgroundPrimary">?colorPrimary</item>
+        <item name="prominentButtonColor">?colorAccent</item>
+        <item name="elementBorderColor">@color/ocean_dark_4</item>
+        <item name="crown">@color/black</item>
+        <item name="crownBg">@color/accent_yellow</item>
+
+        <item name="lightCell">@color/white</item>
+        <item name="onLightCell">@color/ocean_dark_2</item>
+
+        <item name="isLightTheme">false</item>
+
+        <!-- Home screen -->
+        <item name="searchBackgroundColor">@color/ocean_dark_3</item>
+        <item name="searchIconColor">@color/ocean_dark_7</item>
+        <item name="searchHintColor">@color/ocean_dark_5</item>
+        <item name="searchTextColor">?android:textColorPrimary</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/ocean_dark_3</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/ocean_dark_3</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/ocean_dark_0</item>
+        <item name="conversation_menu_background_color">@color/ocean_dark_3</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/ocean_dark_2</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/ocean_dark_4</item>
+        <item name="message_received_text_color">@color/ocean_dark_7</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/ocean_dark_0</item>
+        <item name="message_status_color">@color/ocean_dark_5</item>
+        <item name="input_bar_text_hint">@color/ocean_dark_5</item>
+        <item name="input_bar_text_user">@color/ocean_dark_7</item>
+        <item name="input_bar_button_background">@color/ocean_dark_2</item>
+        <item name="input_bar_button_text_color">@color/ocean_dark_7</item>
+        <item name="input_bar_button_background_opaque">@color/ocean_dark_4</item>
+        <item name="input_bar_button_background_opaque_border">@color/ocean_dark_2</item>
+        <item name="input_bar_lock_view_background">?colorPrimary</item>
+        <item name="input_bar_lock_view_border">?colorPrimary</item>
+        <item name="mention_candidates_view_background">@color/ocean_dark_2</item>
+        <item name="scroll_to_bottom_button_background">@color/ocean_dark_4</item>
+        <item name="scroll_to_bottom_button_border">?colorPrimary</item>
+        <item name="message_selected">@color/ocean_dark_1</item>
+
+    </style>
+
+    <style name="Ocean.Light">
+        <!-- Main styles -->
+        <item name="sessionLogoTint">@color/ocean_light_1</item>
+        <item name="colorPrimary">@color/ocean_light_7</item>
+        <item name="colorPrimaryDark">@color/ocean_light_6</item>
+        <item name="backgroundSecondary">@color/ocean_light_6</item>
+        <item name="colorControlNormal">@color/ocean_light_1</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="warning">@color/rust</item>
+        <item name="danger">@color/danger_light</item>
+        <item name="disabled">@color/classic_dark_5</item>
+        <item name="android:textColorPrimary">@color/ocean_light_1</item>
+        <item name="android:textColorSecondary">@color/ocean_light_2</item>
+        <item name="android:textColorTertiary">@color/ocean_light_2</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/ocean_light_6</item>
+        <item name="textColorAlert">@color/ocean_light_0</item>
+        <item name="accentText">?android:textColorPrimary</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="colorCellBackground">@color/ocean_light_5</item>
+        <item name="colorDividerBackground">@color/ocean_light_3</item>
+        <item name="android:colorControlHighlight">@color/ocean_light_4</item>
+        <item name="colorControlHighlight">@color/ocean_light_4</item>
+        <item name="bottomSheetDialogTheme">@style/Ocean.Light.BottomSheet</item>
+        <item name="actionBarPopupTheme">@style/Light.Popup</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar.Flat</item>
+        <item name="accentColor">?colorAccent</item>
+        <item name="onInvertedBackgroundPrimary">?colorAccent</item>
+        <item name="prominentButtonColor">?android:textColorPrimary</item>
+        <item name="elementBorderColor">@color/ocean_light_3</item>
+        <item name="crown">@color/accent_yellow</item>
+        <item name="crownBg">@color/black</item>
+
+        <item name="lightCell">@color/ocean_light_6</item>
+        <item name="onLightCell">@color/ocean_light_1</item>
+
+        <!-- Light mode -->
+        <item name="theme_type">light</item>
+        <item name="android:colorBackgroundFloating">?colorPrimary</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="O_MR1">true</item>
+        <item name="isLightTheme">true</item>
+        <item name="android:isLightTheme" tools:targetApi="Q">true</item>
+
+
+        <item name="searchBackgroundColor">@color/ocean_light_5</item>
+        <item name="searchIconColor">@color/ocean_light_1</item>
+        <item name="searchHintColor">@color/ocean_light_2</item>
+        <item name="searchTextColor">@color/ocean_light_1</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/ocean_light_7</item>
+        <item name="conversation_menu_background_color">@color/ocean_light_7</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/ocean_light_7</item>
+
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/ocean_light_1</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/ocean_light_4</item>
+        <item name="message_received_text_color">@color/ocean_light_1</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/ocean_light_1</item>
+        <item name="message_status_color">@color/ocean_light_2</item>
+        <item name="input_bar_text_hint">@color/ocean_light_2</item>
+        <item name="input_bar_text_user">@color/ocean_light_1</item>
+        <item name="input_bar_button_background">@color/ocean_light_5</item>
+        <item name="input_bar_button_background_opaque">@color/ocean_light_5</item>
+        <item name="input_bar_button_text_color">@color/ocean_light_1</item>
+        <item name="input_bar_button_background_opaque_border">@color/ocean_light_1</item>
+        <item name="input_bar_lock_view_background">@color/ocean_light_5</item>
+        <item name="input_bar_lock_view_border">@color/ocean_light_1</item>
+        <item name="mention_candidates_view_background">?colorCellBackground</item>
+        <item name="scroll_to_bottom_button_background">?input_bar_button_background_opaque</item>
+        <item name="scroll_to_bottom_button_border">?input_bar_button_background_opaque_border</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/ocean_light_5</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="message_selected">@color/ocean_light_5</item>
+    </style>
+
+    <!-- For testing / XML rendering -->
+    <style name="Theme.Session.DayNight.NoActionBar.Test" parent="Base.Theme.Session">
+        <item name="dividerVertical">?android:textColorTertiary</item>
+        <item name="dividerHorizontal">?dividerVertical</item>
+        <item name="colorAccent">@color/accent_green</item>
+        <item name="onInvertedBackgroundPrimary">?colorPrimary</item>
+        <item name="crown">@color/black</item>
+        <item name="crownBg">@color/accent_yellow</item>
+
+        <item name="sessionLogoTint">@color/classic_dark_6</item>
+        <item name="colorPrimary">@color/classic_dark_0</item>
+        <item name="colorPrimaryDark">@color/classic_dark_0</item>
+        <item name="backgroundSecondary">@color/classic_dark_1</item>
+        <item name="colorControlNormal">?android:textColorPrimary</item>
+        <item name="colorControlActivated">?colorAccent</item>
+        <item name="android:colorControlHighlight">?colorAccent</item>
+        <item name="android:textColorPrimary">@color/classic_dark_6</item>
+        <item name="android:textColorSecondary">?android:textColorPrimary</item>
+        <item name="android:textColorTertiary">@color/classic_dark_5</item>
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="android:textColorHint">@color/gray27</item>
+        <item name="android:windowBackground">?colorPrimary</item>
+        <item name="bottomSheetDialogTheme">@style/Classic.Dark.BottomSheet</item>
+        <item name="actionMenuTextColor">?android:textColorPrimary</item>
+        <item name="popupTheme">?actionBarPopupTheme</item>
+        <item name="colorCellBackground">@color/classic_dark_1</item>
+        <item name="colorDividerBackground">@color/classic_dark_3</item>
+        <item name="actionBarPopupTheme">@style/Dark.Popup</item>
+        <item name="actionBarWidgetTheme">@null</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="actionBarStyle">@style/Widget.Session.ActionBar</item>
+        <item name="prominentButtonColor">?colorAccent</item>
+        <item name="elementBorderColor">@color/classic_dark_3</item>
+        <item name="warning">@color/accent_orange</item>
+        <item name="danger">@color/danger_dark</item>
+        <item name="disabled">@color/classic_light_1</item>
+        <item name="textColorAlert">@color/classic_dark_6</item>
+        <item name="accentText">?colorAccent</item>
+
+        <!-- Home screen -->
+        <item name="searchBackgroundColor">#1B1B1B</item>
+        <item name="searchIconColor">#E5E5E8</item>
+        <item name="searchHintColor">@color/classic_dark_5</item>
+        <item name="searchTextColor">?android:textColorPrimary</item>
+        <item name="searchHighlightTint">?colorAccent</item>
+        <item name="home_gradient_start">#00000000</item>
+        <item name="home_gradient_end">@color/classic_dark_1</item>
+        <item name="conversation_pinned_background_color">?colorCellBackground</item>
+        <item name="conversation_unread_background_color">@color/classic_dark_1</item>
+        <item name="conversation_pinned_icon_color">?android:textColorSecondary</item>
+        <item name="unreadIndicatorBackgroundColor">?colorAccent</item>
+        <item name="unreadIndicatorTextColor">@color/classic_dark_0</item>
+
+        <!-- New conversation button -->
+        <item name="conversation_menu_background_color">@color/classic_dark_1</item>
+        <item name="conversationMenuSearchBackgroundColor">@color/classic_dark_0</item>
+
+        <!-- Conversation -->
+        <item name="message_received_background_color">@color/classic_dark_2</item>
+        <item name="message_received_text_color">@color/classic_dark_6</item>
+        <item name="message_sent_background_color">?colorAccent</item>
+        <item name="message_sent_text_color">@color/classic_dark_0</item>
+        <item name="message_status_color">@color/classic_dark_5</item>
+        <item name="input_bar_text_hint">@color/classic_dark_5</item>
+        <item name="input_bar_text_user">@color/classic_dark_6</item>
+        <item name="input_bar_button_background">@color/classic_dark_2</item>
+        <item name="input_bar_button_text_color">@color/classic_dark_6</item>
+        <item name="input_bar_button_background_opaque">@color/classic_dark_2</item>
+        <item name="input_bar_button_background_opaque_border">@color/classic_dark_3</item>
+        <item name="input_bar_lock_view_background">@color/classic_dark_2</item>
+        <item name="input_bar_lock_view_border">@color/classic_dark_3</item>
+        <item name="mention_candidates_view_background">@color/classic_dark_2</item>
+        <item name="scroll_to_bottom_button_background">@color/classic_dark_1</item>
+        <item name="scroll_to_bottom_button_border">@color/classic_dark_3</item>
+        <item name="message_selected">@color/classic_dark_2</item>
+    </style>
+
+    <style name="PrimaryGreen">
+        <item name="colorAccent">@color/accent_green</item>
+    </style>
+    <style name="PrimaryBlue">
+        <item name="colorAccent">@color/accent_blue</item>
+    </style>
+    <style name="PrimaryPurple">
+        <item name="colorAccent">@color/accent_purple</item>
+    </style>
+    <style name="PrimaryPink">
+        <item name="colorAccent">@color/accent_pink</item>
+    </style>
+    <style name="PrimaryRed">
+        <item name="colorAccent">@color/accent_red</item>
+    </style>
+    <style name="PrimaryOrange">
+        <item name="colorAccent">@color/accent_orange</item>
+    </style>
+    <style name="PrimaryYellow">
+        <item name="colorAccent">@color/accent_yellow</item>
+    </style>
+
+</resources>

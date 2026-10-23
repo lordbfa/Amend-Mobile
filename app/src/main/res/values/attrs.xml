@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="theme_type" format="string"/>
+
+    <attr name="attachment_type_selector_background" format="color"/>
+    <attr name="attachment_type_selector_hide_button_background" format="color"/>
+    <attr name="attachment_document_extension_text_color" format="color" />
+
+    <attr name="conversation_list_item_subject_color" format="reference|color"/>
+
+    <attr name="fab_color" format="reference|color" />
+
+    <attr name="lightCell" format="reference|color"/>
+    <attr name="onLightCell" format="reference|color"/>
+
+    <attr name="accentColor" format="reference|color"/>
+    <attr name="crown" format="reference|color"/>
+    <attr name="crownBg" format="reference|color"/>
+    <attr name="onInvertedBackgroundPrimary" format="reference|color"/>
+    <attr name="warning" format="reference|color"/>
+    <attr name="danger" format="reference|color"/>
+    <attr name="disabled" format="reference|color"/>
+    <attr name="backgroundSecondary" format="reference|color"/>
+    <attr name="prominentButtonColor" format="reference|color"/>
+    <attr name="textColorAlert" format="reference|color"/>
+    <attr name="elementBorderColor" format="reference|color"/>
+    <attr name="conversation_background" format="reference|color"/>
+    <attr name="transparent" format="reference|color"/>
+
+    <attr name="emoji_text_color" format="color" />
+
+    <attr name="emoji_category_recent" format="reference"/>
+    <attr name="emoji_category_people" format="reference"/>
+    <attr name="emoji_category_nature" format="reference"/>
+    <attr name="emoji_category_foods"  format="reference"/>
+    <attr name="emoji_category_activity" format="reference"/>
+    <attr name="emoji_category_places" format="reference"/>
+    <attr name="emoji_category_objects" format="reference"/>
+    <attr name="emoji_category_symbol" format="reference"/>
+    <attr name="emoji_category_flags" format="reference"/>
+    <attr name="emoji_category_emoticons" format="reference"/>
+
+    <attr name="conversation_pinned_background_color" format="reference|color" />
+    <attr name="conversation_unread_background_color" format="reference|color" />
+    <attr name="conversation_pinned_icon_color" format="reference|color" />
+
+    <attr name="conversation_menu_background_color" format="reference|color" />
+    <attr name="conversationMenuSearchBackgroundColor" format="reference|color"/>
+    <attr name="conversationMenuSearchTintColor" format="reference|color"/>
+    <attr name="dialog_border" format="reference|color" />
+    <attr name="sessionLogoTint" format="reference|color" />
+
+    <attr name="theme_preview_incoming" format="reference|color"/>
+    <attr name="theme_preview_outgoing" format="reference|color"/>
+    <attr name="theme_preview_background" format="reference|color"/>
+    <attr name="theme_preview_border" format="reference|color"/>
+
+    <attr name="menu_trash_icon" format="reference" />
+    <attr name="menu_select_icon" format="reference" />
+    <attr name="menu_copy_icon" format="reference" />
+    <attr name="menu_save_icon" format="reference" />
+    <attr name="menu_reply_icon" format="reference" />
+    <attr name="menu_ban_icon" format="reference" />
+    <attr name="menu_unban_icon" format="reference" />
+    <attr name="menu_info_icon" format="reference" />
+
+    <attr name="home_gradient_start" format="color|reference" />
+    <attr name="home_gradient_end" format="color|reference" />
+    <attr name="colorCellBackground" format="color|reference" />
+    <attr name="colorDividerBackground" format="color|reference" />
+    <attr name="outlineButtonBorder" format="color|reference" />
+    <attr name="outlineButtonText" format="color|reference" />
+    <attr name="unreadIndicatorBackgroundColor" format="color|reference"/>
+    <attr name="unreadIndicatorTextColor" format="color|reference"/>
+
+    <attr name="message_selected" format="color|reference" />
+    <attr name="message_received_background_color" format="color|reference" />
+    <attr name="message_received_text_color" format="color|reference" />
+    <attr name="message_sent_background_color" format="color|reference" />
+    <attr name="message_sent_text_color" format="color|reference" />
+    <attr name="message_status_color" format="color|reference" />
+    <attr name="input_bar_text_hint" format="color|reference"/>
+    <attr name="input_bar_text_user" format="color|reference"/>
+    <attr name="input_bar_button_background" format="color|reference"/>
+    <attr name="input_bar_button_background_opaque" format="color|reference"/>
+    <attr name="input_bar_button_background_opaque_border" format="color|reference"/>
+    <attr name="input_bar_button_text_color" format="color|reference"/>
+    <attr name="input_bar_lock_view_background" format="color|reference"/>
+    <attr name="input_bar_lock_view_border" format="color|reference"/>
+    <attr name="mention_candidates_view_background" format="color|reference"/>
+    <attr name="scroll_to_bottom_button_background" format="color|reference"/>
+    <attr name="scroll_to_bottom_button_border" format="color|reference"/>
+
+    <attr name="sticker_view_missing_background" format="reference|color" />
+
+    <declare-styleable name="AvatarImageView">
+        <attr name="inverted" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="ThumbnailView">
+        <attr name="minWidth" format="dimension" />
+        <attr name="maxWidth" format="dimension" />
+        <attr name="minHeight" format="dimension" />
+        <attr name="maxHeight" format="dimension" />
+        <attr name="thumbnail_radius" format="dimension" />
+    </declare-styleable>
+
+    <declare-styleable name="CircleColorImageView">
+        <attr name="circleColor" format="color"/>
+    </declare-styleable>
+
+    <declare-styleable name="VerticalSlideColorPicker">
+        <attr name="pickerBorderColor" format="color" />
+        <attr name="pickerBorderWidth" format="dimension" />
+        <attr name="pickerColors" format="reference" />
+    </declare-styleable>
+
+    <declare-styleable name="EmojiTextView">
+        <attr name="measureLastLine" format="boolean" />
+        <attr name="scaleEmojis" format="boolean" />
+        <attr name="emoji_maxLength" format="integer" />
+        <attr name="emoji_forceCustom" format="boolean" />
+        <attr name="emoji_renderMentions" format="boolean" />
+        <attr name="emoji_forceJumbo" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="EmojiImageView">
+        <attr name="forceJumbo" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="EmojiReactionsView">
+        <attr name="erv_outgoing" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="QuoteView">
+        <attr name="quote_mode" format="enum">
+            <enum name="regular" value="0"/>
+            <enum name="draft" value="1"/>
+        </attr>
+    </declare-styleable>
+
+    <declare-styleable name="LinkPreviewView">
+        <attr name="linkpreview_type" format="enum">
+            <enum name="conversation" value="0" />
+            <enum name="compose" value="1" />
+        </attr>
+    </declare-styleable>
+
+    <declare-styleable name="TypingIndicatorView">
+        <attr name="typingIndicator_tint" format="color" />
+    </declare-styleable>
+
+    <declare-styleable name="KeyboardPageSearchView">
+        <attr name="show_always" format="boolean" />
+        <attr name="search_bar_tint" format="color|reference" />
+        <attr name="search_icon_tint" format="color|reference" />
+        <attr name="search_hint" format="string|reference" />
+        <attr name="click_only" format="boolean" />
+    </declare-styleable>
+
+    <attr name="preferenceCornerRadius" format="dimension|reference"/>
+    <attr name="reactionsPillSelectedTextColor" format="color|reference"/>
+    <attr name="reactionsPillSelectedBackground" format="color|reference"/>
+    <attr name="reactionsPillNormalBackground" format="color|reference"/>
+
+    <declare-styleable name="InputBar">
+        <attr name="sendOnly" format="boolean" />
+    </declare-styleable>
+
+    <attr name="accentText" format="reference|color"/>
+</resources>

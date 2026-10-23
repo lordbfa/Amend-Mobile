@@ -1,0 +1,23 @@
+package org.session.libsession.utilities
+
+// Non-translatable strings for use with the UI
+object NonTranslatableStringConstants {
+    const val APP_NAME                   = "amend"
+    const val SESSION_DOWNLOAD_URL       = "https://github.com/lordbfa/Amend-Mobile/releases"
+    const val GIF                        = "GIF"
+    const val OXEN_FOUNDATION            = "Oxen Foundation"
+    const val NETWORK_NAME               = "Session Network"
+    const val TOKEN_NAME_LONG            = "Session Token"
+    const val STAKING_REWARD_POOL        = "Staking Reward Pool"
+    const val TOKEN_NAME_SHORT           = "SESH"
+    const val USD_NAME_SHORT             = "USD"
+    const val SESSION_NETWORK_DATA_PRICE = "Price data powered by CoinGecko\nAccurate at {date_time}"
+    const val APP_PRO                    = "Session Pro"
+    const val SESSION_FOUNDATION         = "Session Foundation"
+    const val PRO                        = "Pro"
+    const val ENTITY_RANGEPROOF          = "Rangeproof PTY LTD"
+    const val ENTITY_STF                 = "The Session Technology Foundation"
+    const val DONATE_APPEAL_NAME         = "Cofounder of Session Chris McCabe"
+    const val ENTITY_STF_SHORT           = "Session Technology Foundation (STF)"
+}
+

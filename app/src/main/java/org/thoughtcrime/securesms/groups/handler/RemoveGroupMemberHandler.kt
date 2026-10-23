@@ -1,0 +1,268 @@
+package org.thoughtcrime.securesms.groups.handler
+
+import android.content.Context
+import com.google.protobuf.ByteString
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.filterIsInstance
+import network.loki.messenger.R
+import network.loki.messenger.libsession_util.ED25519
+import network.loki.messenger.libsession_util.Namespace
+import network.loki.messenger.libsession_util.ReadableGroupKeysConfig
+import network.loki.messenger.libsession_util.allWithStatus
+import network.loki.messenger.libsession_util.util.GroupMember
+import network.loki.messenger.libsession_util.util.MultiEncrypt
+import org.session.libsession.database.MessageDataProvider
+import org.session.libsession.database.StorageProtocol
+import org.session.libsession.messaging.groups.GroupScope
+import org.session.libsession.messaging.messages.Destination
+import org.session.libsession.messaging.messages.control.GroupUpdated
+import org.session.libsession.messaging.sending_receiving.MessageSender
+import org.session.libsession.messaging.utilities.MessageAuthentication
+import org.session.libsession.network.SnodeClock
+import org.session.libsession.snode.OwnedSwarmAuth
+import org.session.libsession.snode.SnodeMessage
+import org.session.libsession.utilities.Address
+import org.session.libsession.utilities.ConfigFactoryProtocol
+import org.session.libsession.utilities.ConfigUpdateNotification
+import org.session.libsession.utilities.getGroup
+import org.session.libsession.utilities.waitUntilGroupConfigsPushed
+import org.session.libsession.utilities.withGroupConfigs
+import org.session.libsession.utilities.withMutableGroupConfigs
+import org.session.libsignal.utilities.AccountId
+import org.session.libsignal.utilities.Base64
+import org.session.libsignal.utilities.Log
+import org.session.protos.SessionProtos
+import org.thoughtcrime.securesms.api.snode.BatchApi
+import org.thoughtcrime.securesms.api.snode.RevokeSubKeyApi
+import org.thoughtcrime.securesms.api.snode.SnodeApi
+import org.thoughtcrime.securesms.api.snode.StoreMessageApi
+import org.thoughtcrime.securesms.api.swarm.SwarmApiExecutor
+import org.thoughtcrime.securesms.api.swarm.SwarmApiRequest
+import org.thoughtcrime.securesms.api.swarm.execute
+import org.thoughtcrime.securesms.auth.AuthAwareComponent
+import org.thoughtcrime.securesms.auth.LoggedInState
+import javax.inject.Inject
+import javax.inject.Singleton
+
+private const val TAG = "RemoveGroupMemberHandler"
+
+/**
+ * This handler is responsible for processing pending group member removals.
+ *
+ * It automatically does so by listening to the config updates changes and checking for any pending removals.
+ */
+@OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
+@Singleton
+class RemoveGroupMemberHandler @Inject constructor(
+    @param:ApplicationContext private val context: Context,
+    private val configFactory: ConfigFactoryProtocol,
+    private val clock: SnodeClock,
+    private val messageDataProvider: MessageDataProvider,
+    private val storage: StorageProtocol,
+    private val groupScope: GroupScope,
+    private val messageSender: MessageSender,
+    private val swarmApiExecutor: SwarmApiExecutor,
+    private val storeSnodeMessageApiFactory: StoreMessageApi.Factory,
+    private val revokeSubKeyApiFactory: RevokeSubKeyApi.Factory,
+    private val batchApiFactory: BatchApi.Factory,
+) : AuthAwareComponent {
+    override suspend fun doWhileLoggedIn(loggedInState: LoggedInState) {
+        configFactory.configUpdateNotifications
+            .filterIsInstance<ConfigUpdateNotification.GroupConfigsUpdated>()
+            .collect { update ->
+                val adminKey = configFactory.getGroup(update.groupId)?.adminKey?.data
+                if (adminKey != null) {
+                    groupScope.launch(update.groupId, "Handle possible group removals") {
+                        try {
+                            processPendingRemovalsForGroup(update.groupId, adminKey)
+                        } catch (ec: Exception) {
+                            Log.e("RemoveGroupMemberHandler", "Error processing pending removals", ec)
+                        }
+                    }
+                }
+            }
+    }
+
+    private suspend fun processPendingRemovalsForGroup(
+        groupAccountId: AccountId,
+        adminKey: ByteArray
+    ) {
+        val (pendingRemovals, batchCalls) = configFactory.withGroupConfigs(groupAccountId) { configs ->
+            val pendingRemovals = configs.groupMembers.allWithStatus()
+                .filter { (member, status) -> member.isRemoved(status) }
+                .toList()
+
+            if (pendingRemovals.isEmpty()) {
+                // Skip if there are no pending removals
+                return@withGroupConfigs pendingRemovals to emptyList<SnodeApi<*>>()
+            }
+
+            Log.d(TAG, "Processing ${pendingRemovals.size} pending removals for group")
+
+            // Perform a sequential call to group snode to:
+            // 1. Revoke the member's sub key (by adding the key to a "revoked list" under the hood)
+            // 2. Send a message to a special namespace on the group to inform the removed members they have been removed
+            // 3. Conditionally, send a `GroupUpdateDeleteMemberContent` to the group so the message deletion
+            //    can be performed by everyone in the group.
+            val apis = ArrayList<SnodeApi<*>>(3)
+
+            val groupAuth = OwnedSwarmAuth.ofClosedGroup(groupAccountId, adminKey)
+
+            // Call No 1. Revoke sub-key. This call is crucial and must not fail for the rest of the operation to be successful.
+            apis += revokeSubKeyApiFactory.create(
+                auth = groupAuth,
+                subAccountTokens = pendingRemovals.map { (member, _) ->
+                    configs.groupKeys.getSubAccountToken(member.accountId())
+                }
+            )
+
+            // Call No 2. Send a "kicked" message to the revoked namespace
+            apis += storeSnodeMessageApiFactory.create(
+                namespace = Namespace.REVOKED_GROUP_MESSAGES(),
+                message = buildGroupKickMessage(
+                    groupAccountId.hexString,
+                    pendingRemovals.map { it.first },
+                    configs.groupKeys,
+                    adminKey
+                ),
+                auth = groupAuth,
+            )
+
+            // Call No 3. Conditionally send the `GroupUpdateDeleteMemberContent`
+            if (pendingRemovals.any { (member, status) -> member.shouldRemoveMessages(status) }) {
+                apis += storeSnodeMessageApiFactory.create(
+                    namespace = Namespace.GROUP_MESSAGES(),
+                    message = buildDeleteGroupMemberContentMessage(
+                        adminKey = adminKey,
+                        groupAccountId = groupAccountId.hexString,
+                        memberSessionIDs = pendingRemovals
+                            .asSequence()
+                            .filter { (member, status) -> member.shouldRemoveMessages(status) }
+                            .map { (member, _) -> member.accountId() },
+                    ),
+                    auth = groupAuth,
+                )
+            }
+
+            pendingRemovals to apis
+        }
+
+        if (pendingRemovals.isEmpty() || batchCalls.isEmpty()) {
+            return
+        }
+
+        val response = swarmApiExecutor.execute(
+            SwarmApiRequest(
+                swarmPubKeyHex = groupAccountId.hexString,
+                api = batchApiFactory.createFromApis(batchCalls)
+            )
+        )
+
+        val firstError = response.responses.firstOrNull { !it.isSuccessful }
+        check(firstError == null) {
+            "Error processing pending removals for group: code = ${firstError?.code}, body = ${firstError?.body}"
+        }
+
+        Log.d(TAG, "Essential steps for group removal are done")
+
+        // The essential part of the operation has been successful once we get to this point,
+        // now we can go ahead and update the configs
+        configFactory.withMutableGroupConfigs(groupAccountId) { configs ->
+            pendingRemovals.forEach { (member, _) ->
+                configs.groupMembers.erase(member.accountId())
+            }
+            configs.rekey()
+        }
+
+        configFactory.waitUntilGroupConfigsPushed(groupAccountId)
+
+        Log.d(TAG, "Group configs updated")
+
+        // Try to delete members' message. It's ok to fail as they will be re-tried in different
+        // cases (a.k.a the GroupUpdateDeleteMemberContent message handling) and could be by different admins.
+        val deletingMessagesForMembers =
+            pendingRemovals.filter { (member, status) -> member.shouldRemoveMessages(status) }
+        if (deletingMessagesForMembers.isNotEmpty()) {
+            val threadId = storage.getThreadId(Address.fromSerialized(groupAccountId.hexString))
+            if (threadId != null) {
+                val until = clock.currentTimeMillis()
+                for ((member, _) in deletingMessagesForMembers) {
+                    try {
+                        messageDataProvider.markUserMessagesAsDeleted(
+                            threadId = threadId,
+                            until = until,
+                            sender = member.accountId(),
+                            displayedMessage = context.getString(R.string.deleteMessageDeletedGlobally)
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error deleting messages for removed member", e)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun buildDeleteGroupMemberContentMessage(
+        adminKey: ByteArray,
+        groupAccountId: String,
+        memberSessionIDs: Sequence<String>
+    ): SnodeMessage {
+        val timestamp = clock.currentTimeMillis()
+
+        return messageSender.buildWrappedMessageToSnode(
+            destination = Destination.ClosedGroup(groupAccountId),
+            message = GroupUpdated(
+                SessionProtos.GroupUpdateMessage.newBuilder()
+                    .setDeleteMemberContent(
+                        SessionProtos.GroupUpdateDeleteMemberContentMessage.newBuilder()
+                            .apply {
+                                for (id in memberSessionIDs) {
+                                    addMemberSessionIds(id)
+                                }
+                            }
+                            .setAdminSignature(
+                                ByteString.copyFrom(
+                                    ED25519.sign(
+                                        message = MessageAuthentication.buildDeleteMemberContentSignature(
+                                            memberIds = memberSessionIDs.map { AccountId(it) }
+                                                .toList(),
+                                            messageHashes = emptyList(),
+                                            timestamp = timestamp,
+                                        ),
+                                        ed25519PrivateKey = adminKey
+                                    )
+                                )
+                            )
+                    )
+                    .build()
+            ).apply { sentTimestamp = timestamp },
+            isSyncMessage = false
+        )
+    }
+
+    private fun buildGroupKickMessage(
+        groupAccountId: String,
+        pendingRemovals: List<GroupMember>,
+        keys: ReadableGroupKeysConfig,
+        adminKey: ByteArray
+    ) = SnodeMessage(
+        recipient = groupAccountId,
+        data = Base64.encodeBytes(
+            MultiEncrypt.encryptForMultipleSimple(
+                messages = Array(pendingRemovals.size) {
+                    AccountId(pendingRemovals[it].accountId()).pubKeyBytes
+                        .plus(keys.currentGeneration().toString().toByteArray())
+                },
+                recipients = Array(pendingRemovals.size) {
+                    AccountId(pendingRemovals[it].accountId()).pubKeyBytes
+                },
+                ed25519SecretKey = adminKey,
+                domain = MultiEncrypt.KICKED_DOMAIN
+            )
+        ),
+        ttl = SnodeMessage.DEFAULT_TTL,
+        timestamp = clock.currentTimeMillis()
+    )
+}

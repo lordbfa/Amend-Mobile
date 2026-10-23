@@ -1,0 +1,39 @@
+package org.thoughtcrime.securesms.onboarding
+
+import androidx.annotation.StringRes
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import org.session.libsession.utilities.Phrase
+import network.loki.messenger.R
+import org.thoughtcrime.securesms.ui.dialog.AlertDialog
+import org.thoughtcrime.securesms.ui.dialog.DialogButtonData
+import org.thoughtcrime.securesms.ui.GetString
+import org.thoughtcrime.securesms.ui.theme.LocalColors
+
+@Composable
+fun OnboardingBackPressAlertDialog(
+    dismissDialog: () -> Unit,
+    @StringRes textId: Int,
+    quit: () -> Unit
+) {
+    val c = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = dismissDialog,
+        title = stringResource(R.string.warning),
+        text = stringResource(textId).let { txt ->
+            Phrase.from(txt).format().toString()
+        },
+        buttons = listOf(
+            DialogButtonData(
+                text = GetString(stringResource(id = R.string.quitButton)),
+                color = LocalColors.current.danger,
+                onClick = quit
+            ),
+            DialogButtonData(
+                GetString(stringResource(R.string.cancel))
+            )
+        )
+    )
+}

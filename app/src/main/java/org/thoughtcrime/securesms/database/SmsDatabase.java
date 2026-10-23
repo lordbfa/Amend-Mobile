@@ -1,0 +1,759 @@
+/*
+ * Copyright (C) 2011 Whisper Systems
+ * Copyright (C) 2013 - 2017 Open Whisper Systems
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package org.thoughtcrime.securesms.database;
+
+import static org.thoughtcrime.securesms.database.MmsSmsColumns.Types.GROUP_UPDATE_MESSAGE_BIT;
+
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+
+import androidx.collection.ArraySet;
+import androidx.collection.MutableLongObjectMap;
+import androidx.sqlite.db.SupportSQLiteDatabase;
+
+import net.zetetic.database.sqlcipher.SQLiteDatabase;
+
+import org.json.JSONArray;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.session.libsession.messaging.calls.CallMessageType;
+import org.session.libsession.messaging.messages.signal.IncomingTextMessage;
+import org.session.libsession.messaging.messages.signal.OutgoingTextMessage;
+import org.session.libsession.network.SnodeClock;
+import org.session.libsession.utilities.Address;
+import org.session.libsession.utilities.recipients.Recipient;
+import org.session.libsignal.utilities.Log;
+import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
+import org.thoughtcrime.securesms.database.model.MessageChanges;
+import org.thoughtcrime.securesms.database.model.MessageId;
+import org.thoughtcrime.securesms.database.model.ReactionRecord;
+import org.thoughtcrime.securesms.database.model.SmsMessageRecord;
+import org.thoughtcrime.securesms.preferences.CommunicationPreferences;
+import org.thoughtcrime.securesms.preferences.PreferenceStorage;
+import org.thoughtcrime.securesms.pro.ProFeatureExtKt;
+import org.thoughtcrime.securesms.pro.ProSendStats;
+import org.thoughtcrime.securesms.pro.db.ProDatabase;
+
+import java.io.Closeable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+
+import javax.inject.Inject;
+import javax.inject.Provider;
+import javax.inject.Singleton;
+
+import dagger.Lazy;
+import dagger.hilt.android.qualifiers.ApplicationContext;
+import kotlin.Unit;
+import kotlin.collections.ArraysKt;
+import kotlinx.coroutines.channels.BufferOverflow;
+import kotlinx.coroutines.flow.MutableSharedFlow;
+import kotlinx.coroutines.flow.SharedFlow;
+import kotlinx.coroutines.flow.SharedFlowKt;
+import network.loki.messenger.libsession_util.protocol.ProFeature;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * Database for storage of SMS messages.
+ *
+ * @author Moxie Marlinspike
+ */
+@Singleton
+public class SmsDatabase extends MessagingDatabase {
+
+  private static final String TAG = SmsDatabase.class.getSimpleName();
+
+  public  static final String TABLE_NAME         = "sms";
+  public  static final String PERSON             = "person";
+          static final String DATE_RECEIVED      = "date";
+          static final String DATE_SENT          = "date_sent";
+  @Deprecated(forRemoval = true)
+  public  static final String PROTOCOL           = "protocol";
+  public  static final String STATUS             = "status";
+  public  static final String TYPE               = "type";
+    @Deprecated(forRemoval = true)
+  public  static final String REPLY_PATH_PRESENT = "reply_path_present";
+  public  static final String SUBJECT            = "subject";
+  @Deprecated(forRemoval = true)
+  public  static final String SERVICE_CENTER     = "service_center";
+
+  private static final String IS_DELETED_COLUMN_DEF = IS_DELETED + " GENERATED ALWAYS AS ((" + TYPE +
+          " & " + Types.BASE_TYPE_MASK + ") IN (" + Types.BASE_DELETED_OUTGOING_TYPE + ", " + Types.BASE_DELETED_INCOMING_TYPE +")) VIRTUAL";
+
+  public static final String CREATE_TABLE = "CREATE TABLE " + TABLE_NAME + " (" + ID + " integer PRIMARY KEY, "                +
+    THREAD_ID + " INTEGER, " + ADDRESS + " TEXT, " + ADDRESS_DEVICE_ID + " INTEGER DEFAULT 1, " + PERSON + " INTEGER, " +
+    DATE_RECEIVED  + " INTEGER, " + DATE_SENT + " INTEGER, " + PROTOCOL + " INTEGER, " + READ + " INTEGER DEFAULT 0, " +
+    STATUS + " INTEGER DEFAULT -1," + TYPE + " INTEGER, " + REPLY_PATH_PRESENT + " INTEGER, " +
+    DELIVERY_RECEIPT_COUNT + " INTEGER DEFAULT 0," + SUBJECT + " TEXT, " + BODY + " TEXT, " +
+    MISMATCHED_IDENTITIES + " TEXT DEFAULT NULL, " + SERVICE_CENTER + " TEXT, " + SUBSCRIPTION_ID + " INTEGER DEFAULT -1, " +
+    EXPIRES_IN + " INTEGER DEFAULT 0, " + EXPIRE_STARTED + " INTEGER DEFAULT 0, " + NOTIFIED + " DEFAULT 0, " +
+    READ_RECEIPT_COUNT + " INTEGER DEFAULT 0, " + UNIDENTIFIED + " INTEGER DEFAULT 0, " + IS_DELETED_COLUMN_DEF +");";
+
+
+  public static final String[] CREATE_INDEXS = {
+    "CREATE INDEX IF NOT EXISTS sms_thread_id_index ON " + TABLE_NAME + " (" + THREAD_ID + ");",
+    "CREATE INDEX IF NOT EXISTS sms_read_index ON " + TABLE_NAME + " (" + READ + ");",
+    "CREATE INDEX IF NOT EXISTS sms_read_and_notified_and_thread_id_index ON " + TABLE_NAME + "(" + READ + "," + NOTIFIED + ","  + THREAD_ID + ");",
+    "CREATE INDEX IF NOT EXISTS sms_type_index ON " + TABLE_NAME + " (" + TYPE + ");",
+    "CREATE INDEX IF NOT EXISTS sms_date_sent_index ON " + TABLE_NAME + " (" + DATE_SENT + ");",
+    "CREATE INDEX IF NOT EXISTS sms_thread_date_index ON " + TABLE_NAME + " (" + THREAD_ID + ", " + DATE_RECEIVED + ");"
+  };
+
+  public static final String CREATE_REACTIONS_UNREAD_COMMAND = "ALTER TABLE "+ TABLE_NAME + " " +
+          "ADD COLUMN " + REACTIONS_UNREAD + " INTEGER DEFAULT 0;";
+
+  public static final String CREATE_HAS_MENTION_COMMAND = "ALTER TABLE "+ TABLE_NAME + " " +
+          "ADD COLUMN " + HAS_MENTION + " INTEGER DEFAULT 0;";
+
+  private static final String COMMA_SEPARATED_COLUMNS = ID + ", " + THREAD_ID + ", " + ADDRESS + ", " + ADDRESS_DEVICE_ID + ", " + PERSON + ", " + DATE_RECEIVED + ", " + DATE_SENT + ", " + PROTOCOL + ", " + READ + ", " + STATUS + ", " + TYPE + ", " + REPLY_PATH_PRESENT + ", " + DELIVERY_RECEIPT_COUNT + ", " + SUBJECT + ", " + BODY + ", " + MISMATCHED_IDENTITIES + ", " + SERVICE_CENTER + ", " + SUBSCRIPTION_ID + ", " + EXPIRES_IN + ", " + EXPIRE_STARTED + ", " + NOTIFIED + ", " + READ_RECEIPT_COUNT + ", " + UNIDENTIFIED + ", " + REACTIONS_UNREAD + ", " + HAS_MENTION;
+  private static final String TEMP_TABLE_NAME = "TEMP_TABLE_NAME";
+
+  public static final String[] ADD_AUTOINCREMENT = new String[]{
+          "ALTER TABLE " + TABLE_NAME + " RENAME TO " + TEMP_TABLE_NAME,
+          CREATE_TABLE,
+          CREATE_REACTIONS_UNREAD_COMMAND,
+          CREATE_HAS_MENTION_COMMAND,
+          "INSERT INTO " + TABLE_NAME + " (" + COMMA_SEPARATED_COLUMNS + ") SELECT " + COMMA_SEPARATED_COLUMNS + " FROM " + TEMP_TABLE_NAME,
+          "DROP TABLE " + TEMP_TABLE_NAME
+  };
+
+  public static String ADD_LAST_MESSAGE_INDEX = "CREATE INDEX sms_thread_id_date_sent_index ON " + TABLE_NAME + " (" + THREAD_ID + "," +  DATE_SENT + ")";
+
+  public static final String ADD_IS_DELETED_COLUMN = "ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + IS_DELETED_COLUMN_DEF;
+  public static final String ADD_IS_GROUP_UPDATE_COLUMN = "ALTER TABLE " + TABLE_NAME +" ADD COLUMN " + IS_GROUP_UPDATE +" BOOL GENERATED ALWAYS AS (" + TYPE +" & " + GROUP_UPDATE_MESSAGE_BIT +" != 0) VIRTUAL";
+
+  public static void addProFeatureColumns(SupportSQLiteDatabase db) {
+    db.execSQL("ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + PRO_MESSAGE_FEATURES + " INTEGER NOT NULL DEFAULT 0");
+    db.execSQL("ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + PRO_PROFILE_FEATURES + " INTEGER NOT NULL DEFAULT 0");
+  }
+
+  public static void addOutgoingColumn(SupportSQLiteDatabase db) {
+      final String allOutgoingMessageTypeSet = ArraysKt.joinToString(
+              Types.OUTGOING_MESSAGE_TYPES,
+              /* separator */ ",",
+              /* prefix */    "(",
+              /* postfix */   ")",
+              /* limit */     -1,
+              /* truncated */ "",
+              /* transform */ (value) -> Long.toString(value)
+      );
+
+      db.execSQL("ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + IS_OUTGOING +
+              " BOOLEAN GENERATED ALWAYS AS ((" + TYPE + " & " + MmsSmsColumns.Types.BASE_TYPE_MASK +") IN " + allOutgoingMessageTypeSet + ") VIRTUAL");
+  }
+
+  private static final EarlyReceiptCache earlyDeliveryReceiptCache = new EarlyReceiptCache();
+  private static final EarlyReceiptCache earlyReadReceiptCache     = new EarlyReceiptCache();
+
+  private final RecipientRepository recipientRepository;
+  private final SnodeClock snodeClock;
+  private final Lazy<@NonNull ReactionDatabase> reactionDatabase;
+  final Provider<@NonNull PreferenceStorage> prefs;
+  final Provider<@NonNull ProDatabase> proDatabase;
+
+  final MutableSharedFlow<MessageChanges> changeNotification
+          = SharedFlowKt.MutableSharedFlow(0, 24, BufferOverflow.DROP_OLDEST);
+
+  @Inject
+  public SmsDatabase(@ApplicationContext Context context,
+                     Provider<SQLCipherOpenHelper> databaseHelper,
+                     RecipientRepository recipientRepository,
+                     SnodeClock snodeClock,
+                     Lazy<@NonNull ReactionDatabase> reactionDatabase,
+                     Provider<@NonNull PreferenceStorage> prefs,
+                     Provider<@NonNull ProDatabase> proDatabase) {
+    super(context, databaseHelper);
+    this.recipientRepository = recipientRepository;
+    this.snodeClock = snodeClock;
+    this.reactionDatabase = reactionDatabase;
+    this.prefs = prefs;
+    this.proDatabase = proDatabase;
+  }
+
+  public SharedFlow<MessageChanges> getChangeNotification() {
+    return changeNotification;
+  }
+
+  protected String getTableName() {
+    return TABLE_NAME;
+  }
+
+  private void updateTypeBitmask(long id, long maskOff, long maskOn) {
+    Log.i("MessageDatabase", "Updating ID: " + id + " to base type: " + maskOn);
+
+    SQLiteDatabase db = getWritableDatabase();
+    try (final Cursor cursor = db.rawQuery("UPDATE " + TABLE_NAME +
+               " SET " + TYPE + " = (" + TYPE + " & " + (Types.TOTAL_MASK - maskOff) + " | " + maskOn + " )" +
+               " WHERE " + ID + " = ?" +
+               " RETURNING " + THREAD_ID, id)) {
+        if (cursor.moveToNext()) {
+            long threadId = cursor.getLong(0);
+            changeNotification.tryEmit(new MessageChanges(
+                    MessageChanges.ChangeType.Updated,
+                    new MessageId(id, false),
+                    threadId
+            ));
+        }
+    }
+  }
+
+  public int getMessageCountForThread(long threadId) {
+    SQLiteDatabase db = getReadableDatabase();
+
+    try (Cursor cursor = db.query(TABLE_NAME, new String[]{"COUNT(*)"}, THREAD_ID + " = ?",
+            new String[]{threadId + ""}, null, null, null)) {
+
+          if (cursor != null && cursor.moveToFirst())
+              return cursor.getInt(0);
+    }
+
+    return 0;
+  }
+
+  @Override
+  public void markAsSent(long id, boolean isSent) {
+    // Read BEFORE the update: this is the only moment that can tell a message's first success from a
+    // later repeat, and the update overwrites it.
+    final ProSendStatRow.State beforeSending = readProSendStatState(id);
+
+    updateTypeBitmask(id, Types.BASE_TYPE_MASK, Types.BASE_SENT_TYPE | (isSent ? Types.PUSH_MESSAGE_BIT | Types.SECURE_MESSAGE_BIT : 0));
+
+    if (beforeSending != null) {
+      ProSendStats.INSTANCE.recordSendSuccess(proDatabase.get(), beforeSending.getWasAlreadySent(), beforeSending.getFeatures());
+    }
+  }
+
+  /** See {@link ProSendStatRow}; this only supplies the columns. */
+  private ProSendStatRow.@Nullable State readProSendStatState(long id) {
+    try (final Cursor cursor = getReadableDatabase().rawQuery(
+            "SELECT " + TYPE + ", " + PRO_MESSAGE_FEATURES + ", " + PRO_PROFILE_FEATURES +
+                    " FROM " + TABLE_NAME + " WHERE " + ID + " = ?", id)) {
+      if (!cursor.moveToFirst()) return null;
+
+      return ProSendStatRow.from(cursor.getLong(0), cursor.getLong(1), cursor.getLong(2));
+    }
+  }
+
+  public void markAsSending(long id) {
+    updateTypeBitmask(id, Types.BASE_TYPE_MASK, Types.BASE_SENDING_TYPE);
+  }
+
+  @Override
+  public void markAsSyncing(long id) {
+    updateTypeBitmask(id, Types.BASE_TYPE_MASK, Types.BASE_SYNCING_TYPE);
+  }
+
+  @Override
+  public void markAsResyncing(long id) {
+    updateTypeBitmask(id, Types.BASE_TYPE_MASK, Types.BASE_RESYNCING_TYPE);
+  }
+
+  @Override
+  public void markAsSyncFailed(long id) {
+    updateTypeBitmask(id, Types.BASE_TYPE_MASK, Types.BASE_SYNC_FAILED_TYPE);
+  }
+
+  @Override
+  public void markAsDeleted(long messageId, boolean isOutgoing, String displayedMessage) {
+    SQLiteDatabase database     = getWritableDatabase();
+    ContentValues contentValues = new ContentValues();
+    contentValues.put(READ, 1);
+    contentValues.put(BODY, displayedMessage);
+    contentValues.put(HAS_MENTION, 0);
+    contentValues.put(STATUS, Status.STATUS_NONE);
+
+    database.update(TABLE_NAME, contentValues, ID_WHERE, new String[] {String.valueOf(messageId)});
+
+    // We are relying on updateTypeBitmask to push change notification
+    updateTypeBitmask(messageId, Types.BASE_TYPE_MASK,
+            isOutgoing? MmsSmsColumns.Types.BASE_DELETED_OUTGOING_TYPE : MmsSmsColumns.Types.BASE_DELETED_INCOMING_TYPE
+    );
+  }
+
+  @Override
+  public void markExpireStarted(long id, long startedAtTimestamp) {
+    SQLiteDatabase db = getWritableDatabase();
+    try (final Cursor cursor = db.rawQuery("UPDATE " + TABLE_NAME + " SET " + EXPIRE_STARTED + " = ? " +
+                    "WHERE " + ID + " = ? RETURNING " + THREAD_ID, startedAtTimestamp, id)) {
+      if (cursor.moveToNext()) {
+        long threadId = cursor.getLong(0);
+        changeNotification.tryEmit(new MessageChanges(
+                MessageChanges.ChangeType.Updated,
+                new MessageId(id, false),
+                threadId
+        ));
+      }
+    }
+  }
+
+  public void markAsSentFailed(long id) {
+    updateTypeBitmask(id, Types.BASE_TYPE_MASK, Types.BASE_SENT_FAILED_TYPE);
+  }
+
+  public boolean isOutgoingMessage(long id) {
+    SQLiteDatabase database     = getReadableDatabase();
+    Cursor         cursor       = null;
+    boolean        isOutgoing   = false;
+
+    try {
+      cursor = database.query(TABLE_NAME, new String[] { ID, THREAD_ID, ADDRESS, TYPE },
+               ID + " = ?", new String[] { String.valueOf(id) },
+               null, null, null, null);
+
+      while (cursor.moveToNext()) {
+        if (Types.isOutgoingMessageType(cursor.getLong(cursor.getColumnIndexOrThrow(TYPE)))) {
+          isOutgoing = true;
+        }
+      }
+    } finally {
+      if (cursor != null) cursor.close();
+    }
+
+    return isOutgoing;
+  }
+
+  public boolean isDeletedMessage(long id) {
+    SQLiteDatabase database     = getReadableDatabase();
+    Cursor         cursor       = null;
+    boolean        isDeleted   = false;
+
+    try {
+      cursor = database.query(TABLE_NAME, new String[] { ID, THREAD_ID, ADDRESS, TYPE },
+              ID + " = ?", new String[] { String.valueOf(id) },
+              null, null, null, null);
+
+      while (cursor.moveToNext()) {
+        if (Types.isDeletedMessage(cursor.getLong(cursor.getColumnIndexOrThrow(TYPE)))) {
+          isDeleted = true;
+        }
+      }
+    } finally {
+      if (cursor != null) cursor.close();
+    }
+
+    return isDeleted;
+  }
+
+  @Override
+  public String getTypeColumn() {
+    return TYPE;
+  }
+
+  public void incrementReceiptCount(SyncMessageId messageId, boolean deliveryReceipt, boolean readReceipt) {
+    SQLiteDatabase database     = getWritableDatabase();
+    Cursor         cursor       = null;
+    boolean        foundMessage = false;
+
+    try {
+      cursor = database.query(TABLE_NAME, new String[] {ID, THREAD_ID, ADDRESS, TYPE},
+                              DATE_SENT + " = ?", new String[] {String.valueOf(messageId.getTimetamp())},
+                              null, null, null, null);
+
+      while (cursor.moveToNext()) {
+        if (Types.isOutgoingMessageType(cursor.getLong(cursor.getColumnIndexOrThrow(TYPE)))) {
+          Address theirAddress = messageId.getAddress();
+          Address ourAddress   = Address.fromSerialized(cursor.getString(cursor.getColumnIndexOrThrow(ADDRESS)));
+          String  columnName   = deliveryReceipt ? DELIVERY_RECEIPT_COUNT : READ_RECEIPT_COUNT;
+
+          if (ourAddress.equals(theirAddress)) {
+            long threadId = cursor.getLong(cursor.getColumnIndexOrThrow(THREAD_ID));
+            long id = cursor.getLong(cursor.getColumnIndexOrThrow(ID));
+            database.execSQL("UPDATE " + TABLE_NAME +
+                             " SET " + columnName + " = " + columnName + " + 1 WHERE " +
+                             ID + " = ?",
+                             new String[] {String.valueOf(id)});
+
+            changeNotification.tryEmit(new MessageChanges(
+                    MessageChanges.ChangeType.Updated,
+                    new MessageId(id, false),
+                    threadId
+            ));
+            foundMessage = true;
+          }
+        }
+      }
+
+      if (!foundMessage) {
+        if (deliveryReceipt) earlyDeliveryReceiptCache.increment(messageId.getTimetamp(), messageId.getAddress());
+        if (readReceipt)     earlyReadReceiptCache.increment(messageId.getTimetamp(), messageId.getAddress());
+      }
+
+    } finally {
+      if (cursor != null)
+        cursor.close();
+    }
+  }
+
+  public void updateSentTimestamp(long messageId, long newTimestamp) {
+    SQLiteDatabase db = getWritableDatabase();
+    try (final Cursor cursor = db.rawQuery("UPDATE " + TABLE_NAME + " SET " + DATE_SENT + " = ? " +
+            "WHERE " + ID + " = ? RETURNING " + THREAD_ID, newTimestamp, messageId)) {
+        if (cursor.moveToNext()) {
+          long threadId = cursor.getLong(0);
+          changeNotification.tryEmit(new MessageChanges(
+                  MessageChanges.ChangeType.Updated,
+                  new MessageId(messageId, false),
+                  threadId
+          ));
+        }
+    }
+  }
+
+  protected @Nullable InsertResult insertMessageInbox(IncomingTextMessage message, long threadId, long type, long serverTimestamp) {
+    boolean    unread     = (message.isSecureMessage() || message.isGroupMessage() || message.isUnreadCallMessage());
+
+    if (message.isSecureMessage()) {
+      type |= Types.SECURE_MESSAGE_BIT;
+    } else if (message.isGroupMessage()) {
+      type |= Types.SECURE_MESSAGE_BIT;
+      if (message.isGroupUpdateMessage()) type |= GROUP_UPDATE_MESSAGE_BIT;
+    }
+
+    if (message.getPush()) type |= Types.PUSH_MESSAGE_BIT;
+
+    if (message.isOpenGroupInvitation()) type |= Types.OPEN_GROUP_INVITATION_BIT;
+
+    CallMessageType callMessageType = message.getCallMessageType();
+    if (callMessageType != null) {
+      type |= getCallMessageTypeMask(callMessageType);
+    }
+
+    ContentValues values = new ContentValues(6);
+    values.put(ADDRESS, message.getSender().toString());
+    // In open groups messages should be sorted by their server timestamp
+    long receivedTimestamp = serverTimestamp;
+    if (serverTimestamp == 0) { receivedTimestamp = message.getSentTimestampMillis(); }
+    values.put(DATE_RECEIVED, receivedTimestamp); // Loki - This is important due to how we handle GIFs
+    values.put(DATE_SENT, message.getSentTimestampMillis());
+    values.put(READ, unread ? 0 : 1);
+    values.put(EXPIRES_IN, message.getExpiresInMillis());
+    values.put(EXPIRE_STARTED, message.getExpireStartedAt());
+    values.put(HAS_MENTION, message.getHasMention());
+    values.put(BODY, message.getMessage());
+    values.put(TYPE, type);
+    values.put(THREAD_ID, threadId);
+    values.put(PRO_MESSAGE_FEATURES, ProFeatureExtKt.toProMessageBitSetValue(message.getProFeatures()));
+    values.put(PRO_PROFILE_FEATURES, ProFeatureExtKt.toProProfileBitSetValue(message.getProFeatures()));
+
+    if (message.getPush() && isDuplicate(message, threadId)) {
+      Log.w(TAG, "Duplicate message (" + message.getSentTimestampMillis() + "), ignoring...");
+      return null;
+    } else {
+      SQLiteDatabase db        = getWritableDatabase();
+      long           messageId = db.insert(TABLE_NAME, null, values);
+
+      changeNotification.tryEmit(new MessageChanges(
+              MessageChanges.ChangeType.Added,
+              new MessageId(messageId, false),
+              threadId
+      ));
+
+      return new InsertResult(messageId, threadId);
+    }
+  }
+
+  private long getCallMessageTypeMask(CallMessageType callMessageType) {
+    switch (callMessageType) {
+      case CALL_OUTGOING:
+        return Types.OUTGOING_CALL_TYPE;
+      case CALL_INCOMING:
+        return Types.INCOMING_CALL_TYPE;
+      case CALL_MISSED:
+        return Types.MISSED_CALL_TYPE;
+      case CALL_FIRST_MISSED:
+        return Types.FIRST_MISSED_CALL_TYPE;
+      default:
+        return 0;
+    }
+  }
+
+  public @Nullable InsertResult insertMessageInbox(IncomingTextMessage message, long threadId) {
+    return insertMessageInbox(message, threadId , Types.BASE_INBOX_TYPE, 0);
+  }
+
+  public @Nullable InsertResult insertCallMessage(IncomingTextMessage message, long threadId) {
+    return insertMessageInbox(message, threadId, 0, 0);
+  }
+
+  public @Nullable InsertResult insertMessageInbox(IncomingTextMessage message, long threadId, long serverTimestamp) {
+    return insertMessageInbox(message,  threadId, Types.BASE_INBOX_TYPE, serverTimestamp);
+  }
+
+  public @Nullable InsertResult insertMessageOutbox(long threadId, OutgoingTextMessage message, long serverTimestamp) {
+    long messageId = insertMessageOutbox(threadId, message, false, serverTimestamp);
+    if (messageId == -1) {
+      return null;
+    }
+    markAsSent(messageId, true);
+    return new InsertResult(messageId, threadId);
+  }
+
+  public long insertMessageOutbox(long threadId, OutgoingTextMessage message,
+                                  boolean forceSms, long date)
+  {
+    long type = Types.BASE_SENDING_TYPE | Types.SECURE_MESSAGE_BIT | Types.PUSH_MESSAGE_BIT;
+
+    if (forceSms)                        type |= Types.MESSAGE_FORCE_SMS_BIT;
+    if (message.isOpenGroupInvitation()) type |= Types.OPEN_GROUP_INVITATION_BIT;
+
+    Address            address               = message.getRecipient();
+    Map<Address, Long> earlyDeliveryReceipts = earlyDeliveryReceiptCache.remove(date);
+    Map<Address, Long> earlyReadReceipts     = earlyReadReceiptCache.remove(date);
+
+    ContentValues contentValues = new ContentValues();
+    contentValues.put(ADDRESS, address.toString());
+    contentValues.put(THREAD_ID, threadId);
+    contentValues.put(BODY, message.getMessage());
+    contentValues.put(DATE_RECEIVED, snodeClock.currentTimeMillis());
+    contentValues.put(DATE_SENT, message.getSentTimestampMillis());
+    contentValues.put(READ, 1);
+    contentValues.put(TYPE, type);
+    contentValues.put(EXPIRES_IN, message.getExpiresInMillis());
+    contentValues.put(EXPIRE_STARTED, message.getExpireStartedAtMillis());
+    contentValues.put(DELIVERY_RECEIPT_COUNT, earlyDeliveryReceipts.values().stream().mapToLong(Long::longValue).sum());
+    contentValues.put(READ_RECEIPT_COUNT, earlyReadReceipts.values().stream().mapToLong(Long::longValue).sum());
+    contentValues.put(PRO_MESSAGE_FEATURES, ProFeatureExtKt.toProMessageBitSetValue(message.getProFeatures()));
+    contentValues.put(PRO_PROFILE_FEATURES, ProFeatureExtKt.toProProfileBitSetValue(message.getProFeatures()));
+
+    if (isDuplicate(message, threadId)) {
+      Log.w(TAG, "Duplicate message (" + message.getSentTimestampMillis() + "), ignoring...");
+      return -1;
+    }
+
+    final long id = getWritableDatabase().insert(TABLE_NAME, ADDRESS, contentValues);
+
+    changeNotification.tryEmit(new MessageChanges(
+            MessageChanges.ChangeType.Added,
+            new MessageId(id, false),
+            threadId
+    ));
+
+    return id;
+  }
+  @Override
+  public List<Long> getExpiredMessageIDs(long nowMills) {
+    String query = "SELECT " + ID + " FROM " + TABLE_NAME +
+            " WHERE " + EXPIRES_IN + " > 0 AND " + EXPIRE_STARTED + " > 0 AND " + EXPIRE_STARTED + " + " + EXPIRES_IN + " <= ?";
+
+    try (final Cursor cursor = getReadableDatabase().rawQuery(query, nowMills)) {
+      List<Long> result = new ArrayList<>(cursor.getCount());
+      while (cursor.moveToNext()) {
+          result.add(cursor.getLong(0));
+      }
+
+      return result;
+    }
+  }
+
+  /**
+   * @return the next expiring timestamp for messages that have started expiring. 0 if no messages are expiring.
+   */
+  @Override
+  public long getNextExpiringTimestamp() {
+    String query = "SELECT MIN(" + EXPIRE_STARTED + " + " + EXPIRES_IN + ") FROM " + TABLE_NAME +
+            " WHERE " + EXPIRES_IN + " > 0 AND " + EXPIRE_STARTED + " > 0";
+
+    try (final Cursor cursor = getReadableDatabase().rawQuery(query)) {
+      if (cursor.moveToFirst()) {
+        return cursor.getLong(0);
+      } else {
+        return 0L;
+      }
+    }
+  }
+
+    @Override
+  public void deleteMessage(long messageId) {
+    doDeleteMessages(ID + " = ?", messageId);
+  }
+
+  @Override
+  public void deleteMessages(Collection<Long> messageIds) {
+      doDeleteMessages(
+              ID + " IN (SELECT value FROM json_each(?))",
+            new JSONArray(messageIds).toString()
+    );
+  }
+
+  @Override
+  public void updateThreadId(long fromId, long toId) {
+    SmsDatabaseExtKt.updateThreadId(this, fromId, toId);
+  }
+
+  private boolean isDuplicate(IncomingTextMessage message, long threadId) {
+    SQLiteDatabase database = getReadableDatabase();
+    Cursor         cursor   = database.query(TABLE_NAME, null, DATE_SENT + " = ? AND " + ADDRESS + " = ? AND " + THREAD_ID + " = ?",
+                                             new String[]{String.valueOf(message.getSentTimestampMillis()), message.getSender().toString(), String.valueOf(threadId)},
+                                             null, null, null, "1");
+
+    try {
+      return cursor != null && cursor.moveToFirst();
+    } finally {
+      if (cursor != null) cursor.close();
+    }
+  }
+
+  private boolean isDuplicate(OutgoingTextMessage message, long threadId) {
+    SQLiteDatabase database = getReadableDatabase();
+    Cursor         cursor   = database.query(TABLE_NAME, null, DATE_SENT + " = ? AND " + ADDRESS + " = ? AND " + THREAD_ID + " = ?",
+            new String[]{String.valueOf(message.getSentTimestampMillis()), message.getRecipient().toString(), String.valueOf(threadId)},
+            null, null, null, "1");
+
+    try {
+      return cursor != null && cursor.moveToFirst();
+    } finally {
+      if (cursor != null) cursor.close();
+    }
+  }
+
+  private void doDeleteMessages(@NonNull final String where, @Nullable final Object...args) {
+    final String sql = "DELETE FROM " + TABLE_NAME + " WHERE " + where + " RETURNING " + ID + "," + THREAD_ID;
+    final MutableLongObjectMap<List<MessageId>> deletedByThreadIDs = new MutableLongObjectMap<>();
+
+    try (final Cursor cursor = getWritableDatabase().rawQuery(sql, args)) {
+      while (cursor.moveToNext()) {
+        deletedByThreadIDs.getOrPut(cursor.getLong(1), ArrayList::new)
+                .add(new MessageId(cursor.getLong(0), false));
+      }
+    }
+
+    deletedByThreadIDs.forEach((threadId, deleted) -> {
+      changeNotification.tryEmit(new MessageChanges(
+              MessageChanges.ChangeType.Deleted,
+              deleted,
+              threadId
+      ));
+
+      return Unit.INSTANCE;
+    });
+  }
+
+  void deleteMessagesFrom(long threadId, String fromUser) {
+    doDeleteMessages(
+            THREAD_ID + " = ? AND " + ADDRESS + " = ?",
+        threadId, fromUser
+    );
+  }
+
+  void deleteMessagesInThreadBeforeDate(long threadId, long date) {
+    doDeleteMessages(THREAD_ID + " = ? AND " + DATE_SENT + " < ?", threadId, date);
+  }
+
+  void deleteThread(long threadId) {
+    doDeleteMessages(THREAD_ID + " = ?", threadId);
+  }
+
+  public void deleteThreads(@NonNull Collection<Long> threadIds) {
+    doDeleteMessages(THREAD_ID + " IN (SELECT value FROM json_each(?))",
+            new JSONArray(threadIds).toString());
+  }
+
+
+  public static class Status {
+    public static final int STATUS_NONE     = -1;
+    public static final int STATUS_COMPLETE  = 0;
+    public static final int STATUS_PENDING   = 0x20;
+    public static final int STATUS_FAILED    = 0x40;
+  }
+
+  public Reader readerFor(Cursor cursor) {
+    return new Reader(cursor);
+  }
+
+  public class Reader implements Closeable {
+
+    private final Cursor cursor;
+
+    public Reader(Cursor cursor) {
+      this.cursor = cursor;
+    }
+
+    public SmsMessageRecord getNext() {
+      if (cursor == null || !cursor.moveToNext())
+        return null;
+
+      return getCurrent();
+    }
+
+    public int getCount() {
+      if (cursor == null) return 0;
+      else                return cursor.getCount();
+    }
+
+    public SmsMessageRecord getCurrent() {
+      long    messageId            = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.ID));
+      Address address              = Address.fromSerialized(cursor.getString(cursor.getColumnIndexOrThrow(SmsDatabase.ADDRESS)));
+      long    type                 = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.TYPE));
+      long    dateReceived         = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.NORMALIZED_DATE_RECEIVED));
+      long    dateSent             = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.NORMALIZED_DATE_SENT));
+      long    threadId             = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.THREAD_ID));
+      int     status               = cursor.getInt(cursor.getColumnIndexOrThrow(SmsDatabase.STATUS));
+      int     deliveryReceiptCount = cursor.getInt(cursor.getColumnIndexOrThrow(SmsDatabase.DELIVERY_RECEIPT_COUNT));
+      int     readReceiptCount     = cursor.getInt(cursor.getColumnIndexOrThrow(SmsDatabase.READ_RECEIPT_COUNT));
+      long    expiresIn            = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.EXPIRES_IN));
+      long    expireStarted        = cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.EXPIRE_STARTED));
+      String  body                 = cursor.getString(cursor.getColumnIndexOrThrow(SmsDatabase.BODY));
+      boolean hasMention           = cursor.getInt(cursor.getColumnIndexOrThrow(SmsDatabase.HAS_MENTION)) == 1;
+
+      final ArraySet<ProFeature> proFeatures = new ArraySet<>();
+      ProFeatureExtKt.toProMessageFeatures(cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.PRO_MESSAGE_FEATURES)), proFeatures);
+      ProFeatureExtKt.toProProfileFeatures(cursor.getLong(cursor.getColumnIndexOrThrow(SmsDatabase.PRO_PROFILE_FEATURES)), proFeatures);
+
+      if (!prefs.get().get(CommunicationPreferences.INSTANCE.getREAD_RECEIPT_ENABLED())) {
+        readReceiptCount = 0;
+      }
+
+      String serverHash = cursor.getString(cursor.getColumnIndexOrThrow(MmsSmsColumns.SERVER_HASH));
+
+      Recipient recipient  = recipientRepository.getRecipientSync(address);
+      List<ReactionRecord>      reactions  = reactionDatabase.get().getReactions(cursor);
+
+      return new SmsMessageRecord(
+              messageId,
+              body,
+              recipient,
+              recipient,
+              dateSent,
+              dateReceived,
+              deliveryReceiptCount,
+              type,
+              threadId,
+              status,
+              expiresIn,
+              expireStarted,
+              readReceiptCount,
+              reactions,
+              hasMention,
+              proFeatures,
+              serverHash);
+    }
+
+
+    @Override
+    public void close() {
+      if (cursor != null) {
+        cursor.close();
+      }
+    }
+  }
+
+}
