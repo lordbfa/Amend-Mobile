@@ -9,11 +9,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.amend.messenger.AmendApp
-import app.amend.messenger.data.AmendEvent
-import app.amend.messenger.data.MessageType
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.TimeUnit
 
 /**
@@ -49,22 +44,16 @@ object SyncScheduler {
 }
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result = coroutineScope {
+    override suspend fun doWork(): Result {
         val app = applicationContext as AmendApp
-        val repo = app.repository.value ?: return@coroutineScope Result.success()
-        if (AppVisibility.isForeground) return@coroutineScope Result.success() // live connection already running
-        val job = repo.events.onEach { e ->
-            when (e) {
-                is AmendEvent.MessageArrived -> Notifications.message(
-                    app, e.peer, repo.displayName(e.peer),
-                    if (e.message.type == MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text,
-                )
-                else -> Unit
-            }
-        }.launchIn(this)
+        val repo = app.repository.value ?: return Result.success()
+        // A live connection (open app or LiveService) is already receiving messages;
+        // syncing now would disconnect it at the end.
+        if (AppVisibility.isForeground || LiveService.isRunning || repo.isOnline()) return Result.success()
+        // Notifications are posted by AmendApp, which listens to the repository's events.
         runCatching { repo.syncOnce() }
-        job.cancel()
-        Result.success()
+        if (repo.eco.value.instantNotifications) LiveService.start(app)
+        return Result.success()
     }
 }
 

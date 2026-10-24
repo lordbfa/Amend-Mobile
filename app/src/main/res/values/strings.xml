@@ -5,4 +5,9 @@
     <string name="channel_forest">Forest growth</string>
     <string name="notif_tree_title">A %1$s joined your forest 🌳</string>
     <string name="notif_tree_text">Your forest now has %1$d trees.</string>
+    <string name="channel_connection">Background connection</string>
+    <string name="channel_connection_description">Shown while amend keeps a connection open for instant messages. You can hide it here.</string>
+    <string name="notif_live_title">amend is listening for messages 🌱</string>
+    <string name="notif_live_text">Tap to open. You can hide this in notification settings.</string>
+    <string name="notif_hidden">New message</string>
 </resources>

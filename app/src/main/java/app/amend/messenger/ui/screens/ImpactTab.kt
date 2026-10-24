@@ -52,7 +52,6 @@ import app.amend.messenger.net.RelayState
 import app.amend.messenger.ui.components.GlassCard
 import app.amend.messenger.ui.components.MyceliumNetwork
 import app.amend.messenger.ui.components.rememberHaptics
-import app.amend.messenger.util.SyncScheduler
 
 /** Independent reforestation charities. amend has no partnership with them; links open their own sites. */
 private val TREE_ORGS = listOf(
@@ -143,16 +142,17 @@ fun ImpactTab(repo: AmendRepository) {
         ) {
             haptics.tick()
             repo.setEfficiencyMode(it)
-            SyncScheduler.schedule(context, eco.carbonAwareSync, it)
+            (context.applicationContext as AmendApp).rescheduleBackground(repo)
         }
         SettingSwitch(
             "⚡ Carbon-aware sync",
-            "Background checks only while charging on Wi-Fi — like carbon-aware system updates. Messages still arrive instantly while amend is open.",
+            if (eco.instantNotifications) "Applies when Instant notifications (in the You tab) are off: background checks then only run while charging on Wi-Fi — like carbon-aware system updates."
+            else "Background checks only while charging on Wi-Fi — like carbon-aware system updates. Messages still arrive instantly while amend is open.",
             eco.carbonAwareSync,
         ) {
             haptics.tick()
             repo.setCarbonAwareSync(it)
-            SyncScheduler.schedule(context, it, eco.efficiencyMode)
+            (context.applicationContext as AmendApp).rescheduleBackground(repo)
         }
 
         // Real trees
