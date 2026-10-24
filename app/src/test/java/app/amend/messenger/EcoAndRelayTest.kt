@@ -110,7 +110,7 @@ class LiveRelayTest {
     }
 
     @Test
-    fun eachDefaultRelayAcceptsAndReturnsGiftWraps() = runBlocking {
+    fun eachDefaultRelayAcceptsAndReturnsGiftWraps(): Unit = runBlocking {
         assumeTrue(live)
         val alice = KeyPair.generate()
         val bob = KeyPair.generate()
@@ -140,7 +140,7 @@ class LiveRelayTest {
     }
 
     @Test
-    fun aliceSendsBobAMessageThroughTheNetwork() = runBlocking {
+    fun aliceSendsBobAMessageThroughTheNetwork(): Unit = runBlocking {
         assumeTrue(live)
         val dirA = Files.createTempDirectory("alice").toFile()
         val dirB = Files.createTempDirectory("bob").toFile()
