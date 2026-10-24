@@ -43,6 +43,8 @@ import androidx.compose.material.icons.rounded.Eco
 import androidx.compose.material.icons.rounded.Forest
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -119,6 +121,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(Tab.CHATS) }
     var showNewChat by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
     val context = LocalContext.current
     var toast by remember { mutableStateOf<String?>(null) }
@@ -176,7 +179,7 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
                 label = "tabs",
             ) { t ->
                 when (t) {
-                    Tab.CHATS -> ChatsTab(repo, openChat)
+                    Tab.CHATS -> ChatsTab(repo, openChat, onScan = { haptics.tap(); showScanner = true })
                     Tab.FOREST -> ForestTab(repo, openChat)
                     Tab.IMPACT -> ImpactTab(repo)
                     Tab.YOU -> YouTab(app, repo)
@@ -197,6 +200,22 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
                 ) { Text(toast ?: "", color = Color.White, style = MaterialTheme.typography.labelLarge) }
             }
         }
+    }
+
+    AnimatedVisibility(
+        visible = showScanner,
+        enter = fadeIn(tween(250)) + scaleIn(initialScale = 1.06f),
+        exit = fadeOut(tween(200)),
+    ) {
+        QrScannerScreen(
+            myKey = repo.me,
+            onFound = { pub ->
+                showScanner = false
+                repo.addContact(pub)
+                openChat(pub)
+            },
+            onClose = { showScanner = false },
+        )
     }
 
     if (showNewChat) {
@@ -247,7 +266,7 @@ private fun NewChatDialog(onDismiss: () -> Unit, onStart: (String, String) -> Un
 // ------------------------------------------------------------------- Chats tab
 
 @Composable
-private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit) {
+private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: () -> Unit) {
     val conversations by repo.conversations.collectAsStateWithLifecycle()
     val profiles by repo.profiles.collectAsStateWithLifecycle()
     val eco by repo.eco.collectAsStateWithLifecycle()
@@ -257,7 +276,7 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit) {
     val (accepted, requests) = sorted.partition { repo.isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-        item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size) }
+        item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan) }
         if (requests.isNotEmpty()) {
             item { SectionLabel("🌾 Message requests · ${requests.size}") }
             items(requests, key = { "r" + it.peer }) { c -> ConversationRow(repo, c, profiles[c.peer], openChat, isRequest = true) }
@@ -279,7 +298,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int) {
+private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int, onScan: () -> Unit) {
     val hour = rememberHourOfDay()
     val sway by rememberSway()
     val efficiency = LocalEfficiency.current
@@ -317,7 +336,15 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             treeCenter = Offset(size.width * 0.78f, ground - 40f)
             drawTree(app.amend.messenger.eco.Species.all[(trees) % app.amend.messenger.eco.Species.all.size], progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night)
         }
-        Column(Modifier.statusBarsPadding().padding(20.dp)) {
+        // QR scanner, top-right
+        IconButton(
+            onClick = onScan,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp)
+                .clip(CircleShape).background(Color(0x33FFFFFF)),
+        ) {
+            Icon(Icons.Rounded.QrCodeScanner, contentDescription = "Scan a QR code", tint = Color.White)
+        }
+        Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 20.dp, bottom = 20.dp, end = 72.dp)) {
             Text("$greeting${me?.name?.takeIf { it.isNotBlank() }?.let { ", $it" } ?: ""}", color = Color.White, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(4.dp))
             Text(
