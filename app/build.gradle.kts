@@ -12,8 +12,8 @@ android {
         applicationId = "app.amend.messenger"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "2.2.0"
+        versionCode = 6
+        versionName = "2.3.0"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -89,6 +89,9 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.zxing:core:3.5.3")
+    implementation("androidx.camera:camera-camera2:1.4.1")
+    implementation("androidx.camera:camera-lifecycle:1.4.1")
+    implementation("androidx.camera:camera-view:1.4.1")
     implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
 
     testImplementation("junit:junit:4.13.2")
