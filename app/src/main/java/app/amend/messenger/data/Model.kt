@@ -49,7 +49,11 @@ data class ChatMessage(
     }
 }
 
-/** Public profile (kind 0). amend adds a leaf avatar emoji and a colour hue. */
+/**
+ * Public profile (kind 0). amend adds a leaf avatar emoji, a colour hue and an
+ * optional tiny inline photo. [picture] is either a small `data:image/webp;base64,…`
+ * photo made by amend, or an https URL set by another Nostr app.
+ */
 data class Profile(
     val pubkey: String,
     val name: String = "",
@@ -57,19 +61,38 @@ data class Profile(
     val avatar: String = "",
     val hue: Float = -1f,
     val updatedAt: Long = 0,
+    val picture: String = "",
 ) {
     fun displayName(fallback: String): String = name.ifBlank { fallback }
 
     fun toMap(): Map<String, Any?> = linkedMapOf(
-        "pubkey" to pubkey, "name" to name, "about" to about, "avatar" to avatar, "hue" to hue.toDouble(), "updatedAt" to updatedAt,
+        "pubkey" to pubkey, "name" to name, "about" to about, "avatar" to avatar, "hue" to hue.toDouble(),
+        "updatedAt" to updatedAt, "picture" to picture,
     )
 
     /** Content of the kind-0 metadata event. */
-    fun toMetadataJson(): String = Json.write(
-        linkedMapOf("name" to name, "display_name" to name, "about" to about, "amend_avatar" to avatar, "amend_hue" to hue.toDouble())
-    )
+    fun toMetadataJson(): String {
+        val m = linkedMapOf<String, Any?>(
+            "name" to name, "display_name" to name, "about" to about,
+            "amend_avatar" to avatar, "amend_hue" to hue.toDouble(),
+        )
+        when {
+            // Inline photos live in amend's own field so other apps never choke on a data URI.
+            picture.startsWith(DATA_PREFIX) -> m["amend_picture"] = picture
+            picture.startsWith("https://") -> m["picture"] = picture
+        }
+        return Json.write(m)
+    }
 
     companion object {
+        const val DATA_PREFIX = "data:image/"
+        /** Inline photos larger than this are ignored (keeps profiles light for relays and data plans). */
+        const val MAX_INLINE_CHARS = 24_000
+
+        fun isValidPicture(p: String): Boolean =
+            (p.startsWith(DATA_PREFIX) && p.contains(";base64,") && p.length <= MAX_INLINE_CHARS) ||
+                (p.startsWith("https://") && p.length <= 2_000)
+
         fun fromMap(m: Map<String, Any?>) = Profile(
             pubkey = m.str("pubkey") ?: "",
             name = m.str("name") ?: "",
@@ -77,10 +100,13 @@ data class Profile(
             avatar = m.str("avatar") ?: "",
             hue = (m["hue"] as? Number)?.toFloat() ?: -1f,
             updatedAt = m.long("updatedAt") ?: 0,
+            picture = (m.str("picture") ?: "").takeIf { isValidPicture(it) } ?: "",
         )
 
         fun fromMetadata(pubkey: String, content: String, createdAt: Long): Profile? = try {
             val m = Json.parseObject(content)
+            val inline = m.str("amend_picture")?.takeIf { isValidPicture(it) && it.startsWith(DATA_PREFIX) }
+            val url = m.str("picture")?.trim()?.takeIf { isValidPicture(it) && it.startsWith("https://") }
             Profile(
                 pubkey = pubkey,
                 name = (m.str("display_name")?.takeIf { it.isNotBlank() } ?: m.str("name") ?: "").take(60),
@@ -88,6 +114,7 @@ data class Profile(
                 avatar = (m.str("amend_avatar") ?: "").take(8),
                 hue = (m["amend_hue"] as? Number)?.toFloat() ?: -1f,
                 updatedAt = createdAt,
+                picture = inline ?: url ?: "",
             )
         } catch (e: Exception) {
             null

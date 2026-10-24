@@ -250,6 +250,7 @@ class AmendRepository(
     /** Returns true if the message is new. */
     private suspend fun upsertMessage(message: ChatMessage, countUnread: Boolean): Boolean {
         var added = false
+        val isNewConversation = !_conversations.value.containsKey(message.peer)
         mutex.withLock {
             _conversations.update { all ->
                 added = false
@@ -282,6 +283,9 @@ class AmendRepository(
         }
         if (added && message.peer !in settings.accepted && message.fromMe) {
             accept(message.peer)
+        } else if (isNewConversation) {
+            // fetch the new person's public profile (name, photo) so requests aren't anonymous
+            resubscribeMetadata()
         }
         return added
     }
@@ -433,8 +437,17 @@ class AmendRepository(
 
     val myProfile: Profile get() = _profiles.value[me] ?: Profile(me)
 
-    suspend fun updateProfile(name: String, about: String, avatar: String, hue: Float) {
-        val p = Profile(me, name.trim().take(60), about.trim().take(300), avatar, hue, Event.nowSeconds())
+    /**
+     * Saves and publishes the profile. [picture] null keeps the current photo,
+     * "" removes it, otherwise a small data URI or https URL.
+     */
+    suspend fun updateProfile(name: String, about: String, avatar: String, hue: Float, picture: String? = null) {
+        val pic = when {
+            picture == null -> myProfile.picture
+            picture.isEmpty() || Profile.isValidPicture(picture) -> picture
+            else -> myProfile.picture
+        }
+        val p = Profile(me, name.trim().take(60), about.trim().take(300), avatar, hue, Event.nowSeconds(), pic)
         _profiles.update { it + (me to p) }
         store.saveProfiles(_profiles.value)
         val ev = Event.sign(keys.secretKey, Kinds.METADATA, p.toMetadataJson())
