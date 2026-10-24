@@ -1,0 +1,73 @@
+name: Build amend
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (crypto vectors, eco rules)
+        run: ./gradlew :app:testDebugUnitTest --stacktrace 2>&1 | tee build-output.txt; exit ${PIPESTATUS[0]}
+
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace 2>&1 | tee -a build-output.txt; exit ${PIPESTATUS[0]}
+
+      # Turn compiler and test errors into annotations so they're visible without opening logs
+      - name: Report errors
+        if: failure()
+        run: |
+          grep -E "^e: |error:|FAILED|AssertionError|Exception" build-output.txt | head -60 | while IFS= read -r line; do
+            echo "::error::${line//$'\n'/ }"
+          done
+
+      - name: Live relay test (real network)
+        continue-on-error: true
+        run: |
+          ./gradlew :app:testDebugUnitTest --tests "app.amend.messenger.LiveRelayTest" -Damend.liveRelays=true --rerun 2>&1 | tee relay-output.txt
+          if [ -f app/build/relay-report.txt ]; then
+            while IFS= read -r line; do echo "::notice title=Relay test::$line"; done < app/build/relay-report.txt
+          fi
+          grep -E "FAILED|AssertionError" relay-output.txt | head -10 | while IFS= read -r l; do echo "::warning title=Relay test::$l"; done
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/amend-release.apk
+          cp app/build/outputs/apk/debug/*.apk out/amend-debug.apk
+          ls -la out
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: amend-apk
+          path: out/*.apk
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk

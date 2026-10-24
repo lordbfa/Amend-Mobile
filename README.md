@@ -1,73 +1,89 @@
-# amend for Android
+# amend 🌱
 
-**amend** is a private, end-to-end encrypted messenger with a bold, playful interface.
+**Private messages that grow a forest.**
 
-It is a fork of [Session Android](https://github.com/session-foundation/session-android) by the
-Session Technology Foundation. amend keeps Session's messaging core, encryption and onion-routed
-network unchanged, so amend users can chat with Session users using the same Account IDs.
-amend is an independent project and is **not affiliated with or endorsed by** the Session
-Technology Foundation or Session Foundation.
+amend is a decentralised, end-to-end encrypted messenger for Android with an
+environmental heart. Every conversation grows a shared garden, your activity
+grows a personal forest, and the app is honest about its own carbon footprint
+— then helps you offset far more of it with small real-world actions.
 
-## What's different from Session
+amend is written from scratch. It is built on the open [Nostr](https://nostr.com)
+protocol, so there are no accounts, phone numbers or company servers.
 
-- **New identity** – app name, launcher icon, logo, notification icon and wordmark.
-  Application ID `app.amend.messenger`, so it installs side by side with Session.
-- **Grape & Bubblegum themes** – a deep-violet dark theme and a soft-pink light theme,
-  with hot-pink as the default accent. Grape is the default for new installs.
-- **More accents** – amend pink and lime join the existing colours in *Settings → Appearance*.
-  All of Session's original themes (Classic, Ocean) are still available.
-- **Swipe gestures on the home screen** – swipe right to pin / unpin a conversation,
-  swipe left to mark it read / unread.
-- **Message animations** – new messages pop in from the bubble's corner while a chat is open.
-- **Haptic feedback** – on sending, reactions, swipe thresholds and incoming messages
-  (follows the phone's system touch-feedback setting).
-- **Rounder bubbles and dialogs.**
+## Features
 
-## Download / build
+**Messaging**
+- End-to-end encrypted private messages (NIP-17 gift wraps + NIP-44 v2 encryption).
+  Relays can't see who you talk to, when exactly, or what you say.
+- No sign-up: your identity is a key pair that lives only on your phone,
+  encrypted at rest with the Android Keystore.
+- Works through several independent relays at once; add or remove your own.
+- Compatible with other NIP-17 apps (e.g. 0xchat, Amethyst) — same keys, same messages.
+- Replies (drag a bubble sideways), reactions (long-press or double-tap), message requests
+  with accept/block, pinning, retry for failed sends.
 
-Every push builds APKs with GitHub Actions (**Actions → Build amend APK → amend-apks**).
-Pushing a tag such as `v1.0.0` attaches the APKs to a GitHub release.
+**Eco**
+- **Personal forest** – points from mindful activity grow procedurally drawn trees
+  (8 species). Message points are capped daily, so the forest rewards meaningful use, not spam.
+- **Shared gardens** – every chat grows its own plant; both people see the exact same one
+  (derived from both keys and the message count, nothing extra is synced).
+- **Daily eco challenges** – 30 small actions (energy, transport, food, waste, water, digital,
+  nature). Complete one, or send it to a friend as an interactive challenge card.
+- **Impact dashboard** – amend counts the bytes it sends and receives and estimates the CO₂,
+  with its assumptions shown, next to the CO₂ your challenges avoided.
+- **Carbon-aware sync** – background checks only while charging on Wi-Fi.
+- **Efficiency mode** – dark theme, calmer animations, less background activity.
+- **Plant a real tree** – links to independent reforestation charities (no affiliation).
 
-- `*-website-qa-*universal*.apk` – optimised build, use this one.
-- `*-website-debug-*.apk` – debug build for testing.
+**Feel**
+- Living sky that follows the real time of day (sunrise, sun/moon arc, stars, clouds).
+- Procedural trees that sway, grow with spring physics and shake when tapped.
+- Particle bursts (leaves, petals, sparks) on send, reactions and achievements.
+- Haptic feedback everywhere; bouncy buttons; animated tabs and transitions.
+- A "mycelium" view of the relay network with data packets flowing to each relay.
 
-To build locally (JDK 21 and the Android SDK required):
+## Download
+
+Every push to `main` builds APKs with GitHub Actions:
+**Actions → Build amend → amend-apk**. Use `amend-release.apk`.
+
+Pushing a tag like `v2.0.0` attaches the APKs to a GitHub release.
+
+## Build locally
+
+Requires Android Studio (or JDK 17 + Android SDK 35).
 
 ```sh
-./gradlew :app:assembleWebsiteQa
+./gradlew :app:assembleDebug
+./gradlew :app:testDebugUnitTest            # crypto test vectors, eco rules
+./gradlew :app:testDebugUnitTest --tests "app.amend.messenger.LiveRelayTest" -Damend.liveRelays=true
 ```
 
-### Push notifications
+## How it's built
 
-amend builds the `website` flavour by default, which receives messages by background polling
-instead of Firebase push. Session's Firebase project is tied to Session's own app ID, so the
-`play`/`fdroid` flavours need your own Firebase project and `app/google-services.json` before
-they will build. Polling can delay notifications compared with push.
+| Layer | Where | Notes |
+|---|---|---|
+| Crypto | `core/crypto` | secp256k1 + BIP-340 Schnorr, ChaCha20, NIP-44 v2, bech32. Native libsecp256k1 on device, pure-Kotlin fallback. Tested against the official NIP-44 vectors and libsecp256k1. |
+| Protocol | `core/nostr` | Events (NIP-01), gift wraps (NIP-59), private DMs (NIP-17), relay auth (NIP-42). |
+| Network | `net` | OkHttp WebSocket relay pool with reconnect, auth, byte counting. |
+| Data | `data` | Repository, JSON storage, Keystore-encrypted identity. |
+| Eco | `eco` | Forest growth, gardens, challenges, footprint estimates. |
+| UI | `ui` | Jetpack Compose, Material 3, custom Canvas graphics. |
 
-### Release signing
+See [docs/DECENTRALIZATION.md](docs/DECENTRALIZATION.md) for how the network works and how
+to make it even more independent (in Bangla).
 
-The QA build is signed with the debug key in `etc/debug.keystore`, which is public. Before
-distributing amend widely, create your own keystore and pass it with the
-`SESSION_STORE_FILE`, `SESSION_STORE_PASSWORD`, `SESSION_KEY_ALIAS` and `SESSION_KEY_PASSWORD`
-Gradle properties to build a `websiteRelease`.
+## Security notes
 
-## Licence
+- This is a young app and hasn't had an independent security audit.
+- The APKs from CI are signed with `app/amend-dev.keystore`, which is public in this repo.
+  Before publishing to a store, create your own keystore and keep it secret.
+- Gift-wrapped messages hide metadata from relays, but your IP address is visible to the
+  relays you connect to (use a VPN or Tor/Orbot if that matters to you).
 
-amend is free software, licensed under the **GNU General Public License v3.0**, the same licence
-as Session Android. See [LICENSE](LICENSE). If you distribute amend, you must also make its
-complete source code available under the GPLv3.
+## Licences
 
-- Original work © Session Technology Foundation and contributors, and earlier Signal / Loki
-  contributors as noted in the source.
-- amend modifications © 2026 Ahmed Bhuiyan Faisal.
-- The amend wordmark uses glyphs from Poppins Bold (SIL Open Font Licence 1.1).
-- "Session" is a trademark of its respective owners. It appears in amend only where the app
-  refers to the Session network, Session Pro, or Session's foundation.
-
-Third-party licences are listed in [third_party_licenses](third_party_licenses).
-
-## Architecture
-
-The codebase is unchanged in structure from Session; see [ARCHITECTURE.md](ARCHITECTURE.md).
-Kotlin packages still use the upstream `network.loki.messenger` / `org.thoughtcrime.securesms`
-namespaces to keep merging upstream fixes simple.
+- amend source code: GPL-3.0 (see `LICENSE`).
+- Poppins font: SIL Open Font License 1.1 (`licenses/Poppins-OFL-1.1.txt`).
+- `app/src/test/resources/nip44.vectors.json`: official NIP-44 test vectors (public domain).
+- Uses OkHttp, ZXing, ACINQ secp256k1-kmp and AndroidX libraries under their own licences.
