@@ -1,564 +1,95 @@
-import com.android.build.api.dsl.VariantDimension
-import com.android.build.api.variant.FilterConfiguration
-import java.io.ByteArrayOutputStream
-
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.plugin.serialization)
-    alias(libs.plugins.kotlin.plugin.compose)
-    alias(libs.plugins.kotlin.plugin.parcelize)
-    alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.dependency.analysis)
-    alias(libs.plugins.google.services)
-
-    id("generate-ip-country-data")
-    id("local-snode-pool")
-    id("rename-apk")
-    id("witness")
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
-
-val huaweiEnabled = project.properties["huawei"] != null
-val splitApksEnabled = project.properties["splitApks"] == "true"
-val hasIncludedLibSessionUtilProject: Boolean = System.getProperty("session.libsession_util.project.path", "").isNotBlank()
-
-configurations.configureEach {
-    exclude(module = "commons-logging")
-}
-
-val canonicalVersionCode = 455
-val canonicalVersionName = "1.33.7"
-
-val postFixSize = 10
-val abiPostFix = mapOf(
-    "armeabi-v7a" to 1,
-    "arm64-v8a" to 2,
-    "x86" to 3,
-    "x86_64" to 4,
-    "universal" to 5
-)
-
-val getGitHash = providers
-    .exec {
-        commandLine("git", "rev-parse", "--short", "HEAD")
-    }
-    .standardOutput
-    .asText
-    .map { it.trim() }
-
-val firebaseEnabledVariants = listOf("play", "fdroid")
-val nonPlayVariants = listOf("fdroid", "website") + if (huaweiEnabled) listOf("huawei") else emptyList()
-val nonDebugBuildTypes = listOf("release", "releaseWithDebugMenu", "qa", "automaticQa")
-
-fun VariantDimension.devNetDefaultOn(defaultOn: Boolean) {
-    val fqEnumClass = "org.session.libsession.utilities.Environment"
-    buildConfigField(
-        fqEnumClass,
-        "DEFAULT_ENVIRONMENT",
-        if (defaultOn) "$fqEnumClass.DEV_NET" else "$fqEnumClass.MAIN_NET"
-    )
-}
-
-/**
- * Whether this build honours the automated-test configuration passed as launch intent extras
- * (see QaLaunchConfig).
- *
- * This is a SECURITY boundary, not a convenience flag: the launcher activity-alias is
- * `android:exported="true"`, so any app on the device can start it with extras. Only QA/debug
- * builds may act on them. Being a compile-time constant, R8 strips the reader entirely from
- * builds where this is false. Default off — new build types must opt in explicitly.
- */
-fun VariantDimension.allowQaLaunchConfig(allow: Boolean) {
-    buildConfigField("boolean", "ALLOW_QA_LAUNCH_CONFIG", allow.toString())
-}
-
-fun VariantDimension.enablePermissiveNetworkSecurityConfig(permissive: Boolean) {
-    manifestPlaceholders["network_security_config"] = if (permissive) {
-        "@xml/network_security_configuration_permissive"
-    } else {
-        "@xml/network_security_configuration"
-    }
-}
-
-fun VariantDimension.setAlternativeAppName(alternative: String?) {
-    if (alternative != null) {
-        manifestPlaceholders["app_name"] = alternative
-    } else {
-        manifestPlaceholders["app_name"] = "@string/app_name"
-    }
-}
-
-fun VariantDimension.setAuthorityPostfix(postfix: String) {
-    manifestPlaceholders["authority_postfix"] = postfix
-    buildConfigField("String", "AUTHORITY_POSTFIX", "\"$postfix\"")
-}
-
-fun VariantDimension.enableClientVersionCheck(enable: Boolean) {
-    buildConfigField(
-        "boolean",
-        "CHECK_VERSION",
-        if (enable) "true" else "false"
-    )
-}
-
-kotlin {
-    compilerOptions {
-        jvmToolchain(21)
-    }
-}
-
-val testJvmAgent = configurations.create("mockitoAgent")
 
 android {
-    namespace = "network.loki.messenger"
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
-    }
-
-    packaging {
-        resources.excludes += listOf(
-            "LICENSE.txt", "LICENSE", "NOTICE", "asm-license.txt",
-            "META-INF/LICENSE", "META-INF/NOTICE", "META-INF/proguard/androidx-annotations.pro"
-        )
-    }
-
-    splits {
-        abi {
-            isEnable = splitApksEnabled
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
-        }
-    }
-
-    buildFeatures {
-        viewBinding = true
-        buildConfig = true
-    }
+    namespace = "app.amend.messenger"
+    compileSdk = 35
 
     defaultConfig {
-        // amend: own application id so it installs side by side with Session.
-        // The Kotlin/R namespace stays "network.loki.messenger" to keep the codebase intact.
         applicationId = "app.amend.messenger"
-
-        versionCode = canonicalVersionCode * postFixSize
-        versionName = canonicalVersionName
-
-        compileSdk = libs.versions.androidCompileSdkVersion.get().toInt()
-        minSdk = libs.versions.androidMinSdkVersion.get().toInt()
-        targetSdk = libs.versions.androidTargetSdkVersion.get().toInt()
-
-        multiDexEnabled = true
-
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 2
+        versionName = "2.0.0"
         vectorDrawables.useSupportLibrary = true
+    }
 
-        buildConfigField("long", "BUILD_TIMESTAMP", "${getLastCommitTimestamp()}L")
-        buildConfigField("String", "GIT_HASH", "\"${getGitHash.get()}\"")
-        buildConfigField("String", "CONTENT_PROXY_HOST", "\"contentproxy.signal.org\"")
-        buildConfigField("int", "CONTENT_PROXY_PORT", "443")
-        buildConfigField("String", "USER_AGENT", "\"OWA\"")
-        buildConfigField("int", "CANONICAL_VERSION_CODE", "$canonicalVersionCode")
-
-        // Safe default, so a build type that neither calls allowQaLaunchConfig() nor inherits it via
-        // initWith() is off rather than missing the field. See allowQaLaunchConfig above.
-        allowQaLaunchConfig(false)
-
-        // NOTE: there is deliberately no PRO_BACKEND_DEV buildConfigField here. The Pro backend URL
-        // and signing pubkey are single-sourced from libsession (`BackendRequests.proBackendUrl()` /
-        // `proBackendPubKeyHex()`, wired up in ProModule); a second copy in the build script is a
-        // launch trap, since it would keep shipping the dev URL and debug pubkey after libsession
-        // moved to production. If a client-side override is ever wanted, add it deliberately as an
-        // override *of* the libsession default, not as a parallel source of truth.
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        testInstrumentationRunnerArguments["clearPackageData"] = "true"
-        testOptions {
-            execution = "ANDROIDX_TEST_ORCHESTRATOR"
+    signingConfigs {
+        // A shared development key so every CI build installs over the previous one.
+        // It is public in this repository — use your own key for store releases.
+        create("dev") {
+            storeFile = file("amend-dev.keystore")
+            storePassword = "amenddev"
+            keyAlias = "amend"
+            keyPassword = "amenddev"
         }
     }
 
     buildTypes {
-        getByName("release") {
+        debug {
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("dev")
+        }
+        release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                file("proguard-rules.pro")
-            )
-            devNetDefaultOn(false)
-            allowQaLaunchConfig(false)
-            enableClientVersionCheck(true)
-            enablePermissiveNetworkSecurityConfig(false)
-            setAlternativeAppName(null)
-            setAuthorityPostfix(".amend")
-        }
-
-        create("releaseWithDebugMenu") {
-            initWith(getByName("release"))
-
-            matchingFallbacks += "release"
-        }
-
-        create("qa") {
-            initWith(getByName("release"))
-
-            matchingFallbacks += "release"
-
-            signingConfig = signingConfigs.getByName("debug")
-
-            devNetDefaultOn(false)
-            allowQaLaunchConfig(true)
-            enablePermissiveNetworkSecurityConfig(true)
-            enableClientVersionCheck(false)
-
-            setAlternativeAppName("amend QA")
-            setAuthorityPostfix(".amend")
-        }
-
-        create("automaticQa") {
-            initWith(getByName("qa"))
-
-            devNetDefaultOn(true)
-            allowQaLaunchConfig(true)
-            enableClientVersionCheck(false)
-            setAlternativeAppName("amend AQA")
-        }
-
-        getByName("debug") {
-            isDefault = true
-            enableUnitTestCoverage = false
-            signingConfig = signingConfigs.getByName("debug")
-
-            applicationIdSuffix = ".${name}"
-            enablePermissiveNetworkSecurityConfig(true)
-            devNetDefaultOn(false)
-            allowQaLaunchConfig(true)
-            enableClientVersionCheck(false)
-            setAlternativeAppName("amend Debug")
-            setAuthorityPostfix(".amend.debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("dev")
         }
     }
 
-    testBuildType = "debug"
-
-    sourceSets {
-        val firebaseCommonDir = "src/firebaseCommon"
-        firebaseEnabledVariants.forEach { variant ->
-            maybeCreate(variant).kotlin.directories += "$firebaseCommonDir/kotlin"
-        }
-
-        val nonPlayCommonDir = "src/nonPlayCommon"
-        nonPlayVariants.forEach { variant ->
-            maybeCreate(variant).apply {
-                kotlin.directories += "$nonPlayCommonDir/kotlin"
-                resources.directories += "$nonPlayCommonDir/resources"
-            }
-        }
-
-        val nonDebugDir = "src/nonDebug"
-        nonDebugBuildTypes.forEach { buildType ->
-            maybeCreate(buildType).apply {
-                kotlin.directories += "$nonDebugDir/kotlin"
-                resources.directories += "$nonDebugDir/resources"
-            }
-        }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-
-    signingConfigs {
-        create("play") {
-            if (project.hasProperty("SESSION_STORE_FILE")) {
-                storeFile = file(project.property("SESSION_STORE_FILE")!!)
-                storePassword = project.property("SESSION_STORE_PASSWORD") as? String
-                keyAlias = project.property("SESSION_KEY_ALIAS") as? String
-                keyPassword = project.property("SESSION_KEY_PASSWORD") as? String
-            }
-        }
-
-        if (huaweiEnabled) {
-            create("huawei") {
-                if (project.hasProperty("SESSION_HUAWEI_STORE_FILE")) {
-                    storeFile = file(project.property("SESSION_HUAWEI_STORE_FILE")!!)
-                    storePassword = project.property("SESSION_HUAWEI_STORE_PASSWORD") as? String
-                    keyAlias = project.property("SESSION_HUAWEI_KEY_ALIAS") as? String
-                    keyPassword = project.property("SESSION_HUAWEI_KEY_PASSWORD") as? String
-                }
-            }
-        }
-
-        getByName("debug") {
-            storeFile = file("${rootProject.projectDir}/etc/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
+    kotlinOptions {
+        jvmTarget = "17"
     }
-
-
-    flavorDimensions += "distribution"
-    productFlavors {
-        create("play") {
-            dimension = "distribution"
-            buildConfigField("boolean", "PLAY_STORE_DISABLED", "false")
-            buildConfigField("org.session.libsession.utilities.Device", "DEVICE", "org.session.libsession.utilities.Device.ANDROID")
-            buildConfigField("String", "PUSH_KEY_SUFFIX", "\"\"")
-            signingConfig = signingConfigs.getByName("play")
-        }
-
-        create("fdroid") {
-            initWith(getByName("play"))
-        }
-
-        if (huaweiEnabled) {
-            create("huawei") {
-                dimension = "distribution"
-                buildConfigField("boolean", "PLAY_STORE_DISABLED", "true")
-                buildConfigField("org.session.libsession.utilities.Device", "DEVICE", "org.session.libsession.utilities.Device.HUAWEI")
-                buildConfigField("String", "PUSH_KEY_SUFFIX", "\"_HUAWEI\"")
-                signingConfig = signingConfigs.getByName("huawei")
-            }
-        }
-
-        create("website") {
-            initWith(getByName("play"))
-            // amend: default flavor. Uses background polling instead of Firebase push,
-            // because Session's Firebase project does not cover app.amend.messenger.
-            isDefault = true
-
-            buildConfigField("boolean", "PLAY_STORE_DISABLED", "true")
-        }
-
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
-
+    packaging {
+        resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module")
+    }
     testOptions {
-        unitTests.isIncludeAndroidResources = true
         unitTests.all {
-            it.jvmArgs("-javaagent:${testJvmAgent.asPath}")
+            it.testLogging {
+                events("passed", "failed", "skipped")
+                showStandardStreams = true
+                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            }
+            // The live relay test only runs when explicitly requested (CI step).
+            it.systemProperty("amend.liveRelays", System.getProperty("amend.liveRelays") ?: "false")
         }
     }
-
-    lint {
-        abortOnError = true
-        baseline = file("lint-baseline.xml")
-    }
-
-    tasks.register<JacocoReport>("testPlayDebugUnitTestCoverageReport") {
-        dependsOn("testPlayDebugUnitTest")
-
-        reports {
-            xml.required.set(true)
-        }
-
-        val fileFilter = emptyList<String>()
-        val mainSrc = "$projectDir/src/main/java"
-        val buildDir = project.layout.buildDirectory.get().asFile
-        val kotlinDebugTree = fileTree("${buildDir}/tmp/kotlin-classes/playDebug") {
-            exclude(fileFilter)
-        }
-
-        classDirectories.setFrom(files(kotlinDebugTree))
-        sourceDirectories.setFrom(files(mainSrc))
-        executionData.setFrom(file("${buildDir}/outputs/unit_test_code_coverage/playDebugUnitTest/testPlayDebugUnitTest.exec"))
-    }
-
-    testNamespace = "network.loki.messenger.test"
 }
-
-
 
 dependencies {
-    implementation(project(":content-descriptions"))
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
 
-    ksp(libs.androidx.hilt.compiler)
-    ksp(libs.dagger.hilt.compiler)
-    ksp(libs.glide.ksp)
-    implementation(libs.androidx.hilt.navigation.compose)
-    implementation(libs.androidx.hilt.work)
-    implementation(libs.roundedimageview)
-    implementation(libs.hilt.android)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.recyclerview)
-    implementation(libs.material)
-    implementation(libs.flexbox)
-    implementation(libs.androidx.cardview)
-    implementation(libs.androidx.legacy.preference.v14)
-    implementation(libs.androidx.preference.ktx)
-    implementation(libs.androidx.exifinterface)
-    implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.lifecycle.process)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.fragment.ktx)
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.interpolator)
-    implementation(libs.androidx.paging.common)
-    implementation(libs.androidx.paging.compose)
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // Add firebase dependencies to specific variants
-    for (variant in firebaseEnabledVariants) {
-        val configuration = configurations.maybeCreate("${variant}Implementation")
-        configuration(libs.firebase.messaging) {
-            exclude(group = "com.google.firebase", module = "firebase-core")
-            exclude(group = "com.google.firebase", module = "firebase-analytics")
-            exclude(group = "com.google.firebase", module = "firebase-measurement-connector")
-        }
-    }
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
 
-    val playImplementation = configurations.maybeCreate("playImplementation")
-    playImplementation(libs.google.play.review)
-    playImplementation(libs.google.play.review.ktx)
-
-    if (huaweiEnabled) {
-        val huaweiImplementation = configurations.maybeCreate("huaweiImplementation")
-        huaweiImplementation(libs.huawei.push)
-
-        // These are compileOnly on the Huawei flavor so R8 can resolve optional HMS classes
-        // referenced by HMS Push during minification.
-        compileOnly(libs.huawei.hianalytics)
-        compileOnly(libs.huawei.availableupdate)
-    }
-
-    implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.androidx.media3.session)
-    implementation(libs.androidx.media3.common.ktx)
-    implementation(libs.androidx.media3.ui.compose)
-    implementation(libs.androidx.media3.ui.compose.material3)
-
-    implementation(libs.conscrypt.android)
-    implementation(libs.android)
-    implementation(libs.photoview)
-    implementation(libs.glide)
-    implementation(libs.glide.compose)
-    implementation(libs.coil.compose)
-    implementation(libs.coil.gif)
-    implementation(libs.coil.video)
-    implementation(libs.android.image.cropper)
-    implementation(libs.subsampling.scale.image.view) {
-        exclude(group = "com.android.support", module = "support-annotations")
-    }
-    implementation(libs.androidx.sqlite.ktx)
-    implementation(libs.sqlcipher.android)
-    implementation(libs.kotlinx.serialization.json)
-    implementation(libs.okhttp)
-    implementation(libs.phrase)
-    implementation(libs.copper.flow)
-    implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.guava)
-    implementation(libs.kotlinx.collections.immutable)
-    implementation(libs.opencsv)
-    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.rxbinding)
-
-    // If libsession_util project is included into the build, use that, otherwise use the published version
-    findProject(":libsession-util-android")?.let(::implementation)
-        ?: implementation(libs.libsession.util.android)
-
-    implementation(libs.kryo)
-    testImplementation(libs.junit)
-    testImplementation(libs.assertj.core)
-    testImplementation(libs.mockito.kotlin)
-    androidTestImplementation(libs.mockito.core)
-    androidTestImplementation(libs.mockito.kotlin)
-    testImplementation(libs.androidx.core)
-    testImplementation(libs.androidx.core.testing)
-    testImplementation(libs.kotlinx.coroutines.testing)
-    androidTestImplementation(libs.kotlinx.coroutines.testing)
-    androidTestImplementation(libs.androidx.core)
-    androidTestImplementation(libs.androidx.runner)
-    androidTestImplementation(libs.androidx.rules)
-
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.truth)
-    testImplementation(libs.truth)
-    testImplementation(libs.androidx.sqlite.framework)
-    androidTestImplementation(libs.truth)
-    testRuntimeOnly(libs.mockito.core)
-    testImplementation(libs.mockk)
-    testImplementation(libs.kotlin.test)
-
-    // Pull in appropriate JVM agents for unit test
-    testJvmAgent(libs.mockito.core) { isTransitive = false }
-
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.espresso.contrib)
-    androidTestImplementation(libs.androidx.espresso.intents)
-    androidTestImplementation(libs.androidx.espresso.accessibility)
-    androidTestImplementation(libs.androidx.espresso.web)
-    androidTestImplementation(libs.androidx.idling.concurrent)
-    androidTestImplementation(libs.androidx.espresso.idling.resource)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
-    androidTestUtil(libs.androidx.orchestrator)
-
-    testImplementation(libs.robolectric)
-    testImplementation(libs.conscrypt.openjdk.uber)
-    testImplementation(libs.turbine)
-
-    implementation(platform(libs.androidx.compose.bom))
-    testImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.animation)
-    implementation(libs.androidx.compose.ui.tooling)
-    implementation(libs.androidx.compose.foundation.layout)
-    implementation(libs.androidx.compose.material3)
-
-    androidTestImplementation(libs.androidx.ui.test.junit4.android)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
-
-    implementation(libs.androidx.navigation.compose)
-
-    implementation(libs.accompanist.permissions)
-
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.view)
-
-    implementation(libs.zxing.core)
-
-    implementation(libs.androidx.biometric)
-    implementation(libs.autolink)
-
-    playImplementation(libs.android.billing)
-    playImplementation(libs.android.billing.ktx)
-
-    debugImplementation(libs.sqlite.web.viewer)
-}
-
-fun getLastCommitTimestamp(): String {
-    return ByteArrayOutputStream().use { os ->
-        os.toString() + "000"
-    }
-}
-
-fun autoResConfig(): List<String> {
-    val files = mutableListOf<String>()
-    val root = file("src/main/res")
-    root.listFiles()?.forEach { files.add(it.name) }
-    return listOf("en") + files.mapNotNull { it.takeIf { f -> f.startsWith("values-") }?.substringAfter("values-") }
-        .sorted()
-}
-
-// Assign version code postfix to APKs based on ABI
-androidComponents {
-    onVariants { variant ->
-        variant.outputs.forEach { output ->
-            val abiName = output.filters.firstOrNull { it.filterType == FilterConfiguration.FilterType.ABI }?.identifier ?: "universal"
-            val versionCodeAdditions = checkNotNull(abiPostFix[abiName]) { "$abiName does not exist" }
-            output.versionCode.set(canonicalVersionCode * postFixSize + versionCodeAdditions)
-        }
-    }
-}
-
-// Only enable google services tasks for firebase-enabled variants
-androidComponents {
-    finalizeDsl {
-        tasks.named { it.contains("GoogleServices") }
-            .configureEach {
-                enabled = firebaseEnabledVariants.any { name.contains(it, true) }
-            }
-    }
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }
