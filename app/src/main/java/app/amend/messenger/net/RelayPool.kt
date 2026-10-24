@@ -120,8 +120,22 @@ class RelayPool(
             return u.trimEnd('/')
         }
 
-        /** Well-known public relays that accept private (gift-wrapped) messages. */
+        /**
+         * Public relays verified by CI (RelayScanTest) to accept gift-wrapped private
+         * messages AND return them to the recipient on a fresh connection.
+         * Run by different operators, so no single one is a point of failure.
+         */
         val DEFAULT_RELAYS = listOf(
+            "wss://nos.lol",
+            "wss://relay.primal.net",
+            "wss://nostr.mom",
+            "wss://relay.snort.social",
+            "wss://offchain.pub",
+            "wss://auth.nostr1.com", // private-message inbox relay (NIP-42 auth)
+        )
+
+        /** The first defaults shipped in amend 2.0; installs still using them are upgraded. */
+        val LEGACY_DEFAULTS = listOf(
             "wss://relay.damus.io",
             "wss://nos.lol",
             "wss://relay.primal.net",

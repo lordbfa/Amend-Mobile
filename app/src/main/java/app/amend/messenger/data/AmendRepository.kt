@@ -54,7 +54,10 @@ class AmendRepository(
     private val store = Store(dir)
     private val mutex = Mutex()
 
-    private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS)
+    private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS).let { s ->
+        // Upgrade installs still on the original relay list (two of those relays proved unreliable).
+        if (s.relays.sorted() == RelayPool.LEGACY_DEFAULTS.sorted()) s.copy(relays = RelayPool.DEFAULT_RELAYS) else s
+    }
 
     private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
     val conversations: StateFlow<Map<String, Conversation>> = _conversations.asStateFlow()
