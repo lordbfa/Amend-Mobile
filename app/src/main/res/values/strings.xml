@@ -10,4 +10,7 @@
     <string name="notif_live_title">amend is listening for messages 🌱</string>
     <string name="notif_live_text">Tap to open. You can hide this in notification settings.</string>
     <string name="notif_hidden">New message</string>
+    <string name="channel_sos_alerts">SOS alerts from friends</string>
+    <string name="channel_sos_alerts_description">Loud alerts when someone you chat with needs help. Rings even in Do Not Disturb where allowed.</string>
+    <string name="channel_sos_active">My SOS</string>
 </resources>

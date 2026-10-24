@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -39,6 +40,8 @@ sealed class AmendEvent {
     data class TreeGrown(val tree: PlantedTree) : AmendEvent()
     data class PointsEarned(val points: Int, val reason: String) : AmendEvent()
     data class MessageSent(val peer: String, val relays: Int) : AmendEvent()
+    /** A friend started, updated or ended an SOS. */
+    data class SosReceived(val peer: String, val sos: IncomingSos, val phase: SosPhase) : AmendEvent()
 }
 
 /**
@@ -73,6 +76,10 @@ class AmendRepository(
 
     private val _events = MutableSharedFlow<AmendEvent>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val events: SharedFlow<AmendEvent> = _events
+
+    private val _incomingSos = MutableStateFlow<Map<String, IncomingSos>>(emptyMap())
+    /** Friends' SOS alerts (active and recently ended), by public key. */
+    val incomingSos: StateFlow<Map<String, IncomingSos>> = _incomingSos.asStateFlow()
 
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
@@ -202,6 +209,13 @@ class AmendRepository(
         val fromMe = rumor.pubkey == me
         val peer = if (fromMe) rumor.tagValues("p").firstOrNull { it != me } ?: me else rumor.pubkey
         if (peer in settings.blocked) return
+        if (rumor.kind == Kinds.CHAT_MESSAGE) {
+            SosProtocol.parse(rumor)?.let { signal ->
+                handleSos(rumor, peer, fromMe, signal)
+                persistSettingsSoon()
+                return
+            }
+        }
         when (rumor.kind) {
             Kinds.CHAT_MESSAGE -> {
                 val cardId = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "card" }?.get(2)
@@ -228,6 +242,85 @@ class AmendRepository(
             }
         }
         persistSettingsSoon()
+    }
+
+    private suspend fun handleSos(rumor: Event, peer: String, fromMe: Boolean, signal: SosSignal) {
+        // Start and stop become visible messages; location updates only refresh the live card.
+        if (signal.phase != SosPhase.UPDATE) {
+            val msg = ChatMessage(
+                id = rumor.id, peer = peer, fromMe = fromMe, text = rumor.content, createdAt = rumor.createdAt,
+                type = MessageType.SOS, cardId = signal.phase.tag, extra = signal.location?.encode(),
+                status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
+            )
+            upsertMessage(msg, countUnread = !fromMe)
+        }
+        if (fromMe) return
+        val old = _incomingSos.value[peer]
+        // Ignore stale updates that arrive after a newer one.
+        if (old != null && rumor.createdAt < old.updatedAt) return
+        val sos = IncomingSos(
+            peer = peer,
+            active = signal.phase != SosPhase.STOP,
+            startedAt = if (signal.phase == SosPhase.START || old == null || !old.active) rumor.createdAt else old.startedAt,
+            updatedAt = rumor.createdAt,
+            location = signal.location ?: old?.location,
+        )
+        // Don't raise alarms for SOS sessions that ended long ago (e.g. history after a restore).
+        val fresh = rumor.createdAt >= Event.nowSeconds() - 6 * 3600
+        _incomingSos.update { it + (peer to sos.copy(active = sos.active && fresh)) }
+        if (fresh) _events.tryEmit(AmendEvent.SosReceived(peer, sos, signal.phase))
+    }
+
+    /** People who receive my SOS: everyone I've chatted with, minus [excluded] and blocked contacts. */
+    fun sosRecipients(excluded: Set<String>): List<String> =
+        _conversations.value.values
+            .filter { it.peer != me && it.peer !in settings.blocked && it.peer !in excluded }
+            .filter { isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }
+            .map { it.peer }
+
+    /**
+     * Sends one SOS signal to each recipient. Start/stop also appear in my own chats;
+     * updates don't, to keep conversations readable. Returns how many people got it on ≥1 relay.
+     */
+    suspend fun sendSos(phase: SosPhase, location: SosLocation?, recipients: List<String>): Int {
+        var delivered = 0
+        val results = recipients.map { peer ->
+            scope.async {
+                val rumor = GiftWrap.rumor(me, Kinds.CHAT_MESSAGE, SosProtocol.content(phase, location), SosProtocol.tags(peer, phase, location))
+                if (phase != SosPhase.UPDATE) {
+                    upsertMessage(
+                        ChatMessage(
+                            rumor.id, peer, true, rumor.content, rumor.createdAt, MessageType.SOS, phase.tag,
+                            status = MessageStatus.SENDING, extra = location?.encode(),
+                        ),
+                        countUnread = false,
+                    )
+                }
+                val accepted = runCatching {
+                    val wrap = GiftWrap.wrap(rumor, keys, peer)
+                    mutex.withLock { seenWraps.add(wrap.id) }
+                    pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+                }.getOrDefault(0)
+                if (phase != SosPhase.UPDATE) {
+                    mutex.withLock {
+                        _conversations.update { all ->
+                            val conv = all[peer] ?: return@update all
+                            all + (peer to conv.copy(messages = conv.messages.map {
+                                if (it.id == rumor.id) it.copy(status = if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED, relaysAccepted = accepted) else it
+                            }))
+                        }
+                        _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+                    }
+                }
+                accepted > 0
+            }
+        }
+        results.forEach { if (it.await()) delivered++ }
+        return delivered
+    }
+
+    fun dismissIncomingSos(peer: String) {
+        _incomingSos.update { all -> all[peer]?.let { all + (peer to it.copy(active = false)) } ?: all }
     }
 
     private fun handleMetadata(ev: Event) {

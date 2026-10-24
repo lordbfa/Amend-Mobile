@@ -200,6 +200,26 @@ class LiveRelayTest {
         val profile = poll(20_000) { bob.profiles.value[alice.me]?.takeIf { it.picture == photo } }
         report("profile photo received: ${profile != null}")
         assertNotNull("Bob should see Alice's profile photo", profile)
+
+        // SOS: start with a location, a live update, then stop
+        val recipients = alice.sosRecipients(emptySet())
+        assertTrue("Bob is an SOS recipient", bob.me in recipients)
+        val loc1 = app.amend.messenger.data.SosLocation(60.192059, 24.945831, 15f, 0)
+        val loc2 = app.amend.messenger.data.SosLocation(60.193000, 24.946500, 10f, 0)
+        alice.sendSos(app.amend.messenger.data.SosPhase.START, loc1, recipients)
+        val started = poll(30_000) { bob.incomingSos.value[alice.me]?.takeIf { it.active && it.location != null } }
+        report("sos start received: ${started != null}")
+        assertNotNull("Bob should get Alice's SOS", started)
+        delay(1_500) // created_at has 1 s resolution
+        alice.sendSos(app.amend.messenger.data.SosPhase.UPDATE, loc2, recipients)
+        val moved = poll(30_000) { bob.incomingSos.value[alice.me]?.takeIf { kotlin.math.abs(it.location!!.lat - 60.193) < 1e-5 } }
+        report("sos live update received: ${moved != null}")
+        assertNotNull("Bob should see the updated location", moved)
+        delay(1_500)
+        alice.sendSos(app.amend.messenger.data.SosPhase.STOP, null, recipients)
+        val stopped = poll(30_000) { bob.incomingSos.value[alice.me]?.takeIf { !it.active } }
+        report("sos stop received: ${stopped != null}")
+        assertNotNull("Bob should see that Alice is safe", stopped)
         alice.goOffline()
         bob.goOffline()
         dirA.deleteRecursively()

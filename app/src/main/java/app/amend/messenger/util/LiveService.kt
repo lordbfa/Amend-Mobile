@@ -22,9 +22,27 @@ class LiveService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /**
+     * SOS trigger that works even with the phone locked: pressing the power button
+     * 4 times quickly toggles the screen 4 times within a few seconds.
+     */
+    private val powerPattern = PressPattern(presses = 4, windowMs = 5_000)
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != Intent.ACTION_SCREEN_ON && intent.action != Intent.ACTION_SCREEN_OFF) return
+            if (!SosPrefs(context).powerTrigger) return
+            if (powerPattern.press()) SosManager.trigger(context)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         goForeground()
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -51,6 +69,7 @@ class LiveService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(screenReceiver) }
         isRunning = false
         if (!AppVisibility.isForeground) (application as AmendApp).repository.value?.goOffline()
         super.onDestroy()
