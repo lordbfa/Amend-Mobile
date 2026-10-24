@@ -7,6 +7,15 @@ import app.amend.messenger.data.NativeSecp
 import app.amend.messenger.data.SecureKeyStore
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.util.SyncScheduler
+import app.amend.messenger.data.AmendEvent
+import app.amend.messenger.data.MessageType
+import app.amend.messenger.util.AppVisibility
+import app.amend.messenger.util.LiveService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
@@ -22,6 +31,9 @@ class AmendApp : Application() {
 
     var nativeCrypto = false
         private set
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var eventsJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -39,8 +51,42 @@ class AmendApp : Application() {
         val repo = AmendRepository(dataDir(), keys)
         repo.start()
         _repository.value = repo
-        SyncScheduler.schedule(this, repo.eco.value.carbonAwareSync, repo.eco.value.efficiencyMode)
+        eventsJob?.cancel()
+        eventsJob = appScope.launch { repo.events.collect { notifyFor(repo, it) } }
+        rescheduleBackground(repo)
         return repo
+    }
+
+    /**
+     * The single place that turns events into system notifications — whether they
+     * come from the open app, the live connection service or background sync.
+     */
+    private fun notifyFor(repo: AmendRepository, e: AmendEvent) {
+        when (e) {
+            is AmendEvent.MessageArrived -> {
+                val chatOnScreen = AppVisibility.isForeground && AppVisibility.openPeer == e.peer
+                // Don't notify for old history fetched after restoring a key.
+                val recent = e.message.createdAt >= System.currentTimeMillis() / 1000 - 6 * 3600
+                if (chatOnScreen || !recent) return
+                val text = if (e.message.type == MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text
+                val unread = repo.conversations.value[e.peer]?.unread ?: 1
+                val name = repo.displayName(e.peer) + if (repo.isAccepted(e.peer)) "" else " (new request)"
+                Notifications.message(this, e.peer, name, text, unread.coerceAtLeast(1))
+            }
+            is AmendEvent.TreeGrown -> if (!AppVisibility.isForeground) {
+                Notifications.treeGrown(this, e.tree.species.name, e.tree.index + 1)
+            }
+            else -> Unit
+        }
+    }
+
+    /** Applies the current notification/sync settings: live connection and/or periodic checks. */
+    fun rescheduleBackground(repository: AmendRepository? = _repository.value) {
+        val repo = repository ?: return
+        val eco = repo.eco.value
+        // Periodic sync always runs as a safety net; it skips itself while the live connection is up.
+        SyncScheduler.schedule(this, eco.carbonAwareSync && !eco.instantNotifications, eco.efficiencyMode)
+        if (eco.instantNotifications) LiveService.start(this) else LiveService.stop(this)
     }
 
     fun createIdentity(keys: KeyPair): AmendRepository {
@@ -50,6 +96,8 @@ class AmendApp : Application() {
 
     /** Removes the identity and all local data from this device. */
     fun signOut() {
+        LiveService.stop(this)
+        eventsJob?.cancel()
         _repository.value?.goOffline()
         _repository.value = null
         keyStore.clear()

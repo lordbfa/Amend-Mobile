@@ -514,6 +514,14 @@ class AmendRepository(
         store.saveEco(_eco.value)
     }
 
+    fun setInstantNotifications(on: Boolean) {
+        _eco.update { it.copy(instantNotifications = on) }
+        store.saveEco(_eco.value)
+    }
+
+    /** True while the relay pool has at least one live connection. */
+    fun isOnline(): Boolean = pool.onlineCount() > 0
+
     fun setCarbonAwareSync(on: Boolean) {
         _eco.update { it.copy(carbonAwareSync = on) }
         store.saveEco(_eco.value)
@@ -526,7 +534,8 @@ class AmendRepository(
         val yesterday = LocalDate.now().minusDays(1).toString()
         _eco.update { it.copy(lastActiveDay = day, streak = if (it.lastActiveDay == yesterday) it.streak + 1 else 1) }
         if (s.efficiencyMode) award(EcoPoints.EFFICIENT_DAY, "Efficiency mode day", isMessage = false)
-        if (s.carbonAwareSync) award(EcoPoints.CARBON_AWARE_DAY, "Carbon-aware sync day", isMessage = false)
+        // carbon-aware sync only applies when amend isn't keeping a live connection
+        if (s.carbonAwareSync && !s.instantNotifications) award(EcoPoints.CARBON_AWARE_DAY, "Carbon-aware sync day", isMessage = false)
         store.saveEco(_eco.value)
     }
 

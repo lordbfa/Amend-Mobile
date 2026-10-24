@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.amend.messenger.AmendApp
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.ui.components.GlassCard
+import app.amend.messenger.util.Notifications
 import app.amend.messenger.ui.components.LeafAvatar
 import app.amend.messenger.ui.components.PhotoPickerAvatar
 import app.amend.messenger.ui.components.rememberHaptics
@@ -114,6 +115,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository) {
                 }
             }
         }
+
+        NotificationsCard(app, repo)
 
         RelayEditor(relays) { repo.setRelays(it) }
 
@@ -318,5 +321,79 @@ private fun MadeWithLove(modifier: Modifier = Modifier) {
         Text("With ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("💚", fontSize = 14.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
         Text(", Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * Notification settings: instant delivery (live connection), whether the
+ * system lets amend notify at all, and the battery-optimisation exemption that
+ * keeps the connection alive on aggressive phones.
+ */
+@Composable
+private fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
+    val eco by repo.eco.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    // re-check permission/battery state whenever the user comes back from system settings
+    var refresh by remember { mutableStateOf(0) }
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh++ }
+        lifecycle.lifecycle.addObserver(obs)
+        onDispose { lifecycle.lifecycle.removeObserver(obs) }
+    }
+    val enabled = remember(refresh) { Notifications.areEnabled(context) }
+    val power = context.getSystemService(android.os.PowerManager::class.java)
+    val unrestricted = remember(refresh) { power?.isIgnoringBatteryOptimizations(context.packageName) == true }
+
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Notifications 🔔", style = MaterialTheme.typography.titleMedium)
+            if (!enabled) {
+                Text(
+                    "Notifications are turned off for amend, so new messages can't appear in your notification panel.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                )
+                Button(onClick = {
+                    haptics.tap()
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    context.startActivity(intent)
+                }, shape = RoundedCornerShape(16.dp)) { Text("Turn on notifications") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Instant notifications", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (eco.instantNotifications)
+                            "amend keeps one small connection open so messages arrive right away — no Google servers involved. A quiet \"listening\" notification shows while it runs; you can hide it in system settings."
+                        else
+                            "amend checks for messages every 15–60 minutes instead. Uses less battery and data, but notifications can be late.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                androidx.compose.material3.Switch(checked = eco.instantNotifications, onCheckedChange = {
+                    haptics.tick()
+                    repo.setInstantNotifications(it)
+                    app.rescheduleBackground(repo)
+                })
+            }
+            if (eco.instantNotifications && !unrestricted) {
+                Text(
+                    "Some phones stop background connections to save battery. Let amend run in the background so notifications keep coming.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = {
+                    haptics.tap()
+                    @android.annotation.SuppressLint("BatteryLife")
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:" + context.packageName))
+                    runCatching { context.startActivity(intent) }.onFailure {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    }
+                }, shape = RoundedCornerShape(16.dp)) { Text("Allow background activity") }
+            }
+        }
     }
 }
