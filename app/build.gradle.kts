@@ -64,6 +64,7 @@ android {
             }
             // The live relay test only runs when explicitly requested (CI step).
             it.systemProperty("amend.liveRelays", System.getProperty("amend.liveRelays") ?: "false")
+            it.systemProperty("amend.relayScan", System.getProperty("amend.relayScan") ?: "false")
         }
     }
 }
