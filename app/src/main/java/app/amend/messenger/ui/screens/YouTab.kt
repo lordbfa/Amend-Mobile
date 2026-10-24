@@ -56,6 +56,7 @@ import app.amend.messenger.AmendApp
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.ui.components.GlassCard
 import app.amend.messenger.ui.components.LeafAvatar
+import app.amend.messenger.ui.components.PhotoPickerAvatar
 import app.amend.messenger.ui.components.rememberHaptics
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -134,14 +135,22 @@ fun YouTab(app: AmendApp, repo: AmendRepository) {
         var name by remember { mutableStateOf(me?.name ?: "") }
         var about by remember { mutableStateOf(me?.about ?: "") }
         var avatar by remember { mutableStateOf(me?.avatar ?: "") }
+        var picture by remember { mutableStateOf(me?.picture ?: "") }
         AlertDialog(
             onDismissRequest = { editing = false },
             title = { Text("Your profile") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        PhotoPickerAvatar(repo.me, me?.copy(avatar = avatar), picture, onPicture = { picture = it })
+                    }
+                    Text(
+                        "Your photo is part of your public profile — anyone with your amend ID can see it. It's shrunk to a tiny image to save data.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     OutlinedTextField(name, { name = it.take(40) }, label = { Text("Name") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                     OutlinedTextField(about, { about = it.take(140) }, label = { Text("About") }, shape = RoundedCornerShape(14.dp))
-                    Text("Avatar", style = MaterialTheme.typography.labelLarge)
+                    Text(if (picture.isEmpty()) "Avatar" else "Avatar (shown when there's no photo)", style = MaterialTheme.typography.labelLarge)
                     AVATAR_CHOICES.chunked(8).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             row.forEach { e ->
@@ -160,7 +169,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository) {
                 TextButton(onClick = {
                     editing = false
                     haptics.success()
-                    scope.launch { repo.updateProfile(name, about, avatar, me?.hue ?: -1f) }
+                    scope.launch { repo.updateProfile(name, about, avatar, me?.hue ?: -1f, picture) }
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } },

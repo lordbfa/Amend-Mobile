@@ -79,6 +79,28 @@ class EcoTest {
     }
 
     @Test
+    fun profilePhotoTravelsInMetadata() {
+        val pub = KeyPair.generate().publicKeyHex
+        val photo = "data:image/webp;base64," + "A".repeat(5000)
+        val json = app.amend.messenger.data.Profile(pub, "Faisal", "hi", "🌿", 120f, 1, photo).toMetadataJson()
+        val m = app.amend.messenger.core.json.Json.parseObject(json)
+        assertEquals(photo, m["amend_picture"])
+        assertTrue("inline photos must not go in the standard picture field", m["picture"] == null)
+        val back = app.amend.messenger.data.Profile.fromMetadata(pub, json, 1)!!
+        assertEquals(photo, back.picture)
+        assertEquals("Faisal", back.name)
+
+        // https photos from other Nostr apps are accepted; junk and oversized data are not
+        val url = app.amend.messenger.data.Profile.fromMetadata(pub, """{"name":"x","picture":"https://example.com/a.jpg"}""", 1)!!
+        assertEquals("https://example.com/a.jpg", url.picture)
+        val http = app.amend.messenger.data.Profile.fromMetadata(pub, """{"picture":"http://insecure/a.jpg"}""", 1)!!
+        assertEquals("", http.picture)
+        val huge = "data:image/webp;base64," + "A".repeat(30_000)
+        val big = app.amend.messenger.data.Profile.fromMetadata(pub, """{"amend_picture":"$huge"}""", 1)!!
+        assertEquals("", big.picture)
+    }
+
+    @Test
     fun footprintIsSmallButPositive() {
         val g = Footprint.gramsCo2(1_000_000_000L) // 1 GB
         assertEquals(13.5, g, 0.001)
@@ -152,6 +174,8 @@ class LiveRelayTest {
         assertTrue(bob.awaitOnline(20_000))
         delay(2_000)
 
+        val photo = "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA="
+        alice.updateProfile("Alice", "", "🌸", -1f, photo)
         alice.addContact(bob.me, "Bob")
         val sent = alice.sendText(bob.me, "Hello from the forest 🌳")
         report("alice→bob accepted by ${sent.relaysAccepted} relays")
@@ -171,6 +195,11 @@ class LiveRelayTest {
                 ?.takeIf { it.reactions[bob.me] == "💚" }
         }
         report("reaction received: ${reacted != null}")
+
+        // Bob fetches Alice's public profile, photo included
+        val profile = poll(20_000) { bob.profiles.value[alice.me]?.takeIf { it.picture == photo } }
+        report("profile photo received: ${profile != null}")
+        assertNotNull("Bob should see Alice's profile photo", profile)
         alice.goOffline()
         bob.goOffline()
         dirA.deleteRecursively()
