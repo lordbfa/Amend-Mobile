@@ -17,6 +17,9 @@ import app.amend.messenger.ui.theme.AmendTheme
 import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.Notifications
+import app.amend.messenger.util.PressPattern
+import app.amend.messenger.util.SosManager
+import app.amend.messenger.util.SosPrefs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -61,6 +64,19 @@ class MainActivity : ComponentActivity() {
         intent?.getStringExtra(Notifications.EXTRA_PEER)?.let { pendingPeer.value = it }
     }
 
+    /** SOS trigger while the app is open: any volume button pressed 4 times within 3 seconds. */
+    private val volumePattern = PressPattern(presses = 4, windowMs = 3_000)
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val isVolume = event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
+        if (isVolume && event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            if (SosPrefs(this).volumeTrigger && volumePattern.press()) {
+                SosManager.trigger(this)
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
@@ -70,6 +86,7 @@ class MainActivity : ComponentActivity() {
         AppVisibility.isForeground = true
         offlineJob?.cancel()
         val app = application as AmendApp
+        SosManager.restoreIfNeeded(this)
         app.repository.value?.let { repo ->
             repo.goOnline()
             // Starting the live service is only allowed while the app is visible.

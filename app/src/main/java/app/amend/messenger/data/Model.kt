@@ -10,7 +10,7 @@ import app.amend.messenger.eco.PlantedTree
 
 enum class MessageStatus { SENDING, SENT, FAILED, RECEIVED }
 
-enum class MessageType { TEXT, ECO_CARD }
+enum class MessageType { TEXT, ECO_CARD, SOS }
 
 data class ChatMessage(
     val id: String,
@@ -24,11 +24,13 @@ data class ChatMessage(
     val reactions: Map<String, String> = emptyMap(), // pubkey -> emoji
     val status: MessageStatus = MessageStatus.RECEIVED,
     val relaysAccepted: Int = 0,
+    /** Extra data: for SOS messages the encoded location "lat,lon,acc". */
+    val extra: String? = null,
 ) {
     fun toMap(): Map<String, Any?> = linkedMapOf(
         "id" to id, "peer" to peer, "fromMe" to fromMe, "text" to text, "createdAt" to createdAt,
         "type" to type.name, "cardId" to cardId, "replyTo" to replyTo, "reactions" to reactions,
-        "status" to status.name, "relaysAccepted" to relaysAccepted,
+        "status" to status.name, "relaysAccepted" to relaysAccepted, "extra" to extra,
     )
 
     companion object {
@@ -45,6 +47,7 @@ data class ChatMessage(
             reactions = (m["reactions"] as? Map<String, Any?>).orEmpty().mapValues { it.value.toString() },
             status = runCatching { MessageStatus.valueOf(m.str("status") ?: "RECEIVED") }.getOrDefault(MessageStatus.RECEIVED),
             relaysAccepted = (m.long("relaysAccepted") ?: 0).toInt(),
+            extra = m.str("extra"),
         )
     }
 }

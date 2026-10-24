@@ -116,6 +116,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository) {
             }
         }
 
+        SafetyCard(repo)
+
         NotificationsCard(app, repo)
 
         RelayEditor(relays) { repo.setRelays(it) }

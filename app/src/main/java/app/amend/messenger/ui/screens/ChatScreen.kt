@@ -131,6 +131,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     LaunchedEffect(messages.size) {
         repo.markRead(peer)
         app.amend.messenger.util.Notifications.cancel(context, peer)
+        app.amend.messenger.util.Notifications.cancelSosAlert(context, peer)
         if (messages.isNotEmpty()) listState.animateScrollToItem(0)
     }
     LaunchedEffect(peer) {
@@ -153,6 +154,12 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             },
             avatar = { LeafAvatar(peer, profiles[peer], 40.dp) },
         )
+
+        // A live SOS from this person stays pinned at the top of the chat
+        val incomingSos by repo.incomingSos.collectAsStateWithLifecycle()
+        incomingSos[peer]?.takeIf { it.active }?.let { sos ->
+            IncomingSosCard(sos, repo.displayName(peer), onOpenChat = null, onDismiss = { repo.dismissIncomingSos(peer) })
+        }
 
         if (!accepted) {
             RequestBanner(
@@ -380,7 +387,11 @@ private fun MessageBubble(
                     )
                 )
                 .background(
-                    if (message.type == MessageType.ECO_CARD) Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673), Color(0xFF4FC3F7)))
+                    if (message.type == MessageType.SOS) {
+                        if (message.cardId == "stop") Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673)))
+                        else Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFF7F0000)))
+                    }
+                    else if (message.type == MessageType.ECO_CARD) Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673), Color(0xFF4FC3F7)))
                     else if (mine) Brush.linearGradient(listOf(Color(0xFF2BB673), Color(0xFF1C9A62)))
                     else Brush.linearGradient(listOf(if (dark) Color(0xFF1B3A2D) else Color.White, if (dark) Color(0xFF16352A) else Color(0xFFF1F8F3)))
                 )
@@ -391,7 +402,7 @@ private fun MessageBubble(
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            val textColor = if (mine || message.type == MessageType.ECO_CARD) Color.White else MaterialTheme.colorScheme.onSurface
+            val textColor = if (mine || message.type == MessageType.ECO_CARD || message.type == MessageType.SOS) Color.White else MaterialTheme.colorScheme.onSurface
             Column {
                 replied?.let {
                     Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.12f)).padding(8.dp)) {
@@ -399,7 +410,9 @@ private fun MessageBubble(
                     }
                     Spacer(Modifier.height(6.dp))
                 }
-                if (message.type == MessageType.ECO_CARD) {
+                if (message.type == MessageType.SOS) {
+                    SosMessageContent(message)
+                } else if (message.type == MessageType.ECO_CARD) {
                     EcoCardContent(repo, message)
                 } else {
                     Text(message.text, color = textColor, style = MaterialTheme.typography.bodyLarge)
@@ -446,6 +459,31 @@ private fun MessageBubble(
                 }
             }
             DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
+        }
+    }
+}
+
+/** An SOS start/stop bubble: clear headline, and a map button when it carries a location. */
+@Composable
+private fun SosMessageContent(message: ChatMessage) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val loc = app.amend.messenger.data.SosLocation.decode(message.extra, message.createdAt)
+    Column {
+        Text(
+            if (message.cardId == "stop") "✅ Safe — SOS ended" else if (message.fromMe) "🆘 You sent an SOS" else "🆘 SOS — needs help!",
+            color = Color.White, style = MaterialTheme.typography.titleMedium,
+        )
+        if (loc != null && message.cardId != "stop") {
+            Text("Location ±${loc.accuracyM.toInt()} m", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(6.dp))
+            Button(
+                onClick = {
+                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(loc.geoUri()))) }
+                        .onFailure { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(loc.mapLink()))) }
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF7F0000)),
+            ) { Text("Open map") }
         }
     }
 }
