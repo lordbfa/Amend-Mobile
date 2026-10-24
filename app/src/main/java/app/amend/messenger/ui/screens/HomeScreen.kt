@@ -270,6 +270,7 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: 
     val conversations by repo.conversations.collectAsStateWithLifecycle()
     val profiles by repo.profiles.collectAsStateWithLifecycle()
     val eco by repo.eco.collectAsStateWithLifecycle()
+    val incomingSos by repo.incomingSos.collectAsStateWithLifecycle()
     val sorted = remember(conversations) {
         conversations.values.sortedWith(compareByDescending<Conversation> { it.pinned }.thenByDescending { it.lastActivity })
     }
@@ -277,6 +278,11 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: 
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
         item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan) }
+        // Friends who need help right now — always on top
+        val activeSos = incomingSos.values.filter { it.active }.sortedByDescending { it.updatedAt }
+        items(activeSos, key = { "sos" + it.peer }) { sos ->
+            IncomingSosCard(sos, repo.displayName(sos.peer), onOpenChat = { openChat(sos.peer) }, onDismiss = { repo.dismissIncomingSos(sos.peer) })
+        }
         if (requests.isNotEmpty()) {
             item { SectionLabel("🌾 Message requests · ${requests.size}") }
             items(requests, key = { "r" + it.peer }) { c -> ConversationRow(repo, c, profiles[c.peer], openChat, isRequest = true) }
@@ -336,15 +342,21 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             treeCenter = Offset(size.width * 0.78f, ground - 40f)
             drawTree(app.amend.messenger.eco.Species.all[(trees) % app.amend.messenger.eco.Species.all.size], progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night)
         }
-        // QR scanner, top-right
-        IconButton(
-            onClick = onScan,
-            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp)
-                .clip(CircleShape).background(Color(0x33FFFFFF)),
+        // SOS (tap 4×) and QR scanner, top-right
+        Row(
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Rounded.QrCodeScanner, contentDescription = "Scan a QR code", tint = Color.White)
+            SosButton()
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = onScan,
+                modifier = Modifier.clip(CircleShape).background(Color(0x33FFFFFF)),
+            ) {
+                Icon(Icons.Rounded.QrCodeScanner, contentDescription = "Scan a QR code", tint = Color.White)
+            }
         }
-        Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 20.dp, bottom = 20.dp, end = 72.dp)) {
+        Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 64.dp, bottom = 20.dp, end = 20.dp)) {
             Text("$greeting${me?.name?.takeIf { it.isNotBlank() }?.let { ", $it" } ?: ""}", color = Color.White, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(4.dp))
             Text(
@@ -421,6 +433,7 @@ private fun ConversationRow(repo: AmendRepository, c: Conversation, profile: Pro
                         isRequest -> "Wants to chat · tap to review"
                         last == null -> "${garden.species.emoji} Say hello to grow your garden"
                         last.type == MessageType.ECO_CARD -> "🌱 Eco challenge"
+                        last.type == MessageType.SOS -> if (last.cardId == "stop") "✅ SOS ended" else "🆘 SOS"
                         else -> (if (last.fromMe) "You: " else "") + last.text
                     },
                     style = MaterialTheme.typography.bodyMedium,

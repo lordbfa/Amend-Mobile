@@ -73,6 +73,10 @@ class AmendApp : Application() {
                 val name = repo.displayName(e.peer) + if (repo.isAccepted(e.peer)) "" else " (new request)"
                 Notifications.message(this, e.peer, name, text, unread.coerceAtLeast(1))
             }
+            is AmendEvent.SosReceived -> {
+                // Always alert for a friend's SOS, even if their chat is open.
+                Notifications.sosAlert(this, e.peer, repo.displayName(e.peer), e.sos, e.phase)
+            }
             is AmendEvent.TreeGrown -> if (!AppVisibility.isForeground) {
                 Notifications.treeGrown(this, e.tree.species.name, e.tree.index + 1)
             }

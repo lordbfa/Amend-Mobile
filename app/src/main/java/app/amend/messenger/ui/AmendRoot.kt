@@ -24,6 +24,7 @@ import app.amend.messenger.ui.components.rememberParticleField
 import app.amend.messenger.ui.screens.ChatScreen
 import app.amend.messenger.ui.screens.HomeScreen
 import app.amend.messenger.ui.screens.OnboardingScreen
+import app.amend.messenger.ui.screens.SosOverlay
 import app.amend.messenger.ui.theme.LocalEfficiency
 import app.amend.messenger.util.AppVisibility
 
@@ -55,6 +56,8 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
                 }
             }
             ParticleLayer(particles, Modifier.fillMaxSize())
+            // SOS countdown / active screen sits above everything else
+            SosOverlay(repository)
         }
     }
 }
