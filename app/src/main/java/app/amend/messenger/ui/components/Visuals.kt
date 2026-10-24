@@ -7,6 +7,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import app.amend.messenger.util.rememberAvatar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -67,7 +70,18 @@ fun LeafAvatar(pubkey: String, profile: Profile?, size: Dp, garden: Garden? = nu
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(emoji, fontSize = (size.value * 0.45f).sp)
+            val photo by rememberAvatar(profile?.picture)
+            val image = photo
+            if (image != null) {
+                Image(
+                    bitmap = image,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().padding(2.dp).clip(CircleShape),
+                )
+            } else {
+                Text(emoji, fontSize = (size.value * 0.45f).sp)
+            }
         }
         if (garden != null && garden.messageCount > 0) {
             GardenBadge(garden, Modifier.align(Alignment.BottomEnd).size(size * 0.46f))

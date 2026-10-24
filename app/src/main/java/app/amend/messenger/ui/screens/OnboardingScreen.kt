@@ -51,6 +51,7 @@ import app.amend.messenger.eco.Species
 import app.amend.messenger.ui.LocalParticles
 import app.amend.messenger.ui.components.LivingSky
 import app.amend.messenger.ui.components.ParticleKind
+import app.amend.messenger.ui.components.PhotoPickerAvatar
 import app.amend.messenger.ui.components.bouncy
 import app.amend.messenger.ui.components.drawTree
 import app.amend.messenger.ui.components.isNight
@@ -160,6 +161,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
 
                     Step.NAME -> {
                         var name by remember { mutableStateOf("") }
+                        var picture by remember { mutableStateOf("") }
                         Spacer(Modifier.height(40.dp))
                         Text("It sprouted! 🌿", style = MaterialTheme.typography.headlineMedium, color = Color.White)
                         Spacer(Modifier.height(8.dp))
@@ -167,7 +169,9 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                             "Every conversation grows its own shared garden, and your activity grows your personal forest.",
                             color = Color.White.copy(alpha = 0.85f), textAlign = TextAlign.Center,
                         )
-                        Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(20.dp))
+                        keys?.let { kp -> PhotoPickerAvatar(kp.publicKeyHex, null, picture, onPicture = { picture = it }, size = 88.dp) }
+                        Spacer(Modifier.height(16.dp))
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it.take(40) },
@@ -186,7 +190,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                                 scope.launch {
                                     repo.goOnline()
                                     repo.awaitOnline()
-                                    repo.updateProfile(name.ifBlank { "Friend of the forest" }, "", "", -1f)
+                                    repo.updateProfile(name.ifBlank { "Friend of the forest" }, "", "", -1f, picture)
                                     repo.publishInboxRelays()
                                 }
                             },
