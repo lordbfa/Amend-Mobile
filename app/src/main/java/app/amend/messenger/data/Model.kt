@@ -150,6 +150,8 @@ data class EcoState(
     val efficiencyMode: Boolean = false,
     val carbonAwareSync: Boolean = true,
     val co2AvoidedGrams: Long = 0,
+    /** Keep a live relay connection in the background for instant notifications. */
+    val instantNotifications: Boolean = true,
 ) {
     val forest: ForestState get() = ForestState(totalPoints, trees)
     val totalBytes: Long get() = bytesSent + bytesReceived
@@ -164,6 +166,7 @@ data class EcoState(
         "streak" to streak, "lastActiveDay" to lastActiveDay,
         "efficiencyMode" to efficiencyMode, "carbonAwareSync" to carbonAwareSync,
         "co2AvoidedGrams" to co2AvoidedGrams,
+        "instantNotifications" to instantNotifications,
     )
 
     companion object {
@@ -186,6 +189,7 @@ data class EcoState(
             efficiencyMode = m["efficiencyMode"] == true,
             carbonAwareSync = m["carbonAwareSync"] != false,
             co2AvoidedGrams = m.long("co2AvoidedGrams") ?: 0,
+            instantNotifications = m["instantNotifications"] != false,
         )
     }
 }

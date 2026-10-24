@@ -12,11 +12,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import app.amend.messenger.data.AmendEvent
-import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.ui.AmendRoot
 import app.amend.messenger.ui.theme.AmendTheme
 import app.amend.messenger.util.AppVisibility
+import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.Notifications
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,7 +29,6 @@ class MainActivity : ComponentActivity() {
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var offlineJob: Job? = null
-    private var eventsJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,26 +44,10 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             app.repository.collectLatest { repo ->
-                eventsJob?.cancel()
-                if (repo != null) {
-                    if (AppVisibility.isForeground) repo.goOnline()
-                    eventsJob = launch { forwardNotifications(repo) }
+                if (repo != null && AppVisibility.isForeground) {
+                    repo.goOnline()
+                    app.rescheduleBackground(repo)
                 }
-            }
-        }
-    }
-
-    /** While the app is open, still notify for chats that aren't on screen. */
-    private suspend fun forwardNotifications(repo: AmendRepository) {
-        repo.events.collect { e ->
-            when (e) {
-                is AmendEvent.MessageArrived -> if (AppVisibility.openPeer != e.peer && !AppVisibility.isForeground) {
-                    Notifications.message(this, e.peer, repo.displayName(e.peer), e.message.text)
-                }
-                is AmendEvent.TreeGrown -> if (!AppVisibility.isForeground) {
-                    Notifications.treeGrown(this, e.tree.species.name, e.tree.index + 1)
-                }
-                else -> Unit
             }
         }
     }
@@ -87,7 +69,12 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         AppVisibility.isForeground = true
         offlineJob?.cancel()
-        (application as AmendApp).repository.value?.goOnline()
+        val app = application as AmendApp
+        app.repository.value?.let { repo ->
+            repo.goOnline()
+            // Starting the live service is only allowed while the app is visible.
+            app.rescheduleBackground(repo)
+        }
     }
 
     override fun onStop() {
@@ -96,7 +83,9 @@ class MainActivity : ComponentActivity() {
         // Stay connected briefly so quick app switches don't drop the connection.
         offlineJob = lifecycleScope.launch {
             delay(30_000)
-            (application as AmendApp).repository.value?.goOffline()
+            val repo = (application as AmendApp).repository.value ?: return@launch
+            // With instant notifications the live service keeps the connection open.
+            if (!LiveService.isRunning) repo.goOffline()
         }
     }
 }

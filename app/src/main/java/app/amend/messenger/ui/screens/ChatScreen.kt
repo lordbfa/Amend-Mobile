@@ -127,8 +127,10 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
         AppVisibility.openPeer = peer
         onDispose { if (AppVisibility.openPeer == peer) AppVisibility.openPeer = null }
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(messages.size) {
         repo.markRead(peer)
+        app.amend.messenger.util.Notifications.cancel(context, peer)
         if (messages.isNotEmpty()) listState.animateScrollToItem(0)
     }
     LaunchedEffect(peer) {
