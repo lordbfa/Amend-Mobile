@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.amend.messenger.AmendApp
 import app.amend.messenger.data.AmendEvent
+import app.amend.messenger.data.MessageType
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.coroutineScope
@@ -56,7 +57,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             when (e) {
                 is AmendEvent.MessageArrived -> Notifications.message(
                     app, e.peer, repo.displayName(e.peer),
-                    if (e.message.type == app.amend.messenger.data.MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text,
+                    if (e.message.type == MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text,
                 )
                 else -> Unit
             }
