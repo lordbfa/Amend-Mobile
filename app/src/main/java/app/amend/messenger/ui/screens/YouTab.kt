@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -128,6 +129,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository) {
             "amend is open source and built on the Nostr protocol. Your key works in any Nostr app.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        MadeWithLove(Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
     }
 
@@ -288,5 +290,32 @@ private fun BackupCard(nsec: String) {
                 }) { Text(if (copied) "Copied — store it somewhere safe and clear your clipboard" else "Copy backup key") }
             }
         }
+    }
+}
+
+/** "With 💚, Ahmed Bhuiyan Faisal" — the heart beats like a real heartbeat (lub-dub, pause). */
+@Composable
+private fun MadeWithLove(modifier: Modifier = Modifier) {
+    val beat = androidx.compose.animation.core.rememberInfiniteTransition(label = "heartbeat")
+    val scale by beat.animateFloat(
+        initialValue = 1f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.keyframes {
+                durationMillis = 1100
+                1f at 0
+                1.32f at 110   // lub
+                1f at 240
+                1.22f at 340   // dub
+                1f at 500
+                1f at 1100     // rest
+            }
+        ),
+        label = "heartScale",
+    )
+    Row(modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        Text("With ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("💚", fontSize = 14.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
+        Text(", Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
