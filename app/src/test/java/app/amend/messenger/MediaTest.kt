@@ -69,22 +69,22 @@ class MediaTest {
     fun blossomScan(): Unit = runBlocking {
         assumeTrue(System.getProperty("amend.blobScan") == "true")
         val candidates = Blossom.DEFAULT_SERVERS + listOf(
-            "https://blossom.nostr.build", "https://files.v0l.io", "https://blossom.f7z.io",
-            "https://nostrmedia.com", "https://blossom.yakihonne.com", "https://cdn.satellite.earth",
+            "https://blossom.band", "https://cdn.nostrcheck.me", "https://blossom.nostr.build",
+            "https://cdn.satellite.earth", "https://blossom.sector01.com", "https://haven.slidestr.net",
         )
         val keys = KeyPair.generate()
         val blossom = Blossom()
         val data = FileCrypto.encrypt(ByteArray(50_000) { (it % 97).toByte() }).data
         File("build").mkdirs()
         val out = File("build/blob-scan.txt").also { it.writeText("") }
-        for (s in candidates.distinct()) {
+        for (s in candidates.distinct()) for (type in listOf("application/octet-stream", "audio/mp4")) {
             val t0 = System.currentTimeMillis()
             val line = try {
-                val blob = blossom.upload(s, data, keys)
+                val blob = blossom.upload(s, data, keys, type)
                 val back = blossom.download(listOf(blob.url), blob.sha256)
-                "OK  $s ${System.currentTimeMillis() - t0}ms ${back.size}B url=${blob.url.take(60)}"
+                "OK  $s [$type] ${System.currentTimeMillis() - t0}ms ${back.size}B url=${blob.url.take(60)}"
             } catch (e: Exception) {
-                "BAD $s ${e.javaClass.simpleName}: ${e.message?.take(140)}"
+                "BAD $s [$type] ${e.javaClass.simpleName}: ${e.message?.take(140)}"
             }
             println("BLOB-SCAN: $line")
             out.appendText(line + "\n")
