@@ -8,7 +8,16 @@ import app.amend.messenger.eco.ForestState
 import app.amend.messenger.eco.Garden
 import app.amend.messenger.eco.PlantedTree
 
-enum class MessageStatus { SENDING, SENT, FAILED, RECEIVED }
+enum class MessageStatus(val rank: Int) {
+    SENDING(0), SENT(1), FAILED(0), RECEIVED(0),
+    /** The friend's phone got it. */
+    DELIVERED(2),
+    /** The friend opened the chat and saw it. */
+    SEEN(3);
+
+    /** Status only moves forward (a late "sent" never undoes "seen"). */
+    fun advance(to: MessageStatus): MessageStatus = if (to.rank > rank || (this == FAILED || this == SENDING)) to else this
+}
 
 enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE }
 
@@ -26,11 +35,14 @@ data class ChatMessage(
     val relaysAccepted: Int = 0,
     /** Extra data: for SOS messages the encoded location "lat,lon,acc". */
     val extra: String? = null,
+    /** For incoming messages: which receipt we already sent back (0 none, 1 delivered, 2 seen). */
+    val receipt: Int = 0,
 ) {
     fun toMap(): Map<String, Any?> = linkedMapOf(
         "id" to id, "peer" to peer, "fromMe" to fromMe, "text" to text, "createdAt" to createdAt,
         "type" to type.name, "cardId" to cardId, "replyTo" to replyTo, "reactions" to reactions,
         "status" to status.name, "relaysAccepted" to relaysAccepted, "extra" to extra,
+        "receipt" to receipt,
     )
 
     companion object {
@@ -48,6 +60,7 @@ data class ChatMessage(
             status = runCatching { MessageStatus.valueOf(m.str("status") ?: "RECEIVED") }.getOrDefault(MessageStatus.RECEIVED),
             relaysAccepted = (m.long("relaysAccepted") ?: 0).toInt(),
             extra = m.str("extra"),
+            receipt = (m.long("receipt") ?: 0).toInt(),
         )
     }
 }
@@ -155,6 +168,8 @@ data class EcoState(
     val co2AvoidedGrams: Long = 0,
     /** Keep a live relay connection in the background for instant notifications. */
     val instantNotifications: Boolean = true,
+    /** Tell friends when you've seen their messages. */
+    val readReceipts: Boolean = true,
 ) {
     val forest: ForestState get() = ForestState(totalPoints, trees)
     val totalBytes: Long get() = bytesSent + bytesReceived
@@ -170,6 +185,7 @@ data class EcoState(
         "efficiencyMode" to efficiencyMode, "carbonAwareSync" to carbonAwareSync,
         "co2AvoidedGrams" to co2AvoidedGrams,
         "instantNotifications" to instantNotifications,
+        "readReceipts" to readReceipts,
     )
 
     companion object {
@@ -193,6 +209,7 @@ data class EcoState(
             carbonAwareSync = m["carbonAwareSync"] != false,
             co2AvoidedGrams = m.long("co2AvoidedGrams") ?: 0,
             instantNotifications = m["instantNotifications"] != false,
+            readReceipts = m["readReceipts"] != false,
         )
     }
 }

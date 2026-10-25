@@ -99,6 +99,8 @@ object Kinds {
     const val SEAL = 13
     const val CHAT_MESSAGE = 14
     const val FILE_MESSAGE = 15
+    /** amend delivery / read receipt (only ever sent gift-wrapped; other apps ignore it). */
+    const val RECEIPT = 1405
     const val GIFT_WRAP = 1059
     const val DM_RELAYS = 10050
     const val CLIENT_AUTH = 22242

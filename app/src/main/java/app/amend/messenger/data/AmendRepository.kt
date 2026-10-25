@@ -161,6 +161,7 @@ class AmendRepository(
             }
         }
         delay(1_500) // let the last events get processed
+        runCatching { flushDelivered() }
         pool.disconnect()
         _syncing.value = false
         flushBytes()
@@ -233,6 +234,7 @@ class AmendRepository(
                 if (added && !fromMe) {
                     recordMessageStats(received = true)
                     _events.tryEmit(AmendEvent.MessageArrived(peer, message))
+                    queueDelivered(message)
                 }
             }
             Kinds.CHAT_MESSAGE -> {
@@ -252,12 +254,14 @@ class AmendRepository(
                 if (added && !fromMe) {
                     recordMessageStats(received = true)
                     _events.tryEmit(AmendEvent.MessageArrived(peer, message))
+                    queueDelivered(message)
                 }
             }
             Kinds.REACTION -> {
                 val target = rumor.firstTag("e") ?: return
                 applyReaction(peer, target, rumor.pubkey, rumor.content.take(8))
             }
+            Kinds.RECEIPT -> if (!fromMe) applyReceipt(peer, rumor)
         }
         persistSettingsSoon()
     }
@@ -270,7 +274,7 @@ class AmendRepository(
                 type = MessageType.SOS, cardId = signal.phase.tag, extra = signal.location?.encode(),
                 status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
             )
-            upsertMessage(msg, countUnread = !fromMe)
+            if (upsertMessage(msg, countUnread = !fromMe) && !fromMe) queueDelivered(msg)
         }
         if (fromMe) return
         val old = _incomingSos.value[peer]
@@ -377,7 +381,8 @@ class AmendRepository(
                     conv.messages.toMutableList().also {
                         it[idx] = message.copy(
                             reactions = old.reactions + message.reactions,
-                            status = if (old.status == MessageStatus.SENDING || old.status == MessageStatus.FAILED) message.status else old.status,
+                            status = old.status.advance(message.status),
+                            receipt = maxOf(old.receipt, message.receipt),
                             relaysAccepted = maxOf(old.relaysAccepted, message.relaysAccepted),
                         )
                     }
@@ -460,12 +465,102 @@ class AmendRepository(
         mutex.withLock {
             _conversations.update { all ->
                 val conv = all[peer] ?: return@update all
-                all + (peer to conv.copy(messages = conv.messages.map { if (it.id == final.id) final else it }))
+                all + (peer to conv.copy(messages = conv.messages.map { if (it.id == final.id) final.copy(status = it.status.advance(final.status)) else it }))
             }
             store.saveChat(peer, _conversations.value[peer]!!.messages)
         }
         _events.tryEmit(AmendEvent.MessageSent(peer, accepted))
         return final
+    }
+
+    // ---------------------------------------------------------------- receipts
+
+    private val pendingDelivered = mutableMapOf<String, MutableSet<String>>() // peer -> message ids
+    private var deliveredJob: kotlinx.coroutines.Job? = null
+
+    /** Receipts go only to accepted contacts (a stranger doesn't learn you're online) and only for recent messages. */
+    private fun wantsReceipt(m: ChatMessage) =
+        !m.fromMe && m.peer in settings.accepted && m.createdAt > Event.nowSeconds() - RECEIPT_MAX_AGE
+
+    private fun queueDelivered(m: ChatMessage) {
+        if (!wantsReceipt(m) || m.receipt >= 1) return
+        synchronized(pendingDelivered) { pendingDelivered.getOrPut(m.peer) { mutableSetOf() }.add(m.id) }
+        if (deliveredJob?.isActive != true) {
+            // batch: one receipt for a burst of messages
+            deliveredJob = scope.launch { delay(1_500); runCatching { flushDelivered() } }
+        }
+    }
+
+    private suspend fun flushDelivered() {
+        val batch = synchronized(pendingDelivered) { pendingDelivered.toMap().also { pendingDelivered.clear() } }
+        for ((peer, ids) in batch) {
+            if (ids.isEmpty()) continue
+            if (sendReceipt(peer, "delivered", ids.toList(), null) > 0) markReceipt(peer, ids, 1)
+        }
+    }
+
+    /** Call while the chat is on screen: tells the friend their messages were seen. */
+    fun markSeen(peer: String) {
+        if (peer !in settings.accepted) return // requests: nothing is sent or marked until accepted
+        val conv = _conversations.value[peer] ?: return
+        val unseen = conv.messages.filter { !it.fromMe && it.receipt < 2 }
+        if (unseen.isEmpty()) return
+        val toSend = unseen.filter { wantsReceipt(it) }
+        scope.launch {
+            if (_eco.value.readReceipts && toSend.isNotEmpty()) {
+                val sent = runCatching {
+                    sendReceipt(peer, "seen", toSend.takeLast(100).map { it.id }, toSend.maxOf { it.createdAt })
+                }.getOrDefault(0)
+                if (sent == 0) return@launch // try again next time the chat is opened
+            }
+            // older ones (or with read receipts off) are just marked locally
+            markReceipt(peer, unseen.map { it.id }.toSet(), 2)
+        }
+    }
+
+    private suspend fun sendReceipt(peer: String, type: String, ids: List<String>, until: Long?): Int {
+        val tags = mutableListOf(listOf("p", peer))
+        ids.take(100).forEach { tags.add(listOf("e", it)) }
+        tags.add(listOf("amend", "receipt", type))
+        until?.let { tags.add(listOf("amend-until", it.toString())) }
+        val rumor = GiftWrap.rumor(me, Kinds.RECEIPT, "", tags)
+        val wrap = GiftWrap.wrap(rumor, keys, peer)
+        mutex.withLock { seenWraps.add(wrap.id) }
+        return pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+    }
+
+    private suspend fun markReceipt(peer: String, ids: Set<String>, level: Int) {
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.map { if (it.id in ids && it.receipt < level) it.copy(receipt = level) else it }))
+            }
+            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        }
+    }
+
+    /** A friend's phone says it got (or showed) our messages: move their status forward. */
+    private suspend fun applyReceipt(peer: String, rumor: Event) {
+        val type = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "receipt" }?.get(2) ?: return
+        val status = when (type) { "delivered" -> MessageStatus.DELIVERED; "seen" -> MessageStatus.SEEN; else -> return }
+        val ids = rumor.tagValues("e").toSet()
+        val until = rumor.firstTag("amend-until")?.toLongOrNull()
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.map {
+                    val hit = it.fromMe &&
+                        (it.id in ids || (status == MessageStatus.SEEN && until != null && it.createdAt <= until && it.status.rank >= 1))
+                    if (hit) it.copy(status = it.status.advance(status)) else it
+                }))
+            }
+            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        }
+    }
+
+    fun setReadReceipts(on: Boolean) {
+        _eco.update { it.copy(readReceipts = on) }
+        store.saveEco(_eco.value)
     }
 
     // ---------------------------------------------------------------- media
@@ -542,7 +637,7 @@ class AmendRepository(
         mutex.withLock {
             _conversations.update { all ->
                 val conv = all[peer] ?: return@update all
-                all + (peer to conv.copy(messages = conv.messages.map { if (it.id == id) it.copy(status = status, relaysAccepted = relays) else it }))
+                all + (peer to conv.copy(messages = conv.messages.map { if (it.id == id) it.copy(status = it.status.advance(status), relaysAccepted = maxOf(it.relaysAccepted, relays)) else it }))
             }
             _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
         }
@@ -601,7 +696,7 @@ class AmendRepository(
             _conversations.update { all ->
                 val conv = all[peer] ?: return@update all
                 all + (peer to conv.copy(messages = conv.messages.map {
-                    if (it.id == messageId) it.copy(status = if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED, relaysAccepted = accepted) else it
+                    if (it.id == messageId) it.copy(status = it.status.advance(if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED), relaysAccepted = accepted) else it
                 }))
             }
             store.saveChat(peer, _conversations.value[peer]!!.messages)
@@ -655,6 +750,7 @@ class AmendRepository(
     }
 
     fun markRead(peer: String) {
+        markSeen(peer)
         _conversations.update { all -> all[peer]?.takeIf { it.unread > 0 }?.let { all + (peer to it.copy(unread = 0)) } ?: all }
     }
 
@@ -802,5 +898,7 @@ class AmendRepository(
     companion object {
         const val SUB_DM = "amend-dm"
         const val SUB_META = "amend-meta"
+        /** Receipts are only sent for messages from the last week. */
+        const val RECEIPT_MAX_AGE = 7L * 24 * 3600
     }
 }

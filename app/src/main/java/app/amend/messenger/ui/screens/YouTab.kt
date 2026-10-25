@@ -398,6 +398,18 @@ private fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
                     }
                 }, shape = RoundedCornerShape(16.dp)) { Text("Allow background activity") }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Read receipts", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Your little message tree turns 🌱 green when sent, 🌳 deep green when it reaches your friend's phone, and 🌸 blue with blossoms when they've seen it. " +
+                            if (eco.readReceipts) "Friends also see when you've read theirs." else "Off: friends won't see when you read their messages.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                androidx.compose.material3.Switch(checked = eco.readReceipts, onCheckedChange = { haptics.tick(); repo.setReadReceipts(it) })
+            }
         }
     }
 }
