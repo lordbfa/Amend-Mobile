@@ -61,7 +61,7 @@ private val TREE_ORGS = listOf(
 )
 
 @Composable
-fun ImpactTab(repo: AmendRepository) {
+fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
     val eco by repo.eco.collectAsStateWithLifecycle()
     val statuses by repo.relayStatuses.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -117,6 +117,9 @@ fun ImpactTab(repo: AmendRepository) {
             StatChip("📶", Footprint.formatBytes(eco.totalBytes), "data", Modifier.weight(1f))
             StatChip("💡", String.format("%.1fs", Footprint.ledSeconds(eco.totalBytes)), "of LED light", Modifier.weight(1f))
         }
+
+        // Walking: every km on foot is a km not driven
+        StepsCard(onOpenReports = openReports)
 
         GlassCard(Modifier.fillMaxWidth().clickable { showAssumptions = !showAssumptions }) {
             Column(Modifier.padding(16.dp)) {
