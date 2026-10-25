@@ -11,6 +11,7 @@ import app.amend.messenger.data.AmendEvent
 import app.amend.messenger.data.MessageType
 import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
+import app.amend.messenger.util.StepTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,6 +42,7 @@ class AmendApp : Application() {
         nativeCrypto = NativeSecp.install()
         keyStore = SecureKeyStore(this)
         Notifications.createChannels(this)
+        StepTracker.init(this)
         // OpenStreetMap tiles: identify the app (tile usage policy) and keep the cache private.
         org.osmdroid.config.Configuration.getInstance().apply {
             userAgentValue = "amend-android/" + packageName

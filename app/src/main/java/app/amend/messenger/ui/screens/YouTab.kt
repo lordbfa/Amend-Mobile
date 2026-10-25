@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
 private val AVATAR_CHOICES = listOf("🌿", "🍃", "🌸", "🌻", "🌵", "🍄", "🌾", "🌺", "🍀", "🌼", "🌳", "🪴", "🐝", "🦋", "🐢", "🦊")
 
 @Composable
-fun YouTab(app: AmendApp, repo: AmendRepository) {
+fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
     val profiles by repo.profiles.collectAsStateWithLifecycle()
     val relays by repo.relayUrls.collectAsStateWithLifecycle()
     val me = profiles[repo.me]
@@ -92,6 +92,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository) {
                 TextButton(onClick = { editing = true }) { Text("Edit profile") }
             }
         }
+
+        StepsCard(onOpenReports = openReports)
 
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
