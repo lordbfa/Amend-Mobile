@@ -93,8 +93,6 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
             }
         }
 
-        StepsCard(onOpenReports = openReports)
-
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Your amend ID", style = MaterialTheme.typography.titleMedium)
