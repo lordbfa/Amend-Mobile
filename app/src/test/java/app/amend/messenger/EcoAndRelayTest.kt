@@ -177,6 +177,7 @@ class LiveRelayTest {
         val photo = "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA="
         alice.updateProfile("Alice", "", "🌸", -1f, photo)
         alice.addContact(bob.me, "Bob")
+        bob.accept(alice.me) // receipts only go to accepted contacts
         val sent = alice.sendText(bob.me, "Hello from the forest 🌳")
         report("alice→bob accepted by ${sent.relaysAccepted} relays")
 
@@ -187,6 +188,21 @@ class LiveRelayTest {
         assertNotNull("Bob should receive Alice's message", received)
         assertEquals(alice.me, received!!.peer)
         assertTrue(!received.fromMe)
+
+        // delivery + read receipts move Alice's tree forward
+        val delivered = poll(30_000) {
+            alice.conversations.value[bob.me]?.messages?.firstOrNull { it.id == received.id }
+                ?.takeIf { it.status == app.amend.messenger.data.MessageStatus.DELIVERED || it.status == app.amend.messenger.data.MessageStatus.SEEN }
+        }
+        report("delivered receipt: ${delivered != null}")
+        assertNotNull("Alice should see 'delivered'", delivered)
+        bob.markSeen(alice.me)
+        val seen = poll(30_000) {
+            alice.conversations.value[bob.me]?.messages?.firstOrNull { it.id == received.id }
+                ?.takeIf { it.status == app.amend.messenger.data.MessageStatus.SEEN }
+        }
+        report("seen receipt: ${seen != null}")
+        assertNotNull("Alice should see 'seen'", seen)
 
         // reaction round trip
         bob.react(alice.me, received.id, "💚")
