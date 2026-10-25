@@ -16,6 +16,7 @@ import app.amend.messenger.ui.AmendRoot
 import app.amend.messenger.ui.theme.AmendTheme
 import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
+import app.amend.messenger.util.StepTracker
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.util.PressPattern
 import app.amend.messenger.util.SosManager
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
         offlineJob?.cancel()
         val app = application as AmendApp
         SosManager.restoreIfNeeded(this)
+        StepTracker.start(this, "ui")
         app.repository.value?.let { repo ->
             repo.goOnline()
             // Starting the live service is only allowed while the app is visible.
@@ -97,6 +99,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         AppVisibility.isForeground = false
+        StepTracker.stop("ui")
         // Stay connected briefly so quick app switches don't drop the connection.
         offlineJob = lifecycleScope.launch {
             delay(30_000)

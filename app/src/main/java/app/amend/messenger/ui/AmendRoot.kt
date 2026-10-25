@@ -25,8 +25,10 @@ import app.amend.messenger.ui.screens.ChatScreen
 import app.amend.messenger.ui.screens.HomeScreen
 import app.amend.messenger.ui.screens.OnboardingScreen
 import app.amend.messenger.ui.screens.SosOverlay
+import app.amend.messenger.ui.screens.WalkingReportsScreen
 import app.amend.messenger.ui.theme.LocalEfficiency
 import app.amend.messenger.util.AppVisibility
+import app.amend.messenger.util.StepTracker
 
 sealed class Route {
     data object Home : Route()
@@ -96,7 +98,9 @@ private fun MainNavigation(app: AmendApp, repo: AmendRepository, pendingPeer: Mu
                 repo = repo,
                 openChat = { peer -> stack.add(Route.Chat(peer)) },
             )
-            is Route.Chat -> ChatScreen(
+            is Route.Chat -> if (route.peer == StepTracker.REPORTS_PEER) {
+                WalkingReportsScreen(onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) })
+            } else ChatScreen(
                 repo = repo,
                 peer = route.peer,
                 onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) },

@@ -38,6 +38,7 @@ class LiveService : Service() {
     override fun onCreate() {
         super.onCreate()
         goForeground()
+        StepTracker.start(this, "live")
         val filter = android.content.IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -70,6 +71,7 @@ class LiveService : Service() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenReceiver) }
+        StepTracker.stop("live")
         isRunning = false
         if (!AppVisibility.isForeground) (application as AmendApp).repository.value?.goOffline()
         super.onDestroy()

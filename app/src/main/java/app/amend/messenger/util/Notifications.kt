@@ -25,6 +25,9 @@ object Notifications {
     const val CHANNEL_SOS_ACTIVE = "sos_active"
     const val SOS_ACTIVE_ID = 9_110
     const val SOS_COUNTDOWN_ID = 9_111
+    const val CHANNEL_WALKING = "walking"
+    private const val STEP_REPORT_ID = 6_100
+    private const val STEP_GOAL_ID = 6_101
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -52,6 +55,11 @@ object Notifications {
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_SOS_ACTIVE, context.getString(R.string.channel_sos_active), NotificationManager.IMPORTANCE_HIGH)
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_WALKING, "Walking", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Daily step goal and the monthly walking report"
+            }
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_CONNECTION, context.getString(R.string.channel_connection), NotificationManager.IMPORTANCE_MIN).apply {
@@ -260,4 +268,47 @@ object Notifications {
     fun cancelSosActive(context: Context) = NotificationManagerCompat.from(context).cancel(SOS_ACTIVE_ID)
 
     fun cancelSosAlert(context: Context, peer: String) = NotificationManagerCompat.from(context).cancel(sosIdFor(peer))
+
+    // ------------------------------------------------------------ walking
+
+    fun stepReport(context: Context, report: app.amend.messenger.data.StepReportMessage) {
+        if (!areEnabled(context)) return
+        val r = report.report
+        val text = "%,d steps · %s km — tap to see the full report".format(
+            java.util.Locale.US, r.totalSteps, app.amend.messenger.data.StepLog.formatKm(r.km),
+        )
+        val n = NotificationCompat.Builder(context, CHANNEL_WALKING)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("👣 Your " + app.amend.messenger.data.StepLog.monthName(report.month) + " walking report")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(report.text))
+            .setColor(0xFF2BB673.toInt())
+            .setAutoCancel(true)
+            .setContentIntent(openIntent(context, StepTracker.REPORTS_PEER))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(STEP_REPORT_ID, n)
+        } catch (e: SecurityException) {
+            // ignore
+        }
+    }
+
+    fun cancelStepReport(context: Context) = NotificationManagerCompat.from(context).cancel(STEP_REPORT_ID)
+
+    fun stepGoal(context: Context, steps: Int, goal: Int) {
+        if (!areEnabled(context)) return
+        val n = NotificationCompat.Builder(context, CHANNEL_WALKING)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("🎉 Daily goal reached!")
+            .setContentText("%,d steps today — your %,d-step goal is done. 🌿".format(java.util.Locale.US, steps, goal))
+            .setColor(0xFF2BB673.toInt())
+            .setAutoCancel(true)
+            .setContentIntent(openIntent(context, null))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(STEP_GOAL_ID, n)
+        } catch (e: SecurityException) {
+            // ignore
+        }
+    }
 }
