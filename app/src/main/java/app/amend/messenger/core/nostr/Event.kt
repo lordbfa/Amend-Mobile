@@ -98,6 +98,7 @@ object Kinds {
     const val REACTION = 7
     const val SEAL = 13
     const val CHAT_MESSAGE = 14
+    const val FILE_MESSAGE = 15
     const val GIFT_WRAP = 1059
     const val DM_RELAYS = 10050
     const val CLIENT_AUTH = 22242

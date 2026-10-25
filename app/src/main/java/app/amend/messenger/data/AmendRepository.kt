@@ -1,6 +1,7 @@
 package app.amend.messenger.data
 
 import app.amend.messenger.core.crypto.toHex
+import app.amend.messenger.core.crypto.hexToBytes
 import app.amend.messenger.core.crypto.Hashes
 import app.amend.messenger.core.nostr.Event
 import app.amend.messenger.core.nostr.GiftWrap
@@ -49,7 +50,7 @@ sealed class AmendEvent {
  * Pure Kotlin/JVM (no Android classes), so it's also exercised by the CI relay test.
  */
 class AmendRepository(
-    dir: File,
+    private val dir: File,
     val keys: KeyPair,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
@@ -217,6 +218,23 @@ class AmendRepository(
             }
         }
         when (rumor.kind) {
+            Kinds.FILE_MESSAGE -> {
+                val media = MediaInfo.fromRumor(rumor) ?: return
+                val message = ChatMessage(
+                    id = rumor.id, peer = peer, fromMe = fromMe,
+                    text = when (media.kind) { MediaKind.VOICE -> "🎤 Voice message"; MediaKind.VIDEO -> "🎥 Video message"; MediaKind.FILE -> "📎 File" },
+                    createdAt = rumor.createdAt,
+                    type = when (media.kind) { MediaKind.VOICE -> MessageType.VOICE; MediaKind.VIDEO -> MessageType.VIDEO; MediaKind.FILE -> MessageType.FILE },
+                    replyTo = rumor.firstTag("e"),
+                    status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
+                    extra = media.toJson(),
+                )
+                val added = upsertMessage(message, countUnread = !fromMe)
+                if (added && !fromMe) {
+                    recordMessageStats(received = true)
+                    _events.tryEmit(AmendEvent.MessageArrived(peer, message))
+                }
+            }
             Kinds.CHAT_MESSAGE -> {
                 val cardId = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "card" }?.get(2)
                 val message = ChatMessage(
@@ -450,8 +468,130 @@ class AmendRepository(
         return final
     }
 
+    // ---------------------------------------------------------------- media
+
+    private val blossom = app.amend.messenger.net.Blossom()
+    private val mediaDir = File(dir, "media").apply { mkdirs() }
+
+    /** Blossom servers to upload to, best first. */
+    var mediaServers: List<String> = app.amend.messenger.net.Blossom.DEFAULT_SERVERS
+
+    /** Where the plain (decrypted) copy of a message's media lives on this phone. */
+    fun localMediaFile(media: MediaInfo): File {
+        val ext = when {
+            media.mime.contains("mp4") && media.kind == MediaKind.VOICE -> "m4a"
+            media.mime.contains("mp4") -> "mp4"
+            media.mime.contains("ogg") -> "ogg"
+            media.mime.contains("webm") -> "webm"
+            else -> "bin"
+        }
+        return File(mediaDir, "${media.sha256.ifBlank { media.keyHex.take(16) }}.$ext")
+    }
+
+    /**
+     * Encrypts [plain], uploads it (two servers when possible) and sends a NIP-17
+     * file message. The message appears immediately with an upload status.
+     */
+    suspend fun sendMedia(
+        peer: String, plain: ByteArray, kind: MediaKind, mime: String,
+        durationMs: Long = 0, waveform: ByteArray = ByteArray(0), width: Int = 0, height: Int = 0,
+        replyTo: String? = null,
+    ): ChatMessage {
+        val enc = app.amend.messenger.core.crypto.FileCrypto.encrypt(plain)
+        val draft = MediaInfo(
+            kind, emptyList(), mime, enc.key.toHex(), enc.nonce.toHex(), enc.sha256Hex, enc.data.size.toLong(),
+            durationMs, waveform, width, height,
+        )
+        // keep our own plain copy so it plays instantly without downloading
+        localMediaFile(draft).writeBytes(plain)
+        val type = when (kind) { MediaKind.VOICE -> MessageType.VOICE; MediaKind.VIDEO -> MessageType.VIDEO; MediaKind.FILE -> MessageType.FILE }
+        val label = when (kind) { MediaKind.VOICE -> "🎤 Voice message"; MediaKind.VIDEO -> "🎥 Video message"; MediaKind.FILE -> "📎 File" }
+        val tempId = "local-" + enc.sha256Hex
+        upsertMessage(ChatMessage(tempId, peer, true, label, Event.nowSeconds(), type, replyTo = replyTo, status = MessageStatus.SENDING, extra = draft.toJson()), countUnread = false)
+        accept(peer)
+
+        val blobs = try {
+            blossom.uploadAny(mediaServers, enc.data, keys, copies = 2)
+        } catch (e: Exception) {
+            setMessageStatus(peer, tempId, MessageStatus.FAILED, 0)
+            throw e
+        }
+        pendingBytesSent.addAndGet(enc.data.size.toLong() * blobs.size)
+        val media = draft.copy(urls = blobs.map { it.url })
+        val tags = media.tags(peer).toMutableList()
+        replyTo?.let { tags.add(listOf("e", it)) }
+        val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags)
+        // swap the temporary bubble for the real message id
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.map {
+                    if (it.id == tempId) it.copy(id = rumor.id, createdAt = rumor.createdAt, extra = media.toJson()) else it
+                }))
+            }
+        }
+        recordMessageStats(received = false)
+        val accepted = runCatching { publishRumor(peer, rumor) }.getOrDefault(0)
+        setMessageStatus(peer, rumor.id, if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED, accepted)
+        _events.tryEmit(AmendEvent.MessageSent(peer, accepted))
+        return _conversations.value[peer]?.messages?.firstOrNull { it.id == rumor.id }
+            ?: ChatMessage(rumor.id, peer, true, label, rumor.createdAt, type, extra = media.toJson())
+    }
+
+    private suspend fun setMessageStatus(peer: String, id: String, status: MessageStatus, relays: Int) {
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.map { if (it.id == id) it.copy(status = status, relaysAccepted = relays) else it }))
+            }
+            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        }
+    }
+
+    /** Upload never finished → upload again from our plain copy; otherwise just resend the file message. */
+    private suspend fun retryMedia(peer: String, msg: ChatMessage) {
+        val media = MediaInfo.fromJson(msg.extra) ?: return
+        if (media.urls.isEmpty()) {
+            val local = localMediaFile(media)
+            if (!local.exists()) { setMessageStatus(peer, msg.id, MessageStatus.FAILED, 0); return }
+            val plain = local.readBytes()
+            // drop the failed bubble; sendMedia makes a fresh one
+            mutex.withLock {
+                _conversations.update { all ->
+                    val conv = all[peer] ?: return@update all
+                    all + (peer to conv.copy(messages = conv.messages.filter { it.id != msg.id }))
+                }
+            }
+            runCatching {
+                sendMedia(peer, plain, media.kind, media.mime, media.durationMs, media.waveform, media.width, media.height, msg.replyTo)
+            }
+            return
+        }
+        setMessageStatus(peer, msg.id, MessageStatus.SENDING, 0)
+        val tags = media.tags(peer).toMutableList()
+        msg.replyTo?.let { tags.add(listOf("e", it)) }
+        val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags, msg.createdAt)
+        val accepted = runCatching { publishRumor(peer, rumor) }.getOrDefault(0)
+        setMessageStatus(peer, msg.id, if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED, accepted)
+    }
+
+    /** Returns a playable local file for a media message, downloading and decrypting it if needed. */
+    suspend fun fetchMedia(media: MediaInfo): File {
+        val file = localMediaFile(media)
+        if (file.exists() && file.length() > 0) return file
+        val encrypted = blossom.download(media.urls, media.sha256.ifBlank { null })
+        pendingBytesReceived.addAndGet(encrypted.size.toLong())
+        val plain = app.amend.messenger.core.crypto.FileCrypto.decrypt(encrypted, media.keyHex.hexToBytes(), media.nonceHex.hexToBytes())
+        file.writeBytes(plain)
+        return file
+    }
+
     suspend fun retry(peer: String, messageId: String) {
         val msg = _conversations.value[peer]?.messages?.firstOrNull { it.id == messageId } ?: return
+        if (msg.type == MessageType.VOICE || msg.type == MessageType.VIDEO || msg.type == MessageType.FILE) {
+            retryMedia(peer, msg)
+            return
+        }
         val tags = mutableListOf(listOf("p", peer))
         msg.replyTo?.let { tags.add(listOf("e", it)) }
         msg.cardId?.let { tags.add(listOf("amend", "card", it)) }

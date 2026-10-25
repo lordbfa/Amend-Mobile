@@ -1,5 +1,20 @@
 package app.amend.messenger.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
+import app.amend.messenger.data.MediaKind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -117,8 +132,20 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
     val particles = LocalParticles.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     var input by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMessage?>(null) }
+    val voiceRecorder = remember { VoiceRecorder(context) }
+    var recordingVoice by remember { mutableStateOf(false) }
+    var cancellingVoice by remember { mutableStateOf(false) }
+    var showVideoRecorder by remember { mutableStateOf(false) }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) haptics.success()
+    }
+    val mediaPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.all { it }) showVideoRecorder = true
+    }
+    DisposableEffect(Unit) { onDispose { voiceRecorder.cancel(); AudioPlayback.stop() } }
     var sendButtonPos by remember { mutableStateOf(Offset.Zero) }
     var gardenPos by remember { mutableStateOf(Offset.Zero) }
     var accepted by remember { mutableStateOf(repo.isAccepted(peer) || messages.any { it.fromMe }) }
@@ -132,7 +159,6 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
         AppVisibility.openPeer = peer
         onDispose { if (AppVisibility.openPeer == peer) AppVisibility.openPeer = null }
     }
-    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(messages.size) {
         repo.markRead(peer)
         app.amend.messenger.util.Notifications.cancel(context, peer)
@@ -231,7 +257,9 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            TextField(
+            if (recordingVoice) {
+                RecordingBar(voiceRecorder, cancellingVoice, Modifier.weight(1f))
+            } else TextField(
                 value = input,
                 onValueChange = { if (it.length <= 4000) input = it },
                 placeholder = { Text("Grow the conversation…") },
@@ -247,6 +275,82 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             )
             Spacer(Modifier.size(8.dp))
             val canSend = input.isNotBlank()
+            if (!canSend) {
+                if (!recordingVoice) {
+                    // short round video message
+                    Box(
+                        Modifier.size(54.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable {
+                            haptics.tap()
+                            if (hasPermission(context, Manifest.permission.CAMERA) && hasPermission(context, Manifest.permission.RECORD_AUDIO)) showVideoRecorder = true
+                            else mediaPermissions.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Rounded.Videocam, contentDescription = "Record video message", tint = MaterialTheme.colorScheme.primary) }
+                    Spacer(Modifier.size(8.dp))
+                }
+                // hold to record a voice message, slide left to cancel
+                val micScale by animateFloatAsState(if (recordingVoice) 1.35f else 1f, spring(Spring.DampingRatioMediumBouncy), label = "mic")
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val cancelDistance = with(density) { 110.dp.toPx() }
+                Box(
+                    Modifier
+                        .size(54.dp)
+                        .onGloballyPositioned { sendButtonPos = it.positionInRoot() + Offset(it.size.width / 2f, it.size.height / 2f) }
+                        .graphicsLayer { scaleX = micScale; scaleY = micScale }
+                        .clip(CircleShape)
+                        .background(
+                            if (cancellingVoice) Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFFFF7043)))
+                            else Brush.linearGradient(listOf(Color(0xFF2BB673), Color(0xFF5BE39B)))
+                        )
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown()
+                                if (!hasPermission(context, Manifest.permission.RECORD_AUDIO)) {
+                                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    return@awaitEachGesture
+                                }
+                                AudioPlayback.stop()
+                                if (!voiceRecorder.start()) { haptics.reject(); return@awaitEachGesture }
+                                haptics.heavy()
+                                recordingVoice = true
+                                cancellingVoice = false
+                                var cancel = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    val nowCancel = change.position.x - down.position.x < -cancelDistance
+                                    if (nowCancel != cancel) { cancel = nowCancel; cancellingVoice = cancel; haptics.tick() }
+                                    if (!change.pressed) break
+                                }
+                                recordingVoice = false
+                                cancellingVoice = false
+                                if (cancel) {
+                                    voiceRecorder.cancel()
+                                    haptics.reject()
+                                } else {
+                                    val result = voiceRecorder.stop()
+                                    if (result == null) {
+                                        haptics.reject()
+                                    } else {
+                                        val (file, duration, wave) = result
+                                        val reply = replyTo?.id
+                                        replyTo = null
+                                        haptics.success()
+                                        particles.burst(sendButtonPos, ParticleKind.LEAVES, 18, 0.8f)
+                                        if (!accepted) { repo.accept(peer); accepted = true }
+                                        scope.launch {
+                                            val bytes = withContext(Dispatchers.IO) { file.readBytes().also { file.delete() } }
+                                            runCatching { repo.sendMedia(peer, bytes, MediaKind.VOICE, "audio/mp4", duration, wave, replyTo = reply) }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Mic, contentDescription = "Hold to record a voice message", tint = Color.White)
+                }
+            } else {
             val rotation by animateFloatAsState(if (canSend) -20f else 0f, spring(Spring.DampingRatioMediumBouncy), label = "sendRot")
             val sendScale by animateFloatAsState(if (canSend) 1f else 0.85f, spring(Spring.DampingRatioMediumBouncy), label = "sendScale")
             val source = remember { MutableInteractionSource() }
@@ -275,9 +379,34 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White)
             }
+            }
+        }
+    }
+
+    if (showVideoRecorder) {
+        Dialog(
+            onDismissRequest = { showVideoRecorder = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
+        ) {
+            VideoRecorderScreen(
+                onDone = { file, duration, w, h ->
+                    showVideoRecorder = false
+                    val reply = replyTo?.id
+                    replyTo = null
+                    if (!accepted) { repo.accept(peer); accepted = true }
+                    scope.launch {
+                        val bytes = withContext(Dispatchers.IO) { file.readBytes().also { file.delete() } }
+                        runCatching { repo.sendMedia(peer, bytes, MediaKind.VIDEO, "video/mp4", duration, width = w, height = h, replyTo = reply) }
+                    }
+                },
+                onClose = { showVideoRecorder = false },
+            )
         }
     }
 }
+
+private fun hasPermission(context: Context, permission: String) =
+    ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
 @Composable
 private fun GardenHeader(
@@ -399,6 +528,7 @@ private fun MessageBubble(
                         if (message.cardId == "stop") Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673)))
                         else Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFF7F0000)))
                     }
+                    else if (message.type == MessageType.VIDEO) Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
                     else if (message.type == MessageType.ECO_CARD) Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673), Color(0xFF4FC3F7)))
                     else if (mine) Brush.linearGradient(listOf(Color(0xFF2BB673), Color(0xFF1C9A62)))
                     else Brush.linearGradient(listOf(if (dark) Color(0xFF1B3A2D) else Color.White, if (dark) Color(0xFF16352A) else Color(0xFFF1F8F3)))
@@ -422,6 +552,10 @@ private fun MessageBubble(
                     SosMessageContent(message, liveSos)
                 } else if (message.type == MessageType.ECO_CARD) {
                     EcoCardContent(repo, message)
+                } else if (message.type == MessageType.VOICE) {
+                    VoiceBubble(repo, message, textColor)
+                } else if (message.type == MessageType.VIDEO) {
+                    VideoBubble(repo, message)
                 } else {
                     Text(linkify(message.text, textColor), color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }

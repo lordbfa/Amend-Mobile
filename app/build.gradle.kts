@@ -12,8 +12,8 @@ android {
         applicationId = "app.amend.messenger"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "2.5.0"
+        versionCode = 9
+        versionName = "2.6.0"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -65,6 +65,7 @@ android {
             // The live relay test only runs when explicitly requested (CI step).
             it.systemProperty("amend.liveRelays", System.getProperty("amend.liveRelays") ?: "false")
             it.systemProperty("amend.relayScan", System.getProperty("amend.relayScan") ?: "false")
+            it.systemProperty("amend.blobScan", System.getProperty("amend.blobScan") ?: "false")
         }
     }
 }
@@ -92,6 +93,7 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
+    implementation("androidx.camera:camera-video:1.4.1")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
 

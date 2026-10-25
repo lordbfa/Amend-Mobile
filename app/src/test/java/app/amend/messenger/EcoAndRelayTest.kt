@@ -220,6 +220,26 @@ class LiveRelayTest {
         val stopped = poll(30_000) { bob.incomingSos.value[alice.me]?.takeIf { !it.active } }
         report("sos stop received: ${stopped != null}")
         assertNotNull("Bob should see that Alice is safe", stopped)
+
+        // Voice message: encrypted upload to Blossom, file message, Bob downloads + decrypts
+        val voice = ByteArray(40_000) { (it * 31 % 251).toByte() }
+        val wave = ByteArray(64) { (it * 4).toByte() }
+        val mediaMsg = runCatching {
+            alice.sendMedia(bob.me, voice, app.amend.messenger.data.MediaKind.VOICE, "audio/mp4", 3_200, wave)
+        }.onFailure { report("media upload failed: ${it.message}") }.getOrNull()
+        report("voice uploaded: ${mediaMsg != null} relays=${mediaMsg?.relaysAccepted}")
+        assertNotNull("Alice should upload the voice message", mediaMsg)
+        val gotVoice = poll(30_000) {
+            bob.conversations.value[alice.me]?.messages?.firstOrNull { it.type == app.amend.messenger.data.MessageType.VOICE }
+        }
+        report("voice message received: ${gotVoice != null}")
+        assertNotNull("Bob should get the voice message", gotVoice)
+        val info = app.amend.messenger.data.MediaInfo.fromJson(gotVoice!!.extra)!!
+        assertEquals(3_200L, info.durationMs)
+        assertEquals(64, info.waveform.size)
+        val file = bob.fetchMedia(info)
+        assertTrue("decrypted voice matches", file.readBytes().contentEquals(voice))
+        report("voice downloaded+decrypted from ${info.urls.size} server(s): ok")
         alice.goOffline()
         bob.goOffline()
         dirA.deleteRecursively()
