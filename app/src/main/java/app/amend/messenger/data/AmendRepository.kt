@@ -60,7 +60,7 @@ class AmendRepository(
 
     private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS).let { s ->
         // Upgrade installs still on the original relay list (two of those relays proved unreliable).
-        if (s.relays.sorted() == RelayPool.LEGACY_DEFAULTS.sorted()) s.copy(relays = RelayPool.DEFAULT_RELAYS) else s
+        if (RelayPool.PREVIOUS_DEFAULTS.any { it.sorted() == s.relays.sorted() }) s.copy(relays = RelayPool.DEFAULT_RELAYS) else s
     }
 
     private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())

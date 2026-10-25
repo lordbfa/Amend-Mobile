@@ -129,7 +129,6 @@ class Blossom(private val client: OkHttpClient = defaultClient) {
         val DEFAULT_SERVERS = listOf(
             "https://nostr.download",
             "https://blossom.yakihonne.com",
-            "https://blossom.primal.net",
         )
     }
 }
