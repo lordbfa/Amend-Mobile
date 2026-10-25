@@ -59,6 +59,7 @@ class AmendApp : Application() {
         val repo = AmendRepository(dataDir(), keys)
         repo.start()
         _repository.value = repo
+        app.amend.messenger.util.CallManager.attach(this, repo)
         eventsJob?.cancel()
         eventsJob = appScope.launch { repo.events.collect { notifyFor(repo, it) } }
         rescheduleBackground(repo)

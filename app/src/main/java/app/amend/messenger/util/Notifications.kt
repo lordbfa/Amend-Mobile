@@ -14,6 +14,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import app.amend.messenger.MainActivity
 import app.amend.messenger.R
+import app.amend.messenger.util.CallPhase
+import app.amend.messenger.util.CallUi
 
 object Notifications {
     const val CHANNEL_MESSAGES = "messages"
@@ -26,6 +28,12 @@ object Notifications {
     const val SOS_ACTIVE_ID = 9_110
     const val SOS_COUNTDOWN_ID = 9_111
     const val CHANNEL_WALKING = "walking"
+    const val CHANNEL_CALLS = "calls_incoming"
+    const val CHANNEL_CALL_ONGOING = "calls_ongoing"
+    const val CALL_INCOMING_ID = 5_100
+    const val CALL_ONGOING_ID = 5_101
+    /** MainActivity extra: "show" (incoming call screen) or "answer". */
+    const val EXTRA_CALL = "amend_call"
     private const val STEP_REPORT_ID = 6_100
     private const val STEP_GOAL_ID = 6_101
 
@@ -55,6 +63,17 @@ object Notifications {
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_SOS_ACTIVE, context.getString(R.string.channel_sos_active), NotificationManager.IMPORTANCE_HIGH)
+        )
+        nm.createNotificationChannel(
+            // amend plays the ringtone itself (looping), so the channel stays silent
+            NotificationChannel(CHANNEL_CALLS, "Incoming calls", NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_CALL_ONGOING, "Ongoing call", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_WALKING, "Walking", NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -310,5 +329,79 @@ object Notifications {
         } catch (e: SecurityException) {
             // ignore
         }
+    }
+
+    // ------------------------------------------------------------ calls
+
+    private fun callActivityIntent(context: Context, mode: String, code: Int): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_CALL, mode)
+        }
+        return PendingIntent.getActivity(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    private fun callAction(context: Context, action: String, code: Int): PendingIntent =
+        PendingIntent.getBroadcast(
+            context, code, Intent(context, CallActionReceiver::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+    /** Full-screen ringing notification (shows over the lock screen). */
+    fun incomingCall(context: Context, peer: String, name: String, video: Boolean) {
+        val person = androidx.core.app.Person.Builder().setName(name).setKey(peer).setImportant(true).build()
+        val n = NotificationCompat.Builder(context, CHANNEL_CALLS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(name)
+            .setContentText(if (video) "Incoming amend video call" else "Incoming amend voice call")
+            .setColor(0xFF2BB673.toInt())
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setTimeoutAfter(app.amend.messenger.data.CallSignal.MAX_RING_SECONDS * 1000)
+            .setContentIntent(callActivityIntent(context, "show", 51))
+            .setFullScreenIntent(callActivityIntent(context, "show", 52), true)
+            .setStyle(
+                NotificationCompat.CallStyle.forIncomingCall(
+                    person,
+                    callAction(context, CallActionReceiver.ACTION_DECLINE, 53),
+                    callActivityIntent(context, "answer", 54),
+                ).setIsVideo(video)
+            )
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(CALL_INCOMING_ID, n)
+        } catch (e: SecurityException) {
+            // no notification permission: the call still rings while amend is open
+        }
+    }
+
+    fun cancelIncomingCall(context: Context) = NotificationManagerCompat.from(context).cancel(CALL_INCOMING_ID)
+
+    /** The notification shown while a call is running (the call service's foreground notification). */
+    fun ongoingCall(context: Context, st: CallUi): Notification {
+        val name = (context.applicationContext as? app.amend.messenger.AmendApp)?.repository?.value?.displayName(st.peer) ?: "amend"
+        val person = androidx.core.app.Person.Builder().setName(name).setKey(st.peer.ifBlank { "amend" }).build()
+        val text = when (st.phase) {
+            CallPhase.OUTGOING -> if (st.ringing) "Ringing…" else "Calling…"
+            CallPhase.CONNECTING -> "Connecting…"
+            else -> if (st.video) "amend video call" else "amend voice call"
+        }
+        val b = NotificationCompat.Builder(context, CHANNEL_CALL_ONGOING)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(name)
+            .setContentText(text)
+            .setColor(0xFF2BB673.toInt())
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(callActivityIntent(context, "show", 55))
+            .setStyle(NotificationCompat.CallStyle.forOngoingCall(person, callAction(context, CallActionReceiver.ACTION_HANGUP, 56)).setIsVideo(st.video))
+        if (st.connectedAt > 0) {
+            b.setUsesChronometer(true).setWhen(st.connectedAt * 1000).setShowWhen(true)
+        }
+        return b.build()
     }
 }

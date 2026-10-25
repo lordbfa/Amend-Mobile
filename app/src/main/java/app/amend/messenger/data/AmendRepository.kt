@@ -172,7 +172,9 @@ class AmendRepository(
         val since = if (settings.lastSync == 0L) null else settings.lastSync - GiftWrap.TWO_DAYS - 600
         val dmFilter = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.GIFT_WRAP), "#p" to listOf(me))
         if (since != null) dmFilter["since"] = since else dmFilter["limit"] = 1000
-        pool.subscribe(SUB_DM, listOf(dmFilter))
+        // live call signals: only what's sent from now on
+        val liveFilter = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.EPHEMERAL_GIFT_WRAP), "#p" to listOf(me), "since" to Event.nowSeconds() - 30)
+        pool.subscribe(SUB_DM, listOf(dmFilter, liveFilter))
         resubscribeMetadata()
     }
 
@@ -186,7 +188,7 @@ class AmendRepository(
     private suspend fun handleIncoming(msg: RelayIncoming) {
         when (msg) {
             is RelayIncoming.EventMsg -> when (msg.event.kind) {
-                Kinds.GIFT_WRAP -> handleWrap(msg.event)
+                Kinds.GIFT_WRAP, Kinds.EPHEMERAL_GIFT_WRAP -> handleWrap(msg.event)
                 Kinds.METADATA -> handleMetadata(msg.event)
                 Kinds.DM_RELAYS -> handleInboxRelays(msg.event)
             }
@@ -262,6 +264,10 @@ class AmendRepository(
                 applyReaction(peer, target, rumor.pubkey, rumor.content.take(8))
             }
             Kinds.RECEIPT -> if (!fromMe) applyReceipt(peer, rumor)
+            Kinds.CALL_SIGNAL -> if (!fromMe) {
+                CallSignal.parse(peer, rumor, ephemeral = wrap.kind == Kinds.EPHEMERAL_GIFT_WRAP)?.let { _callSignals.tryEmit(it) }
+                return
+            }
         }
         persistSettingsSoon()
     }
@@ -473,6 +479,45 @@ class AmendRepository(
         return final
     }
 
+    // ---------------------------------------------------------------- calls
+
+    private val _callSignals = MutableSharedFlow<CallSignal>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    /** Call offers, answers, hang-ups… from friends (see CallManager). */
+    val callSignals: SharedFlow<CallSignal> = _callSignals
+
+    /**
+     * Sends one call signal. Live signals go as ephemeral gift wraps (forwarded, never stored);
+     * [stored] ones (a missed-call note) as normal gift wraps so the friend sees them later.
+     */
+    suspend fun sendCallSignal(peer: String, signal: CallSignal, stored: Boolean = false): Int {
+        val rumor = GiftWrap.rumor(me, Kinds.CALL_SIGNAL, signal.contentJson(), listOf(listOf("p", peer), listOf("amend", "call", signal.type)))
+        val wrap = GiftWrap.wrap(rumor, keys, peer, ephemeral = !stored)
+        mutex.withLock { seenWraps.add(wrap.id) }
+        return pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+    }
+
+    /** Adds (or updates) the call entry in a chat. Local only: each side keeps its own call history. */
+    suspend fun logCall(peer: String, log: CallLog) {
+        val message = ChatMessage(
+            id = "call-" + log.callId, peer = peer, fromMe = log.outgoing, text = log.label(),
+            createdAt = log.startedAt, type = MessageType.CALL, status = if (log.outgoing) MessageStatus.SENT else MessageStatus.RECEIVED,
+            extra = log.toJson(), receipt = 2,
+        )
+        val existing = _conversations.value[peer]?.messages?.any { it.id == message.id } == true
+        if (existing) {
+            mutex.withLock {
+                _conversations.update { all ->
+                    val conv = all[peer] ?: return@update all
+                    all + (peer to conv.copy(messages = conv.messages.map { if (it.id == message.id) message else it }))
+                }
+                _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+            }
+        } else {
+            val missed = !log.outgoing && log.outcome == CallOutcome.MISSED
+            if (upsertMessage(message, countUnread = missed) && missed) _events.tryEmit(AmendEvent.MessageArrived(peer, message))
+        }
+    }
+
     // ---------------------------------------------------------------- receipts
 
     private val pendingDelivered = mutableMapOf<String, MutableSet<String>>() // peer -> message ids
@@ -503,7 +548,7 @@ class AmendRepository(
     fun markSeen(peer: String) {
         if (peer !in settings.accepted) return // requests: nothing is sent or marked until accepted
         val conv = _conversations.value[peer] ?: return
-        val unseen = conv.messages.filter { !it.fromMe && it.receipt < 2 }
+        val unseen = conv.messages.filter { !it.fromMe && it.receipt < 2 && it.type != MessageType.CALL }
         if (unseen.isEmpty()) return
         val toSend = unseen.filter { wantsReceipt(it) }
         scope.launch {
@@ -688,6 +733,7 @@ class AmendRepository(
 
     suspend fun retry(peer: String, messageId: String) {
         val msg = _conversations.value[peer]?.messages?.firstOrNull { it.id == messageId } ?: return
+        if (msg.type == MessageType.CALL) return
         if (msg.type == MessageType.VOICE || msg.type == MessageType.VIDEO || msg.type == MessageType.FILE) {
             retryMedia(peer, msg)
             return
