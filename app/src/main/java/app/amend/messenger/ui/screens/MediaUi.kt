@@ -291,6 +291,7 @@ fun VoiceBubble(repo: AmendRepository, message: ChatMessage, tint: Color) {
     val haptics = rememberHaptics()
     var loading by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var playError by remember { mutableStateOf<String?>(null) }
     val mine = playback.id == message.id
     val progress = if (mine && playback.durationMs > 0) playback.positionMs / playback.durationMs.toFloat() else 0f
 
@@ -443,6 +444,7 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
                     scope.launch {
                         loading = true
                         failed = false
+                        playError = null
                         file = runCatching { repo.fetchMedia(media) }
                             .onFailure { android.util.Log.w("amend", "video download failed", it) }
                             .getOrNull()
@@ -450,6 +452,7 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
                         if (file != null) playing = true else failed = true
                     }
                 } else {
+                    playError = null
                     playing = !playing
                 }
             },
@@ -457,16 +460,25 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
         ) {
             val f = file
             if (playing && f != null) {
-                RoundVideoPlayer(f, onProgress = { progress = it }, onEnd = { playing = false; progress = 0f })
+                RoundVideoPlayer(
+                    f, onProgress = { progress = it }, onEnd = { playing = false; progress = 0f },
+                    onError = { code ->
+                        playing = false
+                        progress = 0f
+                        playError = code
+                        // a damaged download: delete it so the next tap fetches it again
+                        if (!message.fromMe) runCatching { f.delete() }.onSuccess { file = null }
+                    },
+                )
             } else {
                 thumb?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                 Box(Modifier.size(54.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
                     if (loading) CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.dp)
                     else Icon(Icons.Rounded.PlayArrow, contentDescription = "Play video", tint = Color.White, modifier = Modifier.size(32.dp))
                 }
-                if (failed) {
+                if (failed || playError != null) {
                     Text(
-                        "Couldn't load · tap to retry",
+                        if (failed) "Couldn't load · tap to retry" else "Can't play this video · tap to retry",
                         color = Color.White, fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp)
                             .clip(RoundedCornerShape(8.dp)).background(Color(0xCCB71C1C)).padding(horizontal = 8.dp, vertical = 3.dp),
@@ -490,65 +502,78 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
     }
 }
 
+/**
+ * Plays a round video with Media3 ExoPlayer: it handles the camera's rotation
+ * flag, starts fast, and tells us when a file can't be played.
+ * The video is zoomed to fill the circle.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-private fun RoundVideoPlayer(file: File, onProgress: (Float) -> Unit, onEnd: () -> Unit) {
-    val holder = remember { arrayOfNulls<MediaPlayer>(1) }
-    LaunchedEffect(Unit) {
+private fun RoundVideoPlayer(file: File, onProgress: (Float) -> Unit, onEnd: () -> Unit, onError: (String) -> Unit) {
+    val context = LocalContext.current
+    val player = remember {
+        AudioPlayback.stop()
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+            playWhenReady = true
+            prepare()
+        }
+    }
+    val view = remember { arrayOfNulls<TextureView>(1) }
+    val videoAspect = remember { floatArrayOf(0f) }
+    /** Centre-crop: the TextureView stretches the frame to the (square) view, so undo the stretch on one axis. */
+    fun crop() {
+        val t = view[0] ?: return
+        val a = videoAspect[0]
+        if (a <= 0f || t.width == 0 || t.height == 0) return
+        val viewAspect = t.width.toFloat() / t.height
+        val m = android.graphics.Matrix()
+        if (a > viewAspect) m.setScale(a / viewAspect, 1f, t.width / 2f, t.height / 2f)
+        else m.setScale(1f, viewAspect / a, t.width / 2f, t.height / 2f)
+        t.setTransform(m)
+    }
+    DisposableEffect(player) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_ENDED) onEnd()
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.w("amend", "video playback failed", error)
+                onError(error.errorCodeName)
+            }
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width > 0 && size.height > 0) {
+                    // a 90°/270° flag the decoder didn't apply means width and height are swapped on screen
+                    val rotated = size.unappliedRotationDegrees == 90 || size.unappliedRotationDegrees == 270
+                    val w = size.width * size.pixelWidthHeightRatio
+                    videoAspect[0] = if (rotated) size.height / w else w / size.height
+                    crop()
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    LaunchedEffect(player) {
         while (true) {
-            holder[0]?.let { p -> runCatching { if (p.duration > 0) onProgress(p.currentPosition / p.duration.toFloat()) } }
+            val d = player.duration
+            if (d > 0) onProgress((player.currentPosition.toFloat() / d).coerceIn(0f, 1f))
             delay(50)
         }
     }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
-            AudioPlayback.stop()
             TextureView(ctx).apply {
-                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                    override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-                        val mp = MediaPlayer()
-                        try {
-                            mp.setDataSource(file.path)
-                            mp.setSurface(Surface(st))
-                            mp.setOnPreparedListener { p ->
-                                // centre-crop the video into the square view
-                                val vw = p.videoWidth.toFloat()
-                                val vh = p.videoHeight.toFloat()
-                                if (vw > 0 && vh > 0) {
-                                    val scale = max(w / vw, h / vh)
-                                    val m = android.graphics.Matrix()
-                                    m.setScale(vw * scale / w, vh * scale / h, w / 2f, h / 2f)
-                                    setTransform(m)
-                                }
-                                p.start()
-                            }
-                            mp.setOnCompletionListener { onEnd() }
-                            mp.prepareAsync()
-                            holder[0] = mp
-                        } catch (e: Exception) {
-                            mp.release()
-                            onEnd()
-                        }
-                    }
-
-                    override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
-                    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-                        holder[0]?.let { runCatching { it.stop() }; it.release() }
-                        holder[0] = null
-                        return true
-                    }
-
-                    override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
-                }
+                view[0] = this
+                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> crop() }
+                player.setVideoTextureView(this)
             }
         },
     )
-    DisposableEffect(Unit) {
-        onDispose {
-            holder[0]?.let { runCatching { it.stop() }; it.release() }
-            holder[0] = null
-        }
-    }
 }
 
 // ======================================================================= video recorder
