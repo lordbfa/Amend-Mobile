@@ -59,6 +59,15 @@ private val FAILED_COLOR = Color(0xFFD32F2F)
 private val TRUNK = Color(0xFF7A5536)
 private val BLOSSOM = Color(0xFFFF7AA8)
 
+// On your own (green) message bubble the tree needs light colours to be seen
+private val ON_BUBBLE_SENDING = Color(0x99FFFFFF)
+private val ON_BUBBLE_SENT = Color(0xFFD9FBE6)
+private val ON_BUBBLE_DELIVERED = Color(0xFFE8FF7A)
+private val ON_BUBBLE_SEEN = Color(0xFF8FDCFF)
+private val ON_BUBBLE_FAILED = Color(0xFFFFC2C2)
+private val ON_BUBBLE_TRUNK = Color(0xFFF1D2AE)
+private val ON_BUBBLE_BLOSSOM = Color(0xFFFF9CC2)
+
 fun statusLabel(status: MessageStatus, relays: Int): String = when (status) {
     MessageStatus.SENDING -> "Sending…"
     MessageStatus.SENT -> "Sent · stored on $relays relay" + if (relays == 1) "" else "s"
@@ -69,7 +78,7 @@ fun statusLabel(status: MessageStatus, relays: Int): String = when (status) {
 }
 
 @Composable
-fun GrowthTick(status: MessageStatus, onRetry: () -> Unit) {
+fun GrowthTick(status: MessageStatus, onRetry: () -> Unit, onBubble: Boolean = true) {
     if (status == MessageStatus.RECEIVED) return
     val growth by animateFloatAsState(
         when (status) {
@@ -82,7 +91,13 @@ fun GrowthTick(status: MessageStatus, onRetry: () -> Unit) {
         spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "growth",
     )
     val color by animateColorAsState(
-        when (status) {
+        if (onBubble) when (status) {
+            MessageStatus.SENDING -> ON_BUBBLE_SENDING
+            MessageStatus.SENT -> ON_BUBBLE_SENT
+            MessageStatus.DELIVERED -> ON_BUBBLE_DELIVERED
+            MessageStatus.SEEN -> ON_BUBBLE_SEEN
+            else -> ON_BUBBLE_FAILED
+        } else when (status) {
             MessageStatus.SENDING -> SENDING_COLOR
             MessageStatus.SENT -> SENT_COLOR
             MessageStatus.DELIVERED -> DELIVERED_COLOR
@@ -107,15 +122,12 @@ fun GrowthTick(status: MessageStatus, onRetry: () -> Unit) {
 
     Row(
         Modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(Color.White.copy(alpha = 0.92f))
             .then(if (status == MessageStatus.FAILED) Modifier.clickable { onRetry() } else Modifier)
-            .padding(horizontal = 4.dp, vertical = 1.dp)
             .semantics { contentDescription = statusLabel(status, 0) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Canvas(
-            Modifier.size(width = 18.dp, height = 16.dp).graphicsLayer {
+            Modifier.size(width = 20.dp, height = 17.dp).graphicsLayer {
                 scaleX = pop.value; scaleY = pop.value
                 alpha = if (waiting) breathe else 1f
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
@@ -127,17 +139,20 @@ fun GrowthTick(status: MessageStatus, onRetry: () -> Unit) {
                 else -> gentle
             }
             rotate(angle, pivot = Offset(size.width / 2, size.height)) {
-                drawSapling(growth, color, wilted = status == MessageStatus.FAILED, blossom = status == MessageStatus.SEEN)
+                drawSapling(
+                    growth, color, wilted = status == MessageStatus.FAILED, blossom = status == MessageStatus.SEEN,
+                    trunk = if (onBubble) ON_BUBBLE_TRUNK else TRUNK, flower = if (onBubble) ON_BUBBLE_BLOSSOM else BLOSSOM,
+                )
             }
         }
         if (status == MessageStatus.FAILED) {
             Spacer(Modifier.width(2.dp))
-            Text("retry", color = FAILED_COLOR, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("retry", color = if (onBubble) ON_BUBBLE_FAILED else FAILED_COLOR, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
-private fun DrawScope.drawSapling(g: Float, color: Color, wilted: Boolean, blossom: Boolean) {
+private fun DrawScope.drawSapling(g: Float, color: Color, wilted: Boolean, blossom: Boolean, trunk: Color, flower: Color) {
     val w = size.width
     val h = size.height
     val cx = w / 2
@@ -147,7 +162,7 @@ private fun DrawScope.drawSapling(g: Float, color: Color, wilted: Boolean, bloss
     // ground
     drawLine(color.copy(alpha = 0.35f), Offset(w * 0.2f, base - 0.5f), Offset(w * 0.8f, base - 0.5f), strokeWidth = 1.dp.toPx(), cap = StrokeCap.Round)
     // trunk: brown once it is a real tree, otherwise the plant's own colour
-    drawLine(if (g > 0.75f) TRUNK else color, Offset(cx, base), Offset(cx, stemTop), strokeWidth = stroke, cap = StrokeCap.Round)
+    drawLine(if (g > 0.75f) trunk else color, Offset(cx, base), Offset(cx, stemTop), strokeWidth = stroke, cap = StrokeCap.Round)
 
     // two leaves (they droop when the message failed)
     val leaf = w * (0.18f + 0.16f * g.coerceAtMost(0.75f))
@@ -162,13 +177,13 @@ private fun DrawScope.drawSapling(g: Float, color: Color, wilted: Boolean, bloss
         drawCircle(color, r, Offset(cx, stemTop))
         drawCircle(color, r * 0.75f, Offset(cx - r * 0.75f, stemTop + r * 0.35f))
         drawCircle(color, r * 0.75f, Offset(cx + r * 0.75f, stemTop + r * 0.35f))
-        drawCircle(Color.White.copy(alpha = 0.35f), r * 0.32f, Offset(cx - r * 0.3f, stemTop - r * 0.3f))
+        drawCircle(Color.White.copy(alpha = 0.3f), r * 0.32f, Offset(cx - r * 0.3f, stemTop - r * 0.3f))
     }
     // blossoms for "seen"
     if (blossom && crown > 0.9f) {
         val r = w * 0.32f
         listOf(Offset(cx - r * 0.55f, stemTop - r * 0.1f), Offset(cx + r * 0.6f, stemTop + r * 0.15f), Offset(cx + r * 0.05f, stemTop - r * 0.65f))
-            .forEach { drawCircle(BLOSSOM, w * 0.07f, it) }
+            .forEach { drawCircle(flower, w * 0.07f, it) }
     }
 }
 
