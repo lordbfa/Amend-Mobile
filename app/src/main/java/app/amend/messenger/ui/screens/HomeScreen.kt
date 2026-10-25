@@ -219,8 +219,8 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
                 when (t) {
                     Tab.CHATS -> ChatsTab(repo, openChat, onScan = { haptics.tap(); showScanner = true })
                     Tab.FOREST -> ForestTab(repo, openChat)
-                    Tab.IMPACT -> ImpactTab(repo)
-                    Tab.YOU -> YouTab(app, repo, openReports = { openChat(StepTracker.REPORTS_PEER) })
+                    Tab.IMPACT -> ImpactTab(repo, openReports = { openChat(StepTracker.REPORTS_PEER) })
+                    Tab.YOU -> YouTab(app, repo)
                 }
             }
             // in-app toast for points and new trees
