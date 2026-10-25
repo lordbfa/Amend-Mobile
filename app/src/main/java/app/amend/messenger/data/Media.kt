@@ -66,8 +66,10 @@ data class MediaInfo(
 
     companion object {
         @Suppress("UNCHECKED_CAST")
-        fun fromJson(s: String?): MediaInfo? = try {
-            val m = Json.parseObject(s ?: return null)
+        fun fromJson(s: String?): MediaInfo? {
+            if (s == null) return null
+            return try {
+            val m = Json.parseObject(s)
             val mime = m.str("mime") ?: "application/octet-stream"
             MediaInfo(
                 kind = MediaKind.of(m.str("kind"), mime),
@@ -84,6 +86,7 @@ data class MediaInfo(
             )
         } catch (e: Exception) {
             null
+        }
         }
 
         /** Reads a kind-15 rumor (from amend or any NIP-17 app). */
