@@ -1,5 +1,6 @@
 package app.amend.messenger
 
+import kotlinx.coroutines.async
 import app.amend.messenger.core.nostr.Event
 import app.amend.messenger.core.nostr.GiftWrap
 import app.amend.messenger.core.nostr.KeyPair
@@ -203,6 +204,28 @@ class LiveRelayTest {
         }
         report("seen receipt: ${seen != null}")
         assertNotNull("Alice should see 'seen'", seen)
+
+        // call signalling: ephemeral gift wraps must be forwarded live (they're never stored)
+        val callId = "testcall" + System.currentTimeMillis()
+        val incoming = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).async {
+            withTimeoutOrNull(25_000) { bob.callSignals.first { it.callId == callId } }
+        }
+        delay(500)
+        val offerRelays = alice.sendCallSignal(bob.me, app.amend.messenger.data.CallSignal(bob.me, "offer", callId, true, "v=0 test-sdp"))
+        val gotOffer = incoming.await()
+        report("call offer (ephemeral) accepted by $offerRelays relays, received: ${gotOffer != null}")
+        assertNotNull("Bob should receive the live call offer", gotOffer)
+        assertEquals("offer", gotOffer!!.type)
+        assertEquals(alice.me, gotOffer.peer)
+        assertEquals("v=0 test-sdp", gotOffer.sdp)
+        assertTrue(gotOffer.live && gotOffer.video)
+        val answerBack = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).async {
+            withTimeoutOrNull(25_000) { alice.callSignals.first { it.callId == callId && it.type == "answer" } }
+        }
+        delay(300)
+        bob.sendCallSignal(alice.me, app.amend.messenger.data.CallSignal(alice.me, "answer", callId, true, "v=0 answer"))
+        report("call answer received: ${answerBack.await() != null}")
+        assertNotNull("Alice should receive the answer", answerBack.await())
 
         // reaction round trip
         bob.react(alice.me, received.id, "💚")

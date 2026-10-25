@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -135,6 +136,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var input by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMessage?>(null) }
+    val startCall = rememberCallStarter()
     val voiceRecorder = remember { VoiceRecorder(context) }
     var recordingVoice by remember { mutableStateOf(false) }
     var cancellingVoice by remember { mutableStateOf(false) }
@@ -184,6 +186,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                 particles.burst(gardenPos, if (garden.flowers > 0) ParticleKind.PETALS else ParticleKind.LEAVES, 20, 0.7f)
             },
             avatar = { LeafAvatar(peer, profiles[peer], 40.dp) },
+            onCall = { video -> haptics.tap(); if (!accepted) { repo.accept(peer); accepted = true }; startCall(peer, video) },
         )
 
         // A live SOS from this person stays pinned at the top of the chat
@@ -220,6 +223,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                         scope.launch { repo.react(peer, m.id, emoji) }
                     },
                     onRetry = { scope.launch { repo.retry(peer, m.id) } },
+                    onCall = { video -> startCall(peer, video) },
                 )
             }
             if (messages.isEmpty()) {
@@ -413,6 +417,7 @@ private fun GardenHeader(
     repo: AmendRepository, peer: String, garden: Garden, profileName: String,
     onBack: () -> Unit, onGardenPos: (Offset) -> Unit, onGardenTap: () -> Unit,
     avatar: @Composable () -> Unit,
+    onCall: (Boolean) -> Unit = {},
 ) {
     val hour = rememberHourOfDay()
     val sway by rememberSway()
@@ -453,6 +458,8 @@ private fun GardenHeader(
                     DropdownMenuItem(text = { Text("Block") }, onClick = { repo.block(peer); menu = false; onBack() })
                 }
             }
+            IconButton(onClick = { onCall(false) }) { Icon(Icons.Rounded.Call, contentDescription = "Voice call", tint = Color.White) }
+            IconButton(onClick = { onCall(true) }) { Icon(Icons.Rounded.Videocam, contentDescription = "Video call", tint = Color.White) }
         }
     }
 }
@@ -487,6 +494,7 @@ private fun MessageBubble(
     onReply: () -> Unit,
     onReact: (String, Offset) -> Unit,
     onRetry: () -> Unit,
+    onCall: (Boolean) -> Unit = {},
 ) {
     val mine = message.fromMe
     val dark = LocalDark.current
@@ -556,6 +564,8 @@ private fun MessageBubble(
                     VoiceBubble(repo, message, textColor)
                 } else if (message.type == MessageType.VIDEO) {
                     VideoBubble(repo, message)
+                } else if (message.type == MessageType.CALL) {
+                    CallLogContent(message, textColor, onCall)
                 } else {
                     Text(linkify(message.text, textColor), color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
@@ -564,7 +574,7 @@ private fun MessageBubble(
                         Instant.ofEpochSecond(message.createdAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
                         color = textColor.copy(alpha = 0.7f), fontSize = 11.sp,
                     )
-                    if (mine) {
+                    if (mine && message.type != MessageType.CALL) {
                         Spacer(Modifier.size(4.dp))
                         GrowthTick(message.status, onRetry)
                     }
