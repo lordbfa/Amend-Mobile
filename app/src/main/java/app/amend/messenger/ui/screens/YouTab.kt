@@ -120,6 +120,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
 
         NotificationsCard(app, repo)
 
+        CallsCard()
+
         RelayEditor(relays) { repo.setRelays(it) }
 
         BackupCard(repo.keys.nsec)

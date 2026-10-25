@@ -17,6 +17,7 @@ import app.amend.messenger.ui.theme.AmendTheme
 import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.StepTracker
+import app.amend.messenger.util.CallManager
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.util.PressPattern
 import app.amend.messenger.util.SosManager
@@ -63,6 +64,22 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         intent?.getStringExtra(Notifications.EXTRA_PEER)?.let { pendingPeer.value = it }
+        intent?.getStringExtra(Notifications.EXTRA_CALL)?.let { mode ->
+            // an incoming call opens amend over the lock screen
+            showOverLockScreen(true)
+            if (mode == "answer") CallManager.answerRequest.value = true
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    fun showOverLockScreen(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(on)
+            setTurnScreenOn(on)
+        } else {
+            val flags = android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (on) window.addFlags(flags) else window.clearFlags(flags)
+        }
     }
 
     /** SOS trigger while the app is open: any volume button pressed 4 times within 3 seconds. */
@@ -71,7 +88,8 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         val isVolume = event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
         if (isVolume && event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            if (SosPrefs(this).volumeTrigger && volumePattern.press()) {
+            // during a call the volume keys are for the call volume
+            if (!CallManager.state.value.active && SosPrefs(this).volumeTrigger && volumePattern.press()) {
                 SosManager.trigger(this)
             }
         }

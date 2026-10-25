@@ -102,6 +102,13 @@ object Kinds {
     /** amend delivery / read receipt (only ever sent gift-wrapped; other apps ignore it). */
     const val RECEIPT = 1405
     const val GIFT_WRAP = 1059
+    /**
+     * Same as a gift wrap, but in the ephemeral range: relays forward it to whoever
+     * is listening right now and don't store it. Used for live call signalling.
+     */
+    const val EPHEMERAL_GIFT_WRAP = 21059
+    /** amend call signal (offer / answer / hangup …), WebRTC session data inside. */
+    const val CALL_SIGNAL = 25050
     const val DM_RELAYS = 10050
     const val CLIENT_AUTH = 22242
 }
