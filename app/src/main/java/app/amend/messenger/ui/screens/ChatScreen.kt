@@ -72,6 +72,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -122,6 +123,10 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     var gardenPos by remember { mutableStateOf(Offset.Zero) }
     var accepted by remember { mutableStateOf(repo.isAccepted(peer) || messages.any { it.fromMe }) }
     val reversed = remember(messages) { messages.asReversed() }
+    val incomingSosAll by repo.incomingSos.collectAsStateWithLifecycle()
+    // The friend's latest SOS start bubble shows their live location while the SOS is active
+    val latestSosStartId = remember(messages) { messages.lastOrNull { it.type == MessageType.SOS && !it.fromMe && it.cardId == "start" }?.id }
+    val liveSosLocation = incomingSosAll[peer]?.takeIf { it.active }?.location
 
     DisposableEffect(peer) {
         AppVisibility.openPeer = peer
@@ -177,6 +182,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
         ) {
             items(reversed, key = { it.id }) { m ->
                 MessageBubble(
+                    liveSos = if (m.type == MessageType.SOS && !m.fromMe && m.id == latestSosStartId) liveSosLocation else null,
                     repo = repo,
                     message = m,
                     replied = m.replyTo?.let { id -> messages.firstOrNull { it.id == id } },
@@ -344,6 +350,7 @@ private fun RequestBanner(onAccept: () -> Unit, onBlock: () -> Unit) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
+    liveSos: app.amend.messenger.data.SosLocation?,
     repo: AmendRepository,
     message: ChatMessage,
     replied: ChatMessage?,
@@ -355,6 +362,7 @@ private fun MessageBubble(
     val mine = message.fromMe
     val dark = LocalDark.current
     var showReactions by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     var bubblePos by remember { mutableStateOf(Offset.Zero) }
     val haptics = rememberHaptics()
     // pop-in when the bubble first appears
@@ -411,11 +419,11 @@ private fun MessageBubble(
                     Spacer(Modifier.height(6.dp))
                 }
                 if (message.type == MessageType.SOS) {
-                    SosMessageContent(message)
+                    SosMessageContent(message, liveSos)
                 } else if (message.type == MessageType.ECO_CARD) {
                     EcoCardContent(repo, message)
                 } else {
-                    Text(message.text, color = textColor, style = MaterialTheme.typography.bodyLarge)
+                    Text(linkify(message.text, textColor), color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -459,34 +467,72 @@ private fun MessageBubble(
                 }
             }
             DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
+            DropdownMenuItem(text = { Text("Copy") }, onClick = {
+                showReactions = false
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(message.text))
+                haptics.success()
+            })
         }
     }
 }
 
-/** An SOS start/stop bubble: clear headline, and a map button when it carries a location. */
+/**
+ * An SOS start/stop bubble with an embedded map. For a friend's active SOS the
+ * map follows their live location; otherwise it shows where the message was sent from.
+ */
 @Composable
-private fun SosMessageContent(message: ChatMessage) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val loc = app.amend.messenger.data.SosLocation.decode(message.extra, message.createdAt)
+private fun SosMessageContent(message: ChatMessage, live: app.amend.messenger.data.SosLocation?) {
+    val stored = app.amend.messenger.data.SosLocation.decode(message.extra, message.createdAt)
+    val loc = live ?: stored
     Column {
         Text(
             if (message.cardId == "stop") "✅ Safe — SOS ended" else if (message.fromMe) "🆘 You sent an SOS" else "🆘 SOS — needs help!",
             color = Color.White, style = MaterialTheme.typography.titleMedium,
         )
         if (loc != null && message.cardId != "stop") {
-            Text("Location ±${loc.accuracyM.toInt()} m", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(6.dp))
-            Button(
-                onClick = {
-                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(loc.geoUri()))) }
-                        .onFailure { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(loc.mapLink()))) }
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF7F0000)),
-            ) { Text("Open map") }
+            Spacer(Modifier.height(8.dp))
+            app.amend.messenger.ui.components.LiveMap(loc, Modifier.size(width = 260.dp, height = 170.dp), live = live != null)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                (if (live != null) "Live · " else "") + "±${loc.accuracyM.toInt()} m · tap the map to open it",
+                color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall,
+            )
+        } else if (message.cardId != "stop") {
+            Text("Location wasn't available yet", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
+
+/** Turns http(s) and www links in a message into tappable links. */
+private val URL_REGEX = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"]+)""")
+
+private fun linkify(text: String, color: Color): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        var last = 0
+        for (m in URL_REGEX.findAll(text)) {
+            // don't swallow trailing punctuation like "see example.com."
+            var url = m.value
+            while (url.isNotEmpty() && url.last() in ".,!?;:)]}'\"") url = url.dropLast(1)
+            val start = m.range.first
+            val end = start + url.length
+            append(text.substring(last, start))
+            val target = if (url.startsWith("www.", ignoreCase = true)) "https://$url" else url
+            withLink(
+                androidx.compose.ui.text.LinkAnnotation.Url(
+                    target,
+                    androidx.compose.ui.text.TextLinkStyles(
+                        androidx.compose.ui.text.SpanStyle(
+                            color = color,
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    ),
+                )
+            ) { append(url) }
+            last = end
+        }
+        append(text.substring(last))
+    }
 
 @Composable
 private fun EcoCardContent(repo: AmendRepository, message: ChatMessage) {
