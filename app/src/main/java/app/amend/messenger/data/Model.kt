@@ -10,7 +10,7 @@ import app.amend.messenger.eco.PlantedTree
 
 enum class MessageStatus { SENDING, SENT, FAILED, RECEIVED }
 
-enum class MessageType { TEXT, ECO_CARD, SOS }
+enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE }
 
 data class ChatMessage(
     val id: String,

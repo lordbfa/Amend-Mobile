@@ -61,6 +61,14 @@ jobs:
             while IFS= read -r line; do echo "::notice title=Relay scan::$line"; done < app/build/relay-scan.txt
           fi
 
+      - name: Blossom scan
+        continue-on-error: true
+        run: |
+          ./gradlew :app:testDebugUnitTest --tests "app.amend.messenger.MediaTest" -Damend.blobScan=true --rerun 2>&1 | tail -5
+          if [ -f app/build/blob-scan.txt ]; then
+            while IFS= read -r line; do echo "::notice title=Blossom scan::$line"; done < app/build/blob-scan.txt
+          fi
+
       - name: Collect APKs
         run: |
           mkdir -p out
