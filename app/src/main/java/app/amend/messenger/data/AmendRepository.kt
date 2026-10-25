@@ -511,7 +511,7 @@ class AmendRepository(
         accept(peer)
 
         val blobs = try {
-            blossom.uploadAny(mediaServers, enc.data, keys, copies = 2)
+            blossom.uploadAny(mediaServers, enc.data, keys, copies = 2, mime = mime)
         } catch (e: Exception) {
             setMessageStatus(peer, tempId, MessageStatus.FAILED, 0)
             throw e
