@@ -129,7 +129,7 @@ class RelayPool(
             "wss://nos.lol",
             "wss://relay.primal.net",
             "wss://nostr.mom",
-            "wss://relay.snort.social",
+            "wss://nostr-pub.wellorder.net",
             "wss://offchain.pub",
             "wss://auth.nostr1.com", // private-message inbox relay (NIP-42 auth)
         )
@@ -140,6 +140,12 @@ class RelayPool(
             "wss://nos.lol",
             "wss://relay.primal.net",
             "wss://relay.0xchat.com",
+        )
+
+        /** Every default set amend has shipped; an install still on one of them follows the new defaults. */
+        val PREVIOUS_DEFAULTS = listOf(
+            LEGACY_DEFAULTS,
+            listOf("wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom", "wss://relay.snort.social", "wss://offchain.pub", "wss://auth.nostr1.com"),
         )
     }
 }
