@@ -71,10 +71,9 @@ class SosService : Service() {
         val manager = getSystemService(LocationManager::class.java) ?: return
         lm = manager
         manager.removeUpdates(listener)
-        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { p ->
-            if (runCatching { manager.isProviderEnabled(p) }.getOrDefault(false)) {
-                runCatching { manager.requestLocationUpdates(p, 10_000L, 10f, listener, Looper.getMainLooper()) }
-            }
+        // Frequent fixes with no distance filter; SosManager decides how often to send.
+        SosManager.locationProviders(manager).forEach { p ->
+            runCatching { manager.requestLocationUpdates(p, 5_000L, 0f, listener, Looper.getMainLooper()) }
         }
     }
 
@@ -85,6 +84,8 @@ class SosService : Service() {
 
     companion object {
         fun start(context: Context) {
+            // Without location permission Android would stop the app for starting a location service.
+            if (!SosManager.hasLocationPermission(context)) return
             try {
                 ContextCompat.startForegroundService(context, Intent(context, SosService::class.java))
             } catch (e: Exception) {

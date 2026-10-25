@@ -104,6 +104,8 @@ import app.amend.messenger.ui.components.rememberHaptics
 import app.amend.messenger.ui.components.rememberHourOfDay
 import app.amend.messenger.ui.components.rememberSway
 import app.amend.messenger.ui.theme.LocalEfficiency
+import app.amend.messenger.util.SosManager
+import app.amend.messenger.util.SosPrefs
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
@@ -127,6 +129,40 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { (context as? MainActivity)?.requestNotificationPermission() }
+
+    // One-time: allow location now, so an SOS can share it instantly in an emergency.
+    val sosPrefs = remember { SosPrefs(context) }
+    var askLocation by remember { mutableStateOf(false) }
+    val locationLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { }
+    LaunchedEffect(Unit) {
+        delay(1_500) // let the notification permission dialog go first
+        if (sosPrefs.enabled && !sosPrefs.askedLocation && !SosManager.hasLocationPermission(context)) {
+            askLocation = true
+        }
+    }
+    if (askLocation) {
+        AlertDialog(
+            onDismissRequest = { askLocation = false; sosPrefs.askedLocation = true },
+            title = { Text("📍 Allow location for SOS") },
+            text = {
+                Text(
+                    "If you're ever in danger, amend can send your live location to the people you chat with. " +
+                        "It's only used during an SOS you start — never otherwise — and it's end-to-end encrypted. " +
+                        "Allow it now so it works instantly when it matters."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    askLocation = false
+                    sosPrefs.askedLocation = true
+                    locationLauncher.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+                }) { Text("Allow") }
+            },
+            dismissButton = { TextButton(onClick = { askLocation = false; sosPrefs.askedLocation = true }) { Text("Not now") } },
+        )
+    }
     LaunchedEffect(repo) {
         repo.events.collect { e ->
             when (e) {

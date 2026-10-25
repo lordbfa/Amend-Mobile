@@ -49,6 +49,11 @@ class SosPrefs(context: Context) {
         get() = p.getBoolean("autoDial", true)
         set(v) = p.edit().putBoolean("autoDial", v).apply()
 
+    /** Whether we've already shown the one-time "allow location for SOS" prompt. */
+    var askedLocation: Boolean
+        get() = p.getBoolean("askedLocation", false)
+        set(v) = p.edit().putBoolean("askedLocation", v).apply()
+
     /** Empty = use the number for the detected country. */
     var customNumber: String
         get() = p.getString("number", "") ?: ""
@@ -124,6 +129,10 @@ object SosManager {
     private var lastSentAt = 0L
     private var latest: SosLocation? = null
     private var sending = false
+    /** A newer fix arrived while sending; send it as soon as the current send finishes. */
+    private var pendingUpdate = false
+    /** Whether any location has gone out yet in this SOS — the first fix is sent immediately. */
+    private var locationSent = false
 
     val isActive: Boolean get() = _state.value is SosState.Active && !(_state.value as SosState.Active).practice
 
@@ -181,10 +190,71 @@ object SosManager {
         val prefs = SosPrefs(context)
         prefs.activeSince = now
         prefs.activeRecipients = recipients.toSet()
-        SosService.start(context)
+        locationSent = latest != null
+        pendingUpdate = false
+        startTracking(context)
         send(context, SosPhase.START)
         startHeartbeat(context)
         if (prefs.autoDial) openDialer(context)
+    }
+
+    /**
+     * Starts live tracking if location is allowed. Call again after the user grants
+     * permission mid-SOS. (Starting the location service without permission would
+     * make Android stop the app, so it is never started then.)
+     */
+    fun startTracking(context: Context) {
+        if (!hasLocationPermission(context)) return
+        if (_state.value !is SosState.Active) return
+        SosService.start(context)
+        requestFreshFix(context)
+    }
+
+    /** Asks every available provider for one fresh fix right now (much faster than waiting for updates). */
+    @SuppressLint("MissingPermission")
+    private fun requestFreshFix(context: Context) {
+        if (!hasLocationPermission(context)) return
+        val lm = context.getSystemService(LocationManager::class.java) ?: return
+        val providers = locationProviders(lm)
+        if (Build.VERSION.SDK_INT >= 30) {
+            providers.forEach { p ->
+                runCatching {
+                    lm.getCurrentLocation(p, null, ContextCompat.getMainExecutor(context)) { loc -> if (loc != null) onLocation(context, loc) }
+                }
+            }
+        } else {
+            // Full listener: on Android < 11 the extra methods are abstract and must be implemented.
+            val single = object : android.location.LocationListener {
+                override fun onLocationChanged(location: Location) = onLocation(context, location)
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            }
+            providers.forEach { p ->
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    lm.requestSingleUpdate(p, single, android.os.Looper.getMainLooper())
+                }
+            }
+        }
+    }
+
+    /** Enabled providers, best first. The fused provider (Android 12+) works indoors and is fast. */
+    fun locationProviders(lm: LocationManager): List<String> {
+        val all = runCatching { lm.allProviders }.getOrDefault(emptyList())
+        val wanted = buildList {
+            if (Build.VERSION.SDK_INT >= 31) add(LocationManager.FUSED_PROVIDER)
+            add(LocationManager.GPS_PROVIDER)
+            add(LocationManager.NETWORK_PROVIDER)
+        }
+        return wanted.filter { it in all && runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+    }
+
+    /** Whether the phone's location switch (GPS) is on. */
+    fun isLocationOn(context: Context): Boolean {
+        val lm = context.getSystemService(LocationManager::class.java) ?: return false
+        return if (Build.VERSION.SDK_INT >= 28) lm.isLocationEnabled else locationProviders(lm).isNotEmpty()
     }
 
     /** Re-attaches to an SOS that was running before the app process restarted. */
@@ -194,7 +264,7 @@ object SosManager {
         recipients = prefs.activeRecipients.toList()
         latest = lastKnownLocation(context)
         _state.value = SosState.Active(prefs.activeSince, recipients.size, 0, latest, 0, 0, false)
-        SosService.start(context)
+        startTracking(context)
         startHeartbeat(context)
     }
 
@@ -208,13 +278,19 @@ object SosManager {
         }
     }
 
-    /** New fix from SosService. Sends at most every 15 s. */
+    /** New fix. The first one goes out immediately; after that at most every 15 s. */
     fun onLocation(context: Context, location: Location) {
         val s = _state.value as? SosState.Active ?: return
+        // Ignore a much worse fix than the one we have, unless ours is getting old
+        val current = latest
+        if (current != null && location.accuracy > current.accuracyM * 3 && location.time / 1000 - current.time < 60) return
         val loc = SosLocation(location.latitude, location.longitude, location.accuracy, location.time / 1000)
         latest = loc
         _state.value = s.copy(location = loc)
-        if (!s.practice && System.currentTimeMillis() - lastSentAt >= MIN_UPDATE_INTERVAL_MS) send(context, SosPhase.UPDATE)
+        if (s.practice) return
+        if (!locationSent || System.currentTimeMillis() - lastSentAt >= MIN_UPDATE_INTERVAL_MS) {
+            if (sending) pendingUpdate = true else send(context, SosPhase.UPDATE)
+        }
     }
 
     private fun send(context: Context, phase: SosPhase) {
@@ -223,6 +299,7 @@ object SosManager {
         sending = true
         lastSentAt = System.currentTimeMillis()
         val loc = latest
+        if (loc != null) locationSent = true
         val to = recipients
         scope.launch {
             try {
@@ -238,6 +315,11 @@ object SosManager {
                 if (phase != SosPhase.STOP) Notifications.sosActive(context, reached, to.size, emergencyNumber(context))
             } finally {
                 sending = false
+                // a fix arrived while we were sending — deliver it now
+                if (pendingUpdate && _state.value is SosState.Active) {
+                    pendingUpdate = false
+                    send(context, SosPhase.UPDATE)
+                }
             }
         }
     }

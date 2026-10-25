@@ -41,6 +41,12 @@ class AmendApp : Application() {
         nativeCrypto = NativeSecp.install()
         keyStore = SecureKeyStore(this)
         Notifications.createChannels(this)
+        // OpenStreetMap tiles: identify the app (tile usage policy) and keep the cache private.
+        org.osmdroid.config.Configuration.getInstance().apply {
+            userAgentValue = "amend-android/" + packageName
+            osmdroidBasePath = java.io.File(cacheDir, "osmdroid")
+            osmdroidTileCache = java.io.File(cacheDir, "osmdroid/tiles")
+        }
         keyStore.load()?.let { openRepository(it) }
     }
 
