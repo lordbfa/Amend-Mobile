@@ -676,9 +676,14 @@ class AmendRepository(
         if (file.exists() && file.length() > 0) return file
         val encrypted = blossom.download(media.urls, media.sha256.ifBlank { null })
         pendingBytesReceived.addAndGet(encrypted.size.toLong())
-        val plain = app.amend.messenger.core.crypto.FileCrypto.decrypt(encrypted, media.keyHex.hexToBytes(), media.nonceHex.hexToBytes())
-        file.writeBytes(plain)
-        return file
+        // decrypting a video takes a moment: keep it off the UI thread
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val plain = app.amend.messenger.core.crypto.FileCrypto.decrypt(encrypted, media.keyHex.hexToBytes(), media.nonceHex.hexToBytes())
+            val tmp = File(file.path + ".part")
+            tmp.writeBytes(plain)
+            tmp.renameTo(file)
+            file
+        }
     }
 
     suspend fun retry(peer: String, messageId: String) {

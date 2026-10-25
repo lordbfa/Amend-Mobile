@@ -429,6 +429,7 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
     var thumb by remember { mutableStateOf<ImageBitmap?>(null) }
     var loading by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(file) { file?.let { thumb = thumbnail(it) } }
 
@@ -438,11 +439,15 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
                 haptics.tap()
                 val f = file
                 if (f == null) {
+                    if (loading) return@clickable
                     scope.launch {
                         loading = true
-                        file = runCatching { repo.fetchMedia(media) }.getOrNull()
+                        failed = false
+                        file = runCatching { repo.fetchMedia(media) }
+                            .onFailure { android.util.Log.w("amend", "video download failed", it) }
+                            .getOrNull()
                         loading = false
-                        if (file != null) playing = true
+                        if (file != null) playing = true else failed = true
                     }
                 } else {
                     playing = !playing
@@ -458,6 +463,14 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
                 Box(Modifier.size(54.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
                     if (loading) CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.dp)
                     else Icon(Icons.Rounded.PlayArrow, contentDescription = "Play video", tint = Color.White, modifier = Modifier.size(32.dp))
+                }
+                if (failed) {
+                    Text(
+                        "Couldn't load · tap to retry",
+                        color = Color.White, fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp)
+                            .clip(RoundedCornerShape(8.dp)).background(Color(0xCCB71C1C)).padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
                 }
             }
         }
