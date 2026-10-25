@@ -1,7 +1,11 @@
 package app.amend.messenger.ui.screens
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -65,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.data.IncomingSos
 import app.amend.messenger.data.SosLocation
+import app.amend.messenger.ui.components.LiveMap
 import app.amend.messenger.ui.components.rememberHaptics
 import app.amend.messenger.util.PressPattern
 import app.amend.messenger.util.SosManager
@@ -100,6 +105,22 @@ fun SosOverlay(repo: AmendRepository?) {
     val state by SosManager.state.collectAsStateWithLifecycle()
     var minimised by remember { mutableStateOf(false) }
     LaunchedEffect(state is SosState.Countdown) { if (state is SosState.Countdown) minimised = false }
+
+    // Location isn't allowed yet? Ask right away (during the countdown), and start
+    // live tracking the moment the user allows it.
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { it }) SosManager.startTracking(context)
+    }
+    val needsAsk = state !is SosState.Idle && when (val s0 = state) {
+        is SosState.Countdown -> !s0.practice
+        is SosState.Active -> !s0.practice
+        else -> false
+    }
+    LaunchedEffect(needsAsk) {
+        if (needsAsk && !SosManager.hasLocationPermission(context)) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+    }
 
     when (val s = state) {
         is SosState.Idle -> Unit
@@ -172,9 +193,15 @@ private fun ActiveScreen(s: SosState.Active, repo: AmendRepository?, onMinimise:
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
-                SosPulse(Modifier.fillMaxSize())
-                Text("📍", fontSize = 56.sp)
+            val myLoc = s.location
+            if (myLoc != null) {
+                LiveMap(myLoc, Modifier.fillMaxWidth().height(200.dp), live = !s.practice)
+                Spacer(Modifier.height(10.dp))
+            } else {
+                Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
+                    SosPulse(Modifier.fillMaxSize())
+                    Text("📍", fontSize = 56.sp)
+                }
             }
             val elapsed = (now - s.startedAt) / 1000
             Text("Sharing live location for ${elapsed / 60}:${"%02d".format(elapsed % 60)}", color = Color.White, style = MaterialTheme.typography.titleMedium)
@@ -189,11 +216,40 @@ private fun ActiveScreen(s: SosState.Active, repo: AmendRepository?, onMinimise:
                 color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(6.dp))
+            // re-check permission / location switch every second while this screen is open
+            val hasPermission = remember(now / 1000) { SosManager.hasLocationPermission(context) }
+            val locationOn = remember(now / 1000) { SosManager.isLocationOn(context) }
+            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+                if (result.values.any { it }) SosManager.startTracking(context)
+            }
             Text(
                 s.location?.let { "%.5f, %.5f  ·  ±%d m".format(it.lat, it.lon, it.accuracyM.toInt()) }
-                    ?: if (SosManager.hasLocationPermission(context)) "Finding your location…" else "Location permission is off — contacts get alerts without a map.",
+                    ?: when {
+                        !hasPermission -> "Location isn't allowed — your contacts get the alert without a map."
+                        !locationOn -> "Your phone's location is switched off."
+                        else -> "Finding your location…"
+                    },
                 color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
             )
+            if (!s.practice && (!hasPermission || !locationOn)) {
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        haptics.heavy()
+                        if (!hasPermission) {
+                            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                        } else {
+                            context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD54F), contentColor = SosDeep),
+                ) { Text(if (!hasPermission) "📍 Allow location" else "📍 Turn on location") }
+            }
+            // When the user comes back from location settings, start tracking
+            LaunchedEffect(hasPermission, locationOn) {
+                if (hasPermission && locationOn && !s.practice) SosManager.startTracking(context)
+            }
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = { haptics.heavy(); SosManager.openDialer(context) },
@@ -312,6 +368,11 @@ fun IncomingSosCard(sos: IncomingSos, name: String, onOpenChat: (() -> Unit)?, o
         Column(Modifier.padding(16.dp)) {
             Text("🆘 $name needs help", color = Color.White, style = MaterialTheme.typography.titleLarge)
             val loc: SosLocation? = sos.location
+            if (loc != null) {
+                Spacer(Modifier.height(8.dp))
+                LiveMap(loc, Modifier.fillMaxWidth().height(180.dp), live = true)
+                Spacer(Modifier.height(6.dp))
+            }
             Text(
                 if (loc != null) "Live location · ±${loc.accuracyM.toInt()} m · updated ${formatAgo(now - sos.updatedAt)}"
                 else "Started ${formatAgo(now - sos.startedAt)} · waiting for location",
