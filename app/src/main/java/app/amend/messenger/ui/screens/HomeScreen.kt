@@ -1,5 +1,6 @@
 package app.amend.messenger.ui.screens
 
+import app.amend.messenger.util.StepTracker
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -122,6 +123,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @Composable
 fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(Tab.CHATS) }
+    StepPermissionOnce()
     var showNewChat by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
@@ -218,7 +220,7 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
                     Tab.CHATS -> ChatsTab(repo, openChat, onScan = { haptics.tap(); showScanner = true })
                     Tab.FOREST -> ForestTab(repo, openChat)
                     Tab.IMPACT -> ImpactTab(repo)
-                    Tab.YOU -> YouTab(app, repo)
+                    Tab.YOU -> YouTab(app, repo, openReports = { openChat(StepTracker.REPORTS_PEER) })
                 }
             }
             // in-app toast for points and new trees
@@ -327,6 +329,7 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: 
         if (accepted.isEmpty() && requests.isEmpty()) {
             item { EmptyChats() }
         }
+        item(key = "walking") { WalkingChatRow(onOpen = { openChat(StepTracker.REPORTS_PEER) }) }
         items(accepted, key = { it.peer }) { c -> ConversationRow(repo, c, profiles[c.peer], openChat, isRequest = false) }
     }
 }
