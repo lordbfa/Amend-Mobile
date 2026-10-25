@@ -291,7 +291,6 @@ fun VoiceBubble(repo: AmendRepository, message: ChatMessage, tint: Color) {
     val haptics = rememberHaptics()
     var loading by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
-    var playError by remember { mutableStateOf<String?>(null) }
     val mine = playback.id == message.id
     val progress = if (mine && playback.durationMs > 0) playback.positionMs / playback.durationMs.toFloat() else 0f
 
@@ -431,6 +430,7 @@ fun VideoBubble(repo: AmendRepository, message: ChatMessage) {
     var loading by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var playError by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(file) { file?.let { thumb = thumbnail(it) } }
 
