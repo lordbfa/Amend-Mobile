@@ -38,12 +38,12 @@ class Blossom(private val client: OkHttpClient = defaultClient) {
     }
 
     /** Uploads to one server. Throws on failure. */
-    suspend fun upload(server: String, data: ByteArray, keys: KeyPair): Blob = withContext(Dispatchers.IO) {
+    suspend fun upload(server: String, data: ByteArray, keys: KeyPair, contentType: String = "application/octet-stream"): Blob = withContext(Dispatchers.IO) {
         val sha = Hashes.sha256(data).toHex()
         val base = server.trimEnd('/')
         val req = Request.Builder()
             .url("$base/upload")
-            .put(data.toRequestBody("application/octet-stream".toMediaType()))
+            .put(data.toRequestBody(contentType.toMediaType()))
             .header("Authorization", authHeader(keys, sha, "upload"))
             .header("X-SHA-256", sha)
             .build()
@@ -64,7 +64,7 @@ class Blossom(private val client: OkHttpClient = defaultClient) {
      * Tries servers in order until [copies] uploads succeed (or the list runs out).
      * Returns at least one blob, or throws if every server failed.
      */
-    suspend fun uploadAny(servers: List<String>, data: ByteArray, keys: KeyPair, copies: Int = 2): List<Blob> {
+    suspend fun uploadAny(servers: List<String>, data: ByteArray, keys: KeyPair, copies: Int = 2, mime: String = "application/octet-stream"): List<Blob> {
         val done = mutableListOf<Blob>()
         val errors = mutableListOf<String>()
         for (s in servers) {
@@ -72,7 +72,9 @@ class Blossom(private val client: OkHttpClient = defaultClient) {
             try {
                 done += upload(s, data, keys)
             } catch (e: Exception) {
-                errors += e.message ?: s
+                // some servers only take "real" media types — retry once with the file's own type
+                val retry = if (mime != "application/octet-stream") runCatching { upload(s, data, keys, mime) }.getOrNull() else null
+                if (retry != null) done += retry else errors += e.message ?: s
             }
         }
         if (done.isEmpty()) throw BlossomException("upload failed on every server: " + errors.joinToString("; "))
@@ -125,11 +127,9 @@ class Blossom(private val client: OkHttpClient = defaultClient) {
 
         /** Free public Blossom servers, best first. Verified by CI (BlobScanTest). */
         val DEFAULT_SERVERS = listOf(
-            "https://blossom.primal.net",
-            "https://blossom.band",
             "https://nostr.download",
-            "https://cdn.nostrcheck.me",
-            "https://blossom.oxtr.dev",
+            "https://blossom.yakihonne.com",
+            "https://blossom.primal.net",
         )
     }
 }
