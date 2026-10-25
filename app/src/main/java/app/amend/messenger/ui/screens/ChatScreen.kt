@@ -194,7 +194,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
 
         if (!accepted) {
             RequestBanner(
-                onAccept = { repo.accept(peer); accepted = true; haptics.success() },
+                onAccept = { repo.accept(peer); accepted = true; haptics.success(); repo.markSeen(peer) },
                 onBlock = { repo.block(peer); haptics.heavy(); onBack() },
             )
         }
@@ -566,12 +566,7 @@ private fun MessageBubble(
                     )
                     if (mine) {
                         Spacer(Modifier.size(4.dp))
-                        when (message.status) {
-                            MessageStatus.SENDING -> Text("🌱", fontSize = 11.sp)
-                            MessageStatus.SENT -> Text("🌿×${message.relaysAccepted}", fontSize = 11.sp, color = textColor.copy(alpha = 0.85f))
-                            MessageStatus.FAILED -> Text("⚠ retry", fontSize = 11.sp, color = Color(0xFFFFE0E0), fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onRetry() })
-                            MessageStatus.RECEIVED -> Unit
-                        }
+                        GrowthTick(message.status, onRetry)
                     }
                 }
             }
@@ -599,6 +594,13 @@ private fun MessageBubble(
                         )
                     }
                 }
+            }
+            if (mine) {
+                DropdownMenuItem(
+                    text = { Text(statusLabel(message.status, message.relaysAccepted), color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    onClick = { showReactions = false },
+                    leadingIcon = { GrowthTick(message.status, onRetry = {}) },
+                )
             }
             DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
             DropdownMenuItem(text = { Text("Copy") }, onClick = {
