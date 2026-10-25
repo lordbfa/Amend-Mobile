@@ -599,7 +599,7 @@ private fun MessageBubble(
                 DropdownMenuItem(
                     text = { Text(statusLabel(message.status, message.relaysAccepted), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     onClick = { showReactions = false },
-                    leadingIcon = { GrowthTick(message.status, onRetry = {}) },
+                    leadingIcon = { GrowthTick(message.status, onRetry = {}, onBubble = false) },
                 )
             }
             DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
