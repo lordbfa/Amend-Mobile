@@ -60,6 +60,8 @@ class AmendApp : Application() {
         repo.start()
         _repository.value = repo
         app.amend.messenger.util.CallManager.attach(this, repo)
+        app.amend.messenger.util.EcoMap.attach(this, repo)
+        app.amend.messenger.util.EcoWeather.schedule(this)
         eventsJob?.cancel()
         eventsJob = appScope.launch { repo.events.collect { notifyFor(repo, it) } }
         rescheduleBackground(repo)
