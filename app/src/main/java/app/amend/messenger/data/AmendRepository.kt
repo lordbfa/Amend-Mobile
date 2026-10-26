@@ -187,7 +187,10 @@ class AmendRepository(
 
     private suspend fun handleIncoming(msg: RelayIncoming) {
         when (msg) {
-            is RelayIncoming.EventMsg -> when (msg.event.kind) {
+            is RelayIncoming.EventMsg -> if (msg.subscription.startsWith(SUB_ECO_PREFIX)) {
+                // public eco-map reports and their reactions (see EcoMap)
+                if (msg.event.isValid()) _ecoEvents.tryEmit(msg.event)
+            } else when (msg.event.kind) {
                 Kinds.GIFT_WRAP, Kinds.EPHEMERAL_GIFT_WRAP -> handleWrap(msg.event)
                 Kinds.METADATA -> handleMetadata(msg.event)
                 Kinds.DM_RELAYS -> handleInboxRelays(msg.event)
@@ -241,7 +244,18 @@ class AmendRepository(
             }
             Kinds.CHAT_MESSAGE -> {
                 val cardId = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "card" }?.get(2)
-                val message = ChatMessage(
+                val proof = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "proof" }?.get(2)
+                val message = if (proof != null) ChatMessage(
+                    id = rumor.id, peer = peer, fromMe = fromMe, text = rumor.content, createdAt = rumor.createdAt,
+                    type = MessageType.ECO_PROOF, replyTo = rumor.firstTag("e"),
+                    status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
+                    extra = app.amend.messenger.core.json.Json.write(
+                        linkedMapOf(
+                            "a" to proof, "image" to rumor.firstTag("image"), "location" to rumor.firstTag("location"),
+                            "event" to rumor.firstTag("amend-event"),
+                        )
+                    ),
+                ) else ChatMessage(
                     id = rumor.id,
                     peer = peer,
                     fromMe = fromMe,
@@ -477,6 +491,39 @@ class AmendRepository(
         }
         _events.tryEmit(AmendEvent.MessageSent(peer, accepted))
         return final
+    }
+
+    // ---------------------------------------------------------------- eco map (public)
+
+    private val _ecoEvents = MutableSharedFlow<Event>(extraBufferCapacity = 512, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    /** Public eco reports and reactions from "eco-…" subscriptions. */
+    val ecoEvents: SharedFlow<Event> = _ecoEvents
+
+    fun subscribeEco(id: String, filters: List<Map<String, Any?>>) = pool.subscribe(SUB_ECO_PREFIX + id, filters)
+    fun closeEco(id: String) = pool.unsubscribe(SUB_ECO_PREFIX + id)
+
+    /** Signs and publishes a public event with our key. Returns it and how many relays accepted it. */
+    suspend fun publishPublic(kind: Int, content: String, tags: List<List<String>>): Pair<Event, Int> {
+        val ev = Event.sign(keys.secretKey, kind, content, tags)
+        val n = runCatching { pool.publish(ev).count { it.accepted } }.getOrDefault(0)
+        _ecoEvents.tryEmit(ev) // show it right away
+        return ev to n
+    }
+
+    /** Uploads a public (unencrypted) photo. Returns its URLs (main first). */
+    suspend fun uploadPublicImage(jpeg: ByteArray): List<String> =
+        blossom.uploadAny(mediaServers, jpeg, keys, copies = 2, mime = "image/jpeg").map { it.url }
+
+    /** Points for real-world eco actions (reports, checks, clean-ups, planted trees). */
+    fun awardEco(points: Int, reason: String) = award(points, reason, isMessage = false)
+
+    /** Asks a friend to check a tree we planted: a chat card with the photo and a "Verify" button. */
+    suspend fun sendTreeProof(peer: String, report: EcoReport): ChatMessage {
+        val tags = mutableListOf(listOf("p", peer), listOf("amend", "proof", report.address), listOf("amend-event", report.eventId))
+        report.imageUrl?.let { tags.add(listOf("image", it)) }
+        tags.add(listOf("location", String.format(java.util.Locale.US, "%.5f,%.5f", report.lat, report.lon)))
+        val text = "🌳 I planted a real tree! " + (if (report.note.isNotBlank()) "“${report.note}” " else "") + "Can you check it and verify?"
+        return sendRumor(peer, text, tags, MessageType.ECO_PROOF, null, null)
     }
 
     // ---------------------------------------------------------------- calls
@@ -949,6 +996,7 @@ class AmendRepository(
     companion object {
         const val SUB_DM = "amend-dm"
         const val SUB_META = "amend-meta"
+        const val SUB_ECO_PREFIX = "eco-"
         /** Receipts are only sent for messages from the last week. */
         const val RECEIPT_MAX_AGE = 7L * 24 * 3600
     }

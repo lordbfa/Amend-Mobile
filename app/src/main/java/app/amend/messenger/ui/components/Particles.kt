@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
+import kotlinx.coroutines.flow.first
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -33,10 +34,13 @@ internal class Particle(
 class ParticleField {
     private val particles = ArrayList<Particle>()
     internal val frame = mutableLongStateOf(0L)
+    /** Bumped whenever particles are added, so the animation loop can sleep while there are none. */
+    internal val wake = kotlinx.coroutines.flow.MutableStateFlow(0L)
     var reduced = false
 
     fun burst(at: Offset, kind: ParticleKind = ParticleKind.LEAVES, count: Int = 24, power: Float = 1f) {
         val n = if (reduced) count / 4 else count
+        wake.value++
         repeat(n) {
             val angle = Random.nextFloat() * 6.283f
             val speed = (180f + Random.nextFloat() * 420f) * power
@@ -56,6 +60,7 @@ class ParticleField {
     /** Gentle falling leaves from the top edge (ambient). */
     fun drift(width: Float, kind: ParticleKind = ParticleKind.LEAVES) {
         if (reduced) return
+        wake.value++
         particles.add(
             Particle(
                 Random.nextFloat() * width, -20f, (Random.nextFloat() - 0.5f) * 40f, 40f + Random.nextFloat() * 40f,
@@ -95,6 +100,13 @@ fun ParticleLayer(field: ParticleField, modifier: Modifier = Modifier) {
     LaunchedEffect(field) {
         var last = 0L
         while (true) {
+            if (field.isEmpty) {
+                // nothing to animate: sleep (no redraws) until the next burst
+                field.frame.longValue = 0L
+                val seen = field.wake.value
+                field.wake.first { it != seen }
+                last = 0L
+            }
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0.016f else ((now - last) / 1e9f).coerceAtMost(0.05f)
                 last = now
@@ -104,7 +116,7 @@ fun ParticleLayer(field: ParticleField, modifier: Modifier = Modifier) {
         }
     }
     Canvas(modifier) {
-        field.frame.longValue // read to redraw every frame
+        if (field.frame.longValue == 0L) return@Canvas // read to redraw every frame (only while animating)
         field.snapshot().forEach { p ->
             val alpha = (1f - p.life / p.maxLife).coerceIn(0f, 1f)
             rotate(p.rot, Offset(p.x, p.y)) {

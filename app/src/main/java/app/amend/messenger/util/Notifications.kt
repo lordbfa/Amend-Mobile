@@ -29,6 +29,7 @@ object Notifications {
     const val SOS_COUNTDOWN_ID = 9_111
     const val CHANNEL_WALKING = "walking"
     const val CHANNEL_CALLS = "calls_incoming"
+    const val CHANNEL_ECO_ALERTS = "eco_alerts"
     const val CHANNEL_CALL_ONGOING = "calls_ongoing"
     const val CALL_INCOMING_ID = 5_100
     const val CALL_ONGOING_ID = 5_101
@@ -70,6 +71,11 @@ object Notifications {
                 setSound(null, null)
                 enableVibration(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ECO_ALERTS, "Weather & air alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Heatwaves, heavy rain, rising rivers, storms and unhealthy air near you"
             }
         )
         nm.createNotificationChannel(
@@ -403,5 +409,25 @@ object Notifications {
             b.setUsesChronometer(true).setWhen(st.connectedAt * 1000).setShowWhen(true)
         }
         return b.build()
+    }
+
+    // ------------------------------------------------------------ weather & air
+
+    fun ecoAlert(context: Context, alert: app.amend.messenger.data.EcoAlert, place: String) {
+        if (!areEnabled(context)) return
+        val n = NotificationCompat.Builder(context, CHANNEL_ECO_ALERTS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(alert.emoji + " " + alert.title + if (place.isNotBlank()) " · $place" else "")
+            .setContentText(alert.advice)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(alert.advice + "\n\nOpen amend to tell your people you're safe."))
+            .setColor(if (alert.level == app.amend.messenger.data.AlertLevel.DANGER) 0xFFE53935.toInt() else 0xFFFFA000.toInt())
+            .setAutoCancel(true)
+            .setContentIntent(openIntent(context, null))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(8_000 + (alert.id.hashCode() and 0xff), n)
+        } catch (e: SecurityException) {
+            // ignore
+        }
     }
 }

@@ -38,66 +38,156 @@ fun DrawScope.drawTree(
         drawConifer(species, g, base, height, sway + shake, night)
         return
     }
-    val rnd = Random(seed)
-    val depth = max(2, (2 + (species.depth - 2) * g).toInt())
-    val trunkLen = height * (0.2f + 0.14f * g)
-    val trunkWidth = height * (0.018f + 0.03f * g)
-    val trunk = Color.hsl(species.trunkHue, 0.35f, if (night) 0.18f else 0.28f)
-    val leafLight = if (night) 0.28f else 0.42f
-    val leaves = ArrayList<Pair<Offset, Float>>()
-
-    fun branch(start: Offset, angle: Float, len: Float, width: Float, level: Int) {
-        // Sway grows with level, like a real crown moving more than its trunk
-        val a = angle + (sway + shake) * (0.15f + level * 0.12f)
-        val end = Offset(start.x + cos(a) * len, start.y + sin(a) * len)
-        drawLine(trunk, start, end, strokeWidth = width, cap = StrokeCap.Round)
-        if (level >= depth) {
-            leaves.add(end to len)
-            return
-        }
-        if (level >= depth - 2) leaves.add(end to len * 0.8f)
-        val spread = species.branchAngle * (PI.toFloat() / 180f)
-        val children = if (rnd.nextFloat() < 0.3f && level > 1) 3 else 2
-        for (i in 0 until children) {
-            val offset = when (children) {
-                2 -> if (i == 0) -spread else spread
-                else -> (i - 1) * spread
-            }
-            val jitter = (rnd.nextFloat() - 0.5f) * spread * 0.5f
-            val shrink = species.shrink * (0.88f + rnd.nextFloat() * 0.2f)
-            branch(end, a + offset + jitter, len * shrink, width * 0.68f, level + 1)
-        }
+    val model = TreeModels.get(species, seed, g)
+    val trunk = if (night) model.trunkNight else model.trunkDay
+    // Positions are recomputed each frame (cheap trig); the shape itself is cached.
+    val n = model.count
+    val ex = model.scratchX
+    val ey = model.scratchY
+    val ang = model.scratchA
+    val swayAll = sway + shake
+    for (i in 0 until n) {
+        val parent = model.parent[i]
+        val sx = if (parent < 0) base.x else ex[parent]
+        val sy = if (parent < 0) base.y else ey[parent]
+        val pa = if (parent < 0) 0f else ang[parent]
+        val level = model.level[i]
+        val a = pa + model.relAngle[i] + swayAll * (0.15f + level * 0.12f)
+        val len = model.len[i] * height
+        ang[i] = a
+        ex[i] = sx + cos(a) * len
+        ey[i] = sy + sin(a) * len
+        drawLine(trunk, Offset(sx, sy), Offset(ex[i], ey[i]), strokeWidth = model.width[i] * height, cap = StrokeCap.Round)
     }
-    branch(base, -PI.toFloat() / 2, trunkLen, trunkWidth, 1)
-
-    // Leaf clusters: several overlapping soft circles per tip
     val leafR = height * 0.045f * species.crown * (0.5f + 0.5f * g)
-    val leafRnd = Random(seed * 31 + 7)
-    leaves.forEach { (pt, _) ->
-        repeat(3) {
-            val dx = (leafRnd.nextFloat() - 0.5f) * leafR * 1.6f
-            val dy = (leafRnd.nextFloat() - 0.5f) * leafR * 1.6f
-            val l = leafLight + (leafRnd.nextFloat() - 0.5f) * 0.12f
-            drawCircle(
-                Color.hsl(species.leafHue + (leafRnd.nextFloat() - 0.5f) * 16f, species.leafSat, l.coerceIn(0.1f, 0.8f), 0.82f),
-                leafR * (0.7f + leafRnd.nextFloat() * 0.6f),
-                Offset(pt.x + dx, pt.y + dy),
-            )
+    val colors = if (night) model.leafNight else model.leafDay
+    for (k in 0 until model.leafCount) {
+        val node = model.leafNode[k]
+        drawCircle(
+            colors[k],
+            leafR * model.leafScale[k],
+            Offset(ex[node] + model.leafDx[k] * leafR, ey[node] + model.leafDy[k] * leafR),
+        )
+    }
+    if (model.bloomCount > 0 && g > 0.55f) {
+        val bloom = if (night) model.bloomNight else model.bloomDay
+        for (k in 0 until model.bloomCount) {
+            val node = model.bloomNode[k]
+            drawCircle(bloom, leafR * 0.38f, Offset(ex[node] + model.bloomDx[k] * leafR, ey[node] + model.bloomDy[k] * leafR))
         }
     }
-    // Blossoms once the tree is established
-    val bloomHue = species.bloomHue
-    if (bloomHue != null && g > 0.55f) {
-        val bloomRnd = Random(seed * 13 + 3)
-        leaves.forEach { (pt, _) ->
-            if (bloomRnd.nextFloat() < 0.6f) {
-                drawCircle(
-                    Color.hsl(bloomHue, 0.75f, if (night) 0.55f else 0.78f),
-                    leafR * 0.38f,
-                    Offset(pt.x + (bloomRnd.nextFloat() - 0.5f) * leafR, pt.y + (bloomRnd.nextFloat() - 0.5f) * leafR),
-                )
+}
+
+/**
+ * The branching shape of one tree at one growth step, built once and reused
+ * every frame. Growth is bucketed to 1 % steps so a growing tree rebuilds only
+ * when it visibly changes.
+ */
+internal class TreeModel(
+    val depth: Int,
+    val count: Int,
+    val parent: IntArray,
+    val level: IntArray,
+    val relAngle: FloatArray,
+    val len: FloatArray,      // fraction of the tree height
+    val width: FloatArray,    // fraction of the tree height
+    val leafCount: Int,
+    val leafNode: IntArray,
+    val leafDx: FloatArray,
+    val leafDy: FloatArray,
+    val leafScale: FloatArray,
+    val leafDay: Array<Color>,
+    val leafNight: Array<Color>,
+    val bloomCount: Int,
+    val bloomNode: IntArray,
+    val bloomDx: FloatArray,
+    val bloomDy: FloatArray,
+    val bloomDay: Color,
+    val bloomNight: Color,
+    val trunkDay: Color,
+    val trunkNight: Color,
+) {
+    val scratchX = FloatArray(count)
+    val scratchY = FloatArray(count)
+    val scratchA = FloatArray(count)
+}
+
+internal object TreeModels {
+    private val cache = object : LinkedHashMap<String, TreeModel>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, TreeModel>?) = size > 96
+    }
+
+    fun get(species: TreeSpecies, seed: Int, g: Float): TreeModel {
+        val step = (g * 100).toInt().coerceIn(0, 100)
+        val key = "${species.name}:$seed:$step"
+        synchronized(cache) { cache[key]?.let { return it } }
+        val m = build(species, seed, step / 100f)
+        synchronized(cache) { cache[key] = m }
+        return m
+    }
+
+    private fun build(species: TreeSpecies, seed: Int, g: Float): TreeModel {
+        val rnd = Random(seed)
+        val depth = max(2, (2 + (species.depth - 2) * g).toInt())
+        val parents = ArrayList<Int>(); val levels = ArrayList<Int>()
+        val rel = ArrayList<Float>(); val lens = ArrayList<Float>(); val widths = ArrayList<Float>()
+        val tips = ArrayList<Int>()
+        fun branch(parent: Int, relAngle: Float, len: Float, width: Float, level: Int) {
+            val idx = parents.size
+            parents.add(parent); levels.add(level); rel.add(relAngle); lens.add(len); widths.add(width)
+            if (level >= depth) { tips.add(idx); return }
+            if (level >= depth - 2) tips.add(idx)
+            val spread = species.branchAngle * (PI.toFloat() / 180f)
+            val children = if (rnd.nextFloat() < 0.3f && level > 1) 3 else 2
+            for (i in 0 until children) {
+                val offset = when (children) {
+                    2 -> if (i == 0) -spread else spread
+                    else -> (i - 1) * spread
+                }
+                val jitter = (rnd.nextFloat() - 0.5f) * spread * 0.5f
+                val shrink = species.shrink * (0.88f + rnd.nextFloat() * 0.2f)
+                branch(idx, offset + jitter, len * shrink, width * 0.68f, level + 1)
             }
         }
+        branch(-1, -PI.toFloat() / 2, 0.2f + 0.14f * g, 0.018f + 0.03f * g, 1)
+
+        val leafRnd = Random(seed * 31 + 7)
+        val nLeaves = tips.size * 3
+        val leafNode = IntArray(nLeaves); val dx = FloatArray(nLeaves); val dy = FloatArray(nLeaves); val sc = FloatArray(nLeaves)
+        val day = arrayOfNulls<Color>(nLeaves); val night = arrayOfNulls<Color>(nLeaves)
+        var k = 0
+        tips.forEach { t ->
+            repeat(3) {
+                leafNode[k] = t
+                dx[k] = (leafRnd.nextFloat() - 0.5f) * 1.6f
+                dy[k] = (leafRnd.nextFloat() - 0.5f) * 1.6f
+                val jitterL = (leafRnd.nextFloat() - 0.5f) * 0.12f
+                val hue = species.leafHue + (leafRnd.nextFloat() - 0.5f) * 16f
+                day[k] = Color.hsl(hue, species.leafSat, (0.42f + jitterL).coerceIn(0.1f, 0.8f), 0.82f)
+                night[k] = Color.hsl(hue, species.leafSat, (0.28f + jitterL).coerceIn(0.1f, 0.8f), 0.82f)
+                sc[k] = 0.7f + leafRnd.nextFloat() * 0.6f
+                k++
+            }
+        }
+        val bloomHue = species.bloomHue
+        val bNode = ArrayList<Int>(); val bdx = ArrayList<Float>(); val bdy = ArrayList<Float>()
+        if (bloomHue != null) {
+            val bloomRnd = Random(seed * 13 + 3)
+            tips.forEach { t ->
+                if (bloomRnd.nextFloat() < 0.6f) {
+                    bNode.add(t)
+                    bdx.add(bloomRnd.nextFloat() - 0.5f)
+                    bdy.add(bloomRnd.nextFloat() - 0.5f)
+                }
+            }
+        }
+        return TreeModel(
+            depth, parents.size, parents.toIntArray(), levels.toIntArray(), rel.toFloatArray(), lens.toFloatArray(), widths.toFloatArray(),
+            nLeaves, leafNode, dx, dy, sc, day.requireNoNulls(), night.requireNoNulls(),
+            bNode.size, bNode.toIntArray(), bdx.toFloatArray(), bdy.toFloatArray(),
+            Color.hsl(bloomHue ?: 0f, 0.75f, 0.78f), Color.hsl(bloomHue ?: 0f, 0.75f, 0.55f),
+            Color.hsl(species.trunkHue, 0.35f, 0.28f), Color.hsl(species.trunkHue, 0.35f, 0.18f),
+        )
     }
 }
 

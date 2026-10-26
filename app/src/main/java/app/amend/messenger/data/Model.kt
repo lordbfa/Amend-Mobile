@@ -19,7 +19,7 @@ enum class MessageStatus(val rank: Int) {
     fun advance(to: MessageStatus): MessageStatus = if (to.rank > rank || (this == FAILED || this == SENDING)) to else this
 }
 
-enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE, CALL }
+enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE, CALL, ECO_PROOF }
 
 data class ChatMessage(
     val id: String,

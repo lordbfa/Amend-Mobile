@@ -566,6 +566,8 @@ private fun MessageBubble(
                     VideoBubble(repo, message)
                 } else if (message.type == MessageType.CALL) {
                     CallLogContent(message, textColor, onCall)
+                } else if (message.type == MessageType.ECO_PROOF) {
+                    EcoProofContent(repo, message, textColor)
                 } else {
                     Text(linkify(message.text, textColor), color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
