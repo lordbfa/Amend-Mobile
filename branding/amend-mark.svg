@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72" width="1024" height="1024"><defs>
+      <linearGradient id="tM" x1="0" y1="-1" x2="0" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7BF0B0"/><stop offset="1" stop-color="#4FD98C"/></linearGradient>
+      <linearGradient id="lM" x1="0" y1="0" x2="0" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2BB673"/><stop offset="1" stop-color="#178A52"/></linearGradient>
+      <radialGradient id="bgM" cx="0.35" cy="0.3" r="0.9"><stop offset="0" stop-color="#0F3D2B"/><stop offset="1" stop-color="#05150F"/></radialGradient>
+      <clipPath id="cuM"><path d="M-3,-5 L-3,0.3691 L2.0944,0 L5,0 L5,-5 Z"/></clipPath><clipPath id="clM"><path d="M-3,5 L-3,0.5391 L2.0944,0 L5,0 L5,5 Z"/></clipPath>
+    </defs><g transform="translate(45.535744200432276,58.0894342374432) rotate(-45) scale(19.16092263830776)">
+      <path d="M2.6180,0.0000 A2.6180,2.6180 0 0 0 -0.3090,-0.9511 A1,1 0 0 0 -0.9511,-0.3090 Q-1.0438,-0.0237 -1.7200,0.3400 Q-1.0623,-0.0333 -0.9511,0.3090 A1,1 0 0 0 -0.3090,0.9511 A2.6180,2.6180 0 0 0 2.6180,0.0000 Z" fill="url(#tM)" clip-path="url(#cuM)"/>
+      <path d="M2.6180,0.0000 A2.6180,2.6180 0 0 0 -0.3090,-0.9511 A1,1 0 0 0 -0.9511,-0.3090 Q-1.0438,-0.0237 -1.7200,0.3400 Q-1.0623,-0.0333 -0.9511,0.3090 A1,1 0 0 0 -0.3090,0.9511 A2.6180,2.6180 0 0 0 2.6180,0.0000 Z" fill="url(#lM)" clip-path="url(#clM)"/>
+    </g></svg>
