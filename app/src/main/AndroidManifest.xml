@@ -60,11 +60,58 @@
             android:launchMode="singleTop"
             android:supportsPictureInPicture="false"
             android:windowSoftInputMode="adjustResize">
+        </activity>
+
+        <!-- The launcher icon follows the time of day (white by day, grey at dusk, dark at night):
+             amend switches between these four entries. See util/DynamicIcon.kt -->
+        <activity-alias
+            android:name=".IconDay"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:icon="@mipmap/ic_launcher_day"
+            android:roundIcon="@mipmap/ic_launcher_day">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconEvening"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_evening"
+            android:roundIcon="@mipmap/ic_launcher_evening">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconDusk"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_dusk"
+            android:roundIcon="@mipmap/ic_launcher_dusk">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconNight"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_night"
+            android:roundIcon="@mipmap/ic_launcher_night">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Keeps the relay connection open for instant notifications (no Google push). -->
         <service

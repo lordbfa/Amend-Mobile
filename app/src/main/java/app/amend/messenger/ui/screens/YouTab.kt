@@ -120,6 +120,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
 
         MeshCard()
 
+        IconStyleCard()
+
         NotificationsCard(app, repo)
 
         CallsCard()
@@ -415,3 +417,28 @@ private fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
         }
     }
 }
+
+/** The launcher icon changes with the sun: white by day, grey at dusk, dark at night. */
+@Composable
+private fun IconStyleCard() {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(app.amend.messenger.util.DynamicIcon.isEnabled(context)) }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Icon follows the sun ☀️🌙", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "amend's icon is white by day, turns light grey before sunset, grey at dusk and dark at night — timed to sunrise and sunset where you are. " +
+                        "Some launchers briefly refresh the home-screen icon when it changes.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            androidx.compose.material3.Switch(checked = on, onCheckedChange = {
+                on = it
+                app.amend.messenger.util.DynamicIcon.setEnabled(context, it)
+            })
+        }
+    }
+}
+

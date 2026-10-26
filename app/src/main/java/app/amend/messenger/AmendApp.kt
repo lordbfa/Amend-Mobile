@@ -43,6 +43,7 @@ class AmendApp : Application() {
         keyStore = SecureKeyStore(this)
         Notifications.createChannels(this)
         StepTracker.init(this)
+        app.amend.messenger.util.DynamicIcon.schedule(this)
         // OpenStreetMap tiles: identify the app (tile usage policy) and keep the cache private.
         org.osmdroid.config.Configuration.getInstance().apply {
             userAgentValue = "amend-android/" + packageName
