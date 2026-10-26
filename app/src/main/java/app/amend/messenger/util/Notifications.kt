@@ -30,6 +30,7 @@ object Notifications {
     const val CHANNEL_WALKING = "walking"
     const val CHANNEL_CALLS = "calls_incoming"
     const val CHANNEL_ECO_ALERTS = "eco_alerts"
+    const val MESH_ID = 5_200
     const val CHANNEL_CALL_ONGOING = "calls_ongoing"
     const val CALL_INCOMING_ID = 5_100
     const val CALL_ONGOING_ID = 5_101
@@ -430,4 +431,17 @@ object Notifications {
             // ignore
         }
     }
+
+    // ------------------------------------------------------------ offline mesh
+
+    fun meshRunning(context: Context): Notification =
+        NotificationCompat.Builder(context, CHANNEL_CONNECTION)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Offline mesh is on")
+            .setContentText("Passing encrypted messages between nearby amend phones — works without internet.")
+            .setColor(0xFF2BB673.toInt())
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setContentIntent(openIntent(context, null))
+            .build()
 }

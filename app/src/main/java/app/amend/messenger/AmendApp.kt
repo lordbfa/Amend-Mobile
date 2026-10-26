@@ -61,6 +61,8 @@ class AmendApp : Application() {
         _repository.value = repo
         app.amend.messenger.util.CallManager.attach(this, repo)
         app.amend.messenger.util.EcoMap.attach(this, repo)
+        app.amend.messenger.util.Mesh.init(this)
+        app.amend.messenger.util.Mesh.attach(repo)
         app.amend.messenger.util.EcoWeather.schedule(this)
         eventsJob?.cancel()
         eventsJob = appScope.launch { repo.events.collect { notifyFor(repo, it) } }
