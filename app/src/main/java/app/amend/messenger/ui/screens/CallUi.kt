@@ -96,6 +96,7 @@ import app.amend.messenger.util.CallPrefs
 import app.amend.messenger.util.CallUi
 import app.amend.messenger.util.Rtc
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
@@ -447,46 +448,104 @@ fun CallLogContent(message: ChatMessage, textColor: Color, onCall: (Boolean) -> 
     }
 }
 
-/** Settings: an optional TURN server for networks that block direct connections. */
+/**
+ * Settings: a TURN server, so calls connect across strict networks (for example
+ * Finland ↔ Bangladesh on mobile data). Paste a Metered link, a Cloudflare key, or type one in.
+ */
 @Composable
 fun CallsCard() {
     val context = LocalContext.current
     val prefs = remember { CallPrefs(context) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val haptics = rememberHaptics()
+    var metered by remember { mutableStateOf(prefs.meteredLink) }
+    var cfKey by remember { mutableStateOf(prefs.cloudflareKeyId) }
+    var cfToken by remember { mutableStateOf(prefs.cloudflareToken) }
     var url by remember { mutableStateOf(prefs.turnUrl) }
     var user by remember { mutableStateOf(prefs.turnUser) }
     var pass by remember { mutableStateOf(prefs.turnPass) }
-    var saved by remember { mutableStateOf(false) }
-    val haptics = rememberHaptics()
+    var advanced by remember { mutableStateOf(prefs.turnUrl.isNotBlank() || prefs.cloudflareKeyId.isNotBlank()) }
+    var status by remember { mutableStateOf<String?>(if (prefs.hasTurn) "TURN server saved" else null) }
+    var testing by remember { mutableStateOf(false) }
+    var ok by remember { mutableStateOf<Boolean?>(null) }
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+
+    fun save() {
+        prefs.meteredLink = metered; prefs.cloudflareKeyId = cfKey; prefs.cloudflareToken = cfToken
+        prefs.turnUrl = url; prefs.turnUser = user; prefs.turnPass = pass
+    }
+
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Calls 📞", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Voice and video calls go straight from phone to phone, end-to-end encrypted. Free public STUN servers help the phones find each other. " +
-                    "On some strict networks (offices, some mobile carriers) a direct path isn't possible — add a TURN server here to relay the encrypted call.",
+                "Calls go straight from phone to phone, end-to-end encrypted. Between countries or on mobile data " +
+                    "(carriers like Grameenphone, Robi or Banglalink share one address among many users) the phones often can't reach each other directly. " +
+                    "A TURN server relays the encrypted call — it can't listen in. Only one of you needs one.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedTextField(url, { url = it; saved = false }, label = { Text("TURN server (turn:host:3478)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(user, { user = it; saved = false }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(
-                pass, { pass = it; saved = false }, label = { Text("Password") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            Text("Easiest: free Metered TURN (20 GB/month)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "1. Sign up at metered.ca → TURN Server (free plan)\n2. Open your app → copy the “credentials” link (…metered.live/api/v1/turn/credentials?apiKey=…)\n3. Paste it below, Save, then Test",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = {
-                    prefs.turnUrl = url; prefs.turnUser = user; prefs.turnPass = pass
-                    saved = true
-                    haptics.success()
-                }, shape = RoundedCornerShape(16.dp)) { Text("Save") }
-                Spacer(Modifier.width(10.dp))
-                val bad = url.isNotBlank() && !(url.trim().startsWith("turn:") || url.trim().startsWith("turns:"))
-                Text(
-                    when {
-                        bad -> "Should start with turn: or turns:"
-                        saved -> "Saved ✓"
-                        else -> ""
+            Text(
+                "Open metered.ca", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.clickable { uri.openUri("https://www.metered.ca/tools/openrelay/") }.padding(vertical = 2.dp),
+            )
+            OutlinedTextField(metered, { metered = it; ok = null }, label = { Text("Metered credentials link") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+            Text(
+                if (advanced) "Hide other options" else "Other options: Cloudflare or your own TURN server",
+                color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.clickable { advanced = !advanced }.padding(vertical = 4.dp),
+            )
+            AnimatedVisibility(advanced) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Cloudflare TURN (dash.cloudflare.com → Realtime → TURN)", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(cfKey, { cfKey = it; ok = null }, label = { Text("TURN key ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        cfToken, { cfToken = it; ok = null }, label = { Text("API token") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("Your own server (e.g. coturn)", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(url, { url = it; ok = null }, label = { Text("turn:host:3478 (several: separate with commas)") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(user, { user = it; ok = null }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        pass, { pass = it; ok = null }, label = { Text("Password") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { save(); haptics.success(); status = "Saved ✓"; ok = null }, shape = RoundedCornerShape(16.dp)) { Text("Save") }
+                androidx.compose.material3.OutlinedButton(
+                    enabled = !testing,
+                    onClick = {
+                        save()
+                        haptics.tap()
+                        testing = true
+                        status = "Testing…"
+                        scope.launch {
+                            val servers = prefs.resolveIceServers(onlyTurn = true)
+                            val works = if (servers.isEmpty()) false else app.amend.messenger.util.testTurnServers(context, servers)
+                            testing = false
+                            ok = works
+                            status = when {
+                                servers.isEmpty() -> "No TURN server found — check the link or key"
+                                works -> "✓ TURN works — calls will connect across networks"
+                                else -> "✗ The TURN server didn't answer — check the details"
+                            }
+                            if (works) haptics.success() else haptics.reject()
+                        }
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(16.dp),
+                ) { Text("Test") }
+            }
+            status?.let {
+                Text(
+                    it, style = MaterialTheme.typography.bodySmall,
+                    color = when (ok) { true -> Color(0xFF2BB673); false -> MaterialTheme.colorScheme.error; null -> MaterialTheme.colorScheme.onSurfaceVariant },
                 )
             }
         }

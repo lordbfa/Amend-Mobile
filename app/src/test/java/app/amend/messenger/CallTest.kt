@@ -55,3 +55,24 @@ class CallTest {
         assertEquals("1:01:05", formatCallDuration(3665))
     }
 }
+
+class IceConfigTest {
+    @Test
+    fun readsMeteredAndCloudflareResponses() {
+        // Metered: a plain array
+        val metered = """[{"urls":"stun:stun.relay.metered.ca:80"},
+            {"urls":"turn:global.relay.metered.ca:80","username":"u1","credential":"c1"},
+            {"urls":"turns:global.relay.metered.ca:443?transport=tcp","username":"u1","credential":"c1"}]"""
+        val m = app.amend.messenger.util.CallPrefs.parse(metered)!!
+        assertEquals(3, m.size)
+        assertEquals("u1", m[1].username)
+        assertEquals("c1", m[2].password)
+        // Cloudflare: an object holding iceServers, urls as arrays
+        val cf = """{"iceServers":[{"urls":["stun:stun.cloudflare.com:3478"]},
+            {"urls":["turn:turn.cloudflare.com:3478?transport=udp","turns:turn.cloudflare.com:443?transport=tcp"],"username":"x","credential":"y"}]}"""
+        val c = app.amend.messenger.util.CallPrefs.parse(cf)!!
+        assertEquals(3, c.size)
+        assertTrue(c.count { it.url.startsWith("turn") } == 2 && c.last().username == "x")
+        assertTrue(app.amend.messenger.util.CallPrefs.parse("garbage").isNullOrEmpty())
+    }
+}
