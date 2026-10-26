@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- amend mark: a leaf that is also a speech bubble, split by a mending seam.
+     Golden-ratio construction: see /branding/amend-construction.svg -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:pathData="M44,46 H64 A14,14 0 0 1 78,60 V66 A14,14 0 0 1 64,80 H52.08 L39.6,88.84 L42.480000000000004,80 H44 A14,14 0 0 1 30,66 V60 A14,14 0 0 1 44,46 Z" android:fillColor="#FFFFFFFF"/>
-    <path android:pathData="M54,52 C54,44 54,38 54,30" android:strokeColor="#FFFFFFFF" android:strokeWidth="4" android:strokeLineCap="round"/>
-    <path android:pathData="M54,38 C46,38 40,33 39,25 C47,25 53,30 54,38 Z" android:fillColor="#FFFFFFFF"/>
-    <path android:pathData="M54,33 C55,24 62,18 71,18 C70,27 63,33 54,33 Z" android:fillColor="#FFFFFFFF"/>
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="45.5357" android:translateY="58.0894" android:rotation="-45" android:scaleX="19.1609" android:scaleY="19.1609">
+        <group>
+            <clip-path android:pathData="M-3,-5 L-3,0.3691 L2.0944,0 L5,0 L5,-5 Z" />
+            <path android:pathData="M2.6180,0.0000 A2.6180,2.6180 0 0 0 -0.3090,-0.9511 A1,1 0 0 0 -0.9511,-0.3090 Q-1.0438,-0.0237 -1.7200,0.3400 Q-1.0623,-0.0333 -0.9511,0.3090 A1,1 0 0 0 -0.3090,0.9511 A2.6180,2.6180 0 0 0 2.6180,0.0000 Z" android:fillColor="#FFFFFFFF">
+            </path>
+        </group>
+        <group>
+            <clip-path android:pathData="M-3,5 L-3,0.5391 L2.0944,0 L5,0 L5,5 Z" />
+            <path android:pathData="M2.6180,0.0000 A2.6180,2.6180 0 0 0 -0.3090,-0.9511 A1,1 0 0 0 -0.9511,-0.3090 Q-1.0438,-0.0237 -1.7200,0.3400 Q-1.0623,-0.0333 -0.9511,0.3090 A1,1 0 0 0 -0.3090,0.9511 A2.6180,2.6180 0 0 0 2.6180,0.0000 Z" android:fillColor="#FFFFFFFF">
+            </path>
+        </group>
+    </group>
 </vector>
