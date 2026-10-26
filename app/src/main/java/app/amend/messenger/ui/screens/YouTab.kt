@@ -118,6 +118,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
 
         SafetyCard(repo)
 
+        MeshCard()
+
         NotificationsCard(app, repo)
 
         CallsCard()

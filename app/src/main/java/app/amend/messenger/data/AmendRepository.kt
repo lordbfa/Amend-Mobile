@@ -449,10 +449,24 @@ class AmendRepository(
             seenWraps.add(toPeer.id)
             toSelf?.let { seenWraps.add(it.id) }
         }
+        meshOutbox?.invoke(toPeer)
         val results = pool.publish(toPeer, inboxRelays[peer].orEmpty())
         toSelf?.let { scope.launch { pool.publish(it) } }
         return results.count { it.accepted }
     }
+
+    // ---------------------------------------------------------------- offline mesh
+
+    /** Set while the offline mesh is on: every gift wrap we send is also handed to nearby phones. */
+    @Volatile var meshOutbox: ((Event) -> Unit)? = null
+
+    /** A gift wrap that reached us over the mesh (Bluetooth / Wi-Fi Direct) instead of a relay. */
+    suspend fun injectMeshEvent(ev: Event) {
+        if (ev.kind == Kinds.GIFT_WRAP && ev.tagValues("p").contains(me)) handleWrap(ev)
+    }
+
+    /** Uploads an already-signed event (one carried over the mesh for someone else). */
+    suspend fun publishRaw(ev: Event): Int = runCatching { pool.publish(ev).count { it.accepted } }.getOrDefault(0)
 
     suspend fun sendText(peer: String, text: String, replyTo: String? = null): ChatMessage {
         val tags = mutableListOf(listOf("p", peer))
@@ -481,7 +495,8 @@ class AmendRepository(
         } catch (e: Exception) {
             0
         }
-        val final = local.copy(status = if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED, relaysAccepted = accepted)
+        // offline with the mesh on: it's travelling phone to phone, not failed
+        val final = local.copy(status = if (accepted > 0 || meshOutbox != null) MessageStatus.SENT else MessageStatus.FAILED, relaysAccepted = accepted)
         mutex.withLock {
             _conversations.update { all ->
                 val conv = all[peer] ?: return@update all
@@ -618,7 +633,9 @@ class AmendRepository(
         val rumor = GiftWrap.rumor(me, Kinds.RECEIPT, "", tags)
         val wrap = GiftWrap.wrap(rumor, keys, peer)
         mutex.withLock { seenWraps.add(wrap.id) }
-        return pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+        meshOutbox?.invoke(wrap)
+        val n = pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+        return if (n == 0 && meshOutbox != null) 1 else n
     }
 
     private suspend fun markReceipt(peer: String, ids: Set<String>, level: Int) {

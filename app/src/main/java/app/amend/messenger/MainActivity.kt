@@ -18,6 +18,7 @@ import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.StepTracker
 import app.amend.messenger.util.CallManager
+import app.amend.messenger.util.Mesh
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.util.PressPattern
 import app.amend.messenger.util.SosManager
@@ -107,6 +108,7 @@ class MainActivity : ComponentActivity() {
         val app = application as AmendApp
         SosManager.restoreIfNeeded(this)
         StepTracker.start(this, "ui")
+        Mesh.resumeIfEnabled(this)
         app.repository.value?.let { repo ->
             repo.goOnline()
             // Starting the live service is only allowed while the app is visible.

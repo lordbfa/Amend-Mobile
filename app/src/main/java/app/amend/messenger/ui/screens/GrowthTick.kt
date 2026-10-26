@@ -70,7 +70,8 @@ private val ON_BUBBLE_BLOSSOM = Color(0xFFFF9CC2)
 
 fun statusLabel(status: MessageStatus, relays: Int): String = when (status) {
     MessageStatus.SENDING -> "Sending…"
-    MessageStatus.SENT -> "Sent · stored on $relays relay" + if (relays == 1) "" else "s"
+    MessageStatus.SENT -> if (relays == 0) "Sent over the offline mesh — it reaches the network when a phone nearby is online"
+        else "Sent · stored on $relays relay" + if (relays == 1) "" else "s"
     MessageStatus.DELIVERED -> "Delivered to their phone"
     MessageStatus.SEEN -> "Seen"
     MessageStatus.FAILED -> "Not sent — tap ⚠ to retry"
