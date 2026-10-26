@@ -27,6 +27,9 @@ import app.amend.messenger.ui.screens.OnboardingScreen
 import app.amend.messenger.ui.screens.SosOverlay
 import app.amend.messenger.ui.screens.CallOverlay
 import app.amend.messenger.ui.screens.WalkingReportsScreen
+import app.amend.messenger.ui.screens.EcoMapScreen
+import app.amend.messenger.ui.screens.ECO_MAP_ROUTE
+import app.amend.messenger.ui.screens.ECO_MAP_PLANT_ROUTE
 import app.amend.messenger.ui.theme.LocalEfficiency
 import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.StepTracker
@@ -102,6 +105,8 @@ private fun MainNavigation(app: AmendApp, repo: AmendRepository, pendingPeer: Mu
             )
             is Route.Chat -> if (route.peer == StepTracker.REPORTS_PEER) {
                 WalkingReportsScreen(onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) })
+            } else if (route.peer == ECO_MAP_ROUTE || route.peer == ECO_MAP_PLANT_ROUTE) {
+                EcoMapScreen(repo, startPlanting = route.peer == ECO_MAP_PLANT_ROUTE, onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) })
             } else ChatScreen(
                 repo = repo,
                 peer = route.peer,

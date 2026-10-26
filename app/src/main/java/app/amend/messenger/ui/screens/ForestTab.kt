@@ -100,6 +100,12 @@ fun ForestTab(repo: AmendRepository, openChat: (String) -> Unit) {
             )
         }
         item { ChallengeDeck(repo, openChat) }
+        item { Spacer(Modifier.height(12.dp)) }
+        item { WeatherCard(repo) }
+        item { Spacer(Modifier.height(12.dp)) }
+        item { EcoMapCard(onOpen = { openChat(ECO_MAP_ROUTE) }, onPlant = { openChat(ECO_MAP_PLANT_ROUTE) }) }
+        item { Spacer(Modifier.height(12.dp)) }
+        item { RealTreesCard(onPlant = { openChat(ECO_MAP_PLANT_ROUTE) }) }
     }
 }
 

@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,9 +88,12 @@ fun LivingSky(modifier: Modifier = Modifier, hour: Float = rememberHourOfDay(), 
         animationSpec = infiniteRepeatable(tween(if (animate) 60_000 else 1_000_000, easing = LinearEasing), RepeatMode.Restart),
         label = "skyTime",
     )
-    Canvas(modifier) {
+    androidx.compose.foundation.layout.Spacer(modifier.drawWithCache {
+        // the gradient only changes with the hour, not every frame
         val (top, bottom) = skyColors(hour)
-        drawRect(Brush.verticalGradient(listOf(lerp(top, Color.White, energy * 0.08f), bottom)))
+        val sky = Brush.verticalGradient(listOf(lerp(top, Color.White, energy * 0.08f), bottom))
+        onDrawBehind {
+        drawRect(sky)
 
         val night = isNight(hour)
         if (night) {
@@ -100,7 +104,8 @@ fun LivingSky(modifier: Modifier = Modifier, hour: Float = rememberHourOfDay(), 
         }
         drawCelestial(hour)
         clouds.forEach { c -> drawCloud(c, t, night) }
-    }
+        }
+    })
 }
 
 private fun DrawScope.drawCelestial(hour: Float) {
