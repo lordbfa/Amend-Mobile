@@ -125,7 +125,8 @@ data class MeshUi(
  * Nothing private leaks: phones announce a random name (not your amend ID), and
  * only gift wraps travel, which only their recipient can open.
  */
-@SuppressLint("StaticFieldLeak") // application context only
+// StaticFieldLeak: application context only. MissingPermission: startRadio() checks hasPermissions() first.
+@SuppressLint("StaticFieldLeak", "MissingPermission")
 object Mesh {
     private const val SERVICE_ID = "app.amend.mesh.v1"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

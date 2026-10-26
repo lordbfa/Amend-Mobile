@@ -55,6 +55,11 @@ jobs:
           grep -E "^e: |error:|FAILED|AssertionError|Exception" build-output.txt | head -60 | while IFS= read -r line; do
             echo "::error::${line//$'\n'/ }"
           done
+          # lint "vital" findings that block a release build
+          find app/build -name "lint-results-*.txt" -o -name "lint-results*.txt" 2>/dev/null | head -3 | while read -r f; do
+            grep -E ": Error: " "$f" | head -20 | while IFS= read -r line; do echo "::error title=Lint::$line"; done
+          done
+          grep -E ": Error: " build-output.txt | head -20 | while IFS= read -r line; do echo "::error title=Lint::$line"; done
 
       - name: Live relay test (real network)
         continue-on-error: true
