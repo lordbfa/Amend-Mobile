@@ -141,6 +141,8 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         AppVisibility.isForeground = false
         StepTracker.stop("ui")
+        // switch the launcher icon while amend is leaving the screen (least disruptive moment)
+        runCatching { app.amend.messenger.util.DynamicIcon.update(this) }
         // Stay connected briefly so quick app switches don't drop the connection.
         offlineJob = lifecycleScope.launch {
             delay(30_000)
