@@ -12,8 +12,8 @@ android {
         applicationId = "app.amend.messenger"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "3.3.0"
+        versionCode = 20
+        versionName = "3.4.0"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -96,6 +96,8 @@ dependencies {
     implementation("androidx.camera:camera-video:1.4.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    // installs the Baseline Profile (ours + Compose's) so code is pre-compiled: no first-scroll jank
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")
     // Nearby pulls in an old androidx.fragment; activity-result APIs need >= 1.3
     implementation("androidx.fragment:fragment-ktx:1.8.5")

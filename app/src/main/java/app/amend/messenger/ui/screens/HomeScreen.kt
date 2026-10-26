@@ -211,16 +211,20 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
+            // each tab keeps its scroll position when you switch away and back
+            val tabStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
             AnimatedContent(
                 targetState = tab,
-                transitionSpec = { fadeIn(tween(260)) + slideInVertically { it / 20 } togetherWith fadeOut(tween(160)) },
+                transitionSpec = { fadeIn(tween(220)) + slideInVertically(androidx.compose.animation.core.spring(stiffness = 600f)) { it / 24 } togetherWith fadeOut(tween(120)) },
                 label = "tabs",
             ) { t ->
-                when (t) {
-                    Tab.CHATS -> ChatsTab(repo, openChat, onScan = { haptics.tap(); showScanner = true })
-                    Tab.FOREST -> ForestTab(repo, openChat)
-                    Tab.IMPACT -> ImpactTab(repo, openReports = { openChat(StepTracker.REPORTS_PEER) })
-                    Tab.YOU -> YouTab(app, repo)
+                tabStates.SaveableStateProvider(t.name) {
+                    when (t) {
+                        Tab.CHATS -> ChatsTab(repo, openChat, onScan = { haptics.tap(); showScanner = true })
+                        Tab.FOREST -> ForestTab(repo, openChat)
+                        Tab.IMPACT -> ImpactTab(repo, openReports = { openChat(StepTracker.REPORTS_PEER) })
+                        Tab.YOU -> YouTab(app, repo)
+                    }
                 }
             }
             // in-app toast for points and new trees
