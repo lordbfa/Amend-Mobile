@@ -97,6 +97,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")
+    // Nearby pulls in an old androidx.fragment; activity-result APIs need >= 1.3
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("io.getstream:stream-webrtc-android:1.3.7")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
