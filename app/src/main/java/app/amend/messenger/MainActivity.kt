@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        useHighestRefreshRate()
         handleIntent(intent)
         val app = application as AmendApp
         setContent {
@@ -69,6 +70,26 @@ class MainActivity : ComponentActivity() {
             // an incoming call opens amend over the lock screen
             showOverLockScreen(true)
             if (mode == "answer") CallManager.answerRequest.value = true
+        }
+    }
+
+    /**
+     * Ask for the display's fastest mode (90/120 Hz) at the current resolution, so
+     * scrolling and animations look as fluid as Telegram's. Skipped in efficiency mode.
+     */
+    @Suppress("DEPRECATION")
+    private fun useHighestRefreshRate() {
+        val app = application as AmendApp
+        if (app.repository.value?.eco?.value?.efficiencyMode == true) return
+        runCatching {
+            val d: android.view.Display = (if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay) ?: return
+            val current = d.mode
+            val best = d.supportedModes
+                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+                .maxByOrNull { it.refreshRate } ?: return
+            if (best.modeId != current.modeId || best.refreshRate > 61f) {
+                window.attributes = window.attributes.also { it.preferredDisplayModeId = best.modeId }
+            }
         }
     }
 
