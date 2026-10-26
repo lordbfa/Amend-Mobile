@@ -92,7 +92,7 @@ class CallPrefs(context: Context) {
 
     /** amend's own TURN service (a Cloudflare Worker handing out short-lived Cloudflare TURN credentials). */
     var turnService: String
-        get() = p.getString("turnService", null) ?: DEFAULT_TURN_SERVICE
+        get() = p.getString("turnService", null)?.ifBlank { null } ?: DEFAULT_TURN_SERVICE
         set(v) = put("turnService", v)
 
     val hasTurn: Boolean get() = turnService.isNotBlank() || meteredLink.isNotBlank() || cloudflareKeyId.isNotBlank() || turnUrl.isNotBlank()
@@ -155,7 +155,7 @@ class CallPrefs(context: Context) {
 
     companion object {
         /** Set once the Worker in /turn-worker is deployed: every amend user then gets TURN automatically. */
-        const val DEFAULT_TURN_SERVICE = ""
+        const val DEFAULT_TURN_SERVICE = "https://amend-turn.lordbfa.workers.dev"
         /** Must match the Worker's APP_KEY secret (keeps casual scrapers away; not a real secret). */
         const val TURN_SERVICE_APP_KEY = "amend-calls-v1"
 
