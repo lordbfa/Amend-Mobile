@@ -12,8 +12,8 @@ android {
         applicationId = "app.amend.messenger"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "3.2.0"
+        versionCode = 19
+        versionName = "3.3.0"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -96,6 +96,7 @@ dependencies {
     implementation("androidx.camera:camera-video:1.4.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("com.google.android.gms:play-services-nearby:19.3.0")
     implementation("io.getstream:stream-webrtc-android:1.3.7")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
