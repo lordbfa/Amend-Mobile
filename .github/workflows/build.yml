@@ -33,6 +33,18 @@ jobs:
       - name: Unit tests (crypto vectors, eco rules)
         run: ./gradlew :app:testDebugUnitTest --stacktrace 2>&1 | tee build-output.txt; exit ${PIPESTATUS[0]}
 
+      - name: Check amend TURN service
+        continue-on-error: true
+        run: |
+          code=$(curl -s -o ice.json -w "%{http_code}" -H "X-Amend-Key: amend-calls-v1" https://amend-turn.lordbfa.workers.dev/ice)
+          n=$(grep -o '"turns\?:[^"]*"' ice.json | wc -l)
+          if [ "$code" = "200" ] && [ "$n" -gt 0 ]; then
+            echo "::notice title=TURN service::OK — $n Cloudflare TURN addresses with fresh credentials"
+          else
+            echo "::warning title=TURN service::HTTP $code — $(head -c 200 ice.json)"
+          fi
+          rm -f ice.json
+
       - name: Build APKs
         run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace 2>&1 | tee -a build-output.txt; exit ${PIPESTATUS[0]}
 
