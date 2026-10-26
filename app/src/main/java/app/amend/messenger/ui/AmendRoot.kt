@@ -17,6 +17,17 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import app.amend.messenger.AmendApp
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.ui.components.ParticleLayer
@@ -72,46 +83,163 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
 @Composable
 private fun MainNavigation(app: AmendApp, repo: AmendRepository, pendingPeer: MutableState<String?>) {
     val stack = remember { mutableStateListOf<Route>(Route.Home) }
-    val current = stack.last()
+    val nav = remember { SwipeNavState(stack) }
 
     LaunchedEffect(pendingPeer.value) {
         pendingPeer.value?.let { peer ->
             stack.removeAll { it is Route.Chat }
-            stack.add(Route.Chat(peer))
+            nav.push(Route.Chat(peer))
             pendingPeer.value = null
         }
     }
-    LaunchedEffect(current) {
-        AppVisibility.openPeer = (current as? Route.Chat)?.peer
+    LaunchedEffect(stack.lastOrNull()) {
+        AppVisibility.openPeer = (stack.lastOrNull() as? Route.Chat)?.peer
     }
-    BackHandler(enabled = stack.size > 1) { stack.removeAt(stack.lastIndex) }
 
-    AnimatedContent(
-        targetState = current,
-        transitionSpec = {
-            if (targetState is Route.Chat) {
-                slideInHorizontally(tween(380)) { it } + fadeIn() togetherWith slideOutHorizontally(tween(380)) { -it / 4 } + fadeOut()
-            } else {
-                slideInHorizontally(tween(380)) { -it / 4 } + fadeIn() togetherWith slideOutHorizontally(tween(380)) { it } + fadeOut()
-            }
-        },
-        label = "nav",
-    ) { route ->
+    SwipeNavHost(nav, swipeEnabled = { route -> route is Route.Chat && route.peer != ECO_MAP_ROUTE && route.peer != ECO_MAP_PLANT_ROUTE }) { route ->
         when (route) {
             Route.Home -> HomeScreen(
                 app = app,
                 repo = repo,
-                openChat = { peer -> stack.add(Route.Chat(peer)) },
+                openChat = { peer -> nav.push(Route.Chat(peer)) },
             )
             is Route.Chat -> if (route.peer == StepTracker.REPORTS_PEER) {
-                WalkingReportsScreen(onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) })
+                WalkingReportsScreen(onBack = { nav.pop() })
             } else if (route.peer == ECO_MAP_ROUTE || route.peer == ECO_MAP_PLANT_ROUTE) {
-                EcoMapScreen(repo, startPlanting = route.peer == ECO_MAP_PLANT_ROUTE, onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) })
+                EcoMapScreen(repo, startPlanting = route.peer == ECO_MAP_PLANT_ROUTE, onBack = { nav.pop() })
             } else ChatScreen(
                 repo = repo,
                 peer = route.peer,
-                onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) },
+                onBack = { nav.pop() },
             )
+        }
+    }
+}
+
+/**
+ * Telegram-style navigation: a pushed screen slides in on a spring; going back
+ * follows your finger (swipe right anywhere on the screen, or Android's
+ * predictive back gesture) with the previous screen gliding in underneath.
+ */
+@androidx.compose.runtime.Stable
+class SwipeNavState(val stack: androidx.compose.runtime.snapshots.SnapshotStateList<Route>) {
+    /** 0 = top screen fully shown, 1 = top screen moved off to the right. */
+    val offset = androidx.compose.animation.core.Animatable(0f)
+    internal var scope: kotlinx.coroutines.CoroutineScope? = null
+    private var popping = false
+
+    fun push(route: Route) {
+        if (stack.lastOrNull() == route) return
+        val s = scope
+        if (s == null) { stack.add(route); return }
+        s.launch {
+            // both changes land in the same frame: the new screen starts off-screen, no flicker
+            offset.snapTo(1f)
+            stack.add(route)
+            offset.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 420f))
+        }
+    }
+
+    fun pop() {
+        if (stack.size < 2 || popping) return
+        popping = true
+        scope?.launch {
+            try {
+                offset.animateTo(1f, androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.FastOutLinearInEasing))
+                if (stack.size > 1) stack.removeAt(stack.lastIndex)
+                offset.snapTo(0f)
+            } finally {
+                popping = false
+            }
+        } ?: run { stack.removeAt(stack.lastIndex); popping = false }
+    }
+
+    suspend fun settleBack() {
+        offset.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))
+    }
+}
+
+@Composable
+private fun SwipeNavHost(nav: SwipeNavState, swipeEnabled: (Route) -> Boolean, content: @Composable (Route) -> Unit) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    nav.scope = scope
+    val holder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    val stack = nav.stack
+    val top = stack.last()
+    val under = stack.getOrNull(stack.lastIndex - 1)
+    // the screen underneath is only composed while it can be seen (during a swipe / animation)
+    val showUnder by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { nav.offset.value > 0.001f && nav.stack.size > 1 } }
+
+    // Android 13+ predictive back: the screen follows the system back swipe
+    androidx.activity.compose.PredictiveBackHandler(enabled = stack.size > 1) { events ->
+        try {
+            events.collect { e -> nav.offset.snapTo(e.progress * 0.9f) }
+            nav.pop()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            scope.launch { nav.settleBack() }
+            throw e
+        }
+    }
+
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        // One keyed list: a screen keeps its composition when it moves between "under" and "top".
+        val visible = if (under != null && showUnder) listOf(under, top) else listOf(top)
+        visible.forEach { route ->
+            androidx.compose.runtime.key(route) {
+                val isTop = route == top
+                val layer = if (isTop) {
+                    Modifier.fillMaxSize()
+                        .graphicsLayer {
+                            // the first screen never moves; pushed screens slide
+                            translationX = if (stack.size > 1) width * nav.offset.value else 0f
+                            shadowElevation = if (stack.size > 1 && nav.offset.value > 0.001f) 18.dp.toPx() else 0f
+                        }
+                        .then(if (stack.size > 1 && swipeEnabled(top)) Modifier.swipeToGoBack(nav, width) else Modifier)
+                } else {
+                    Modifier.fillMaxSize()
+                        .graphicsLayer { translationX = -width * 0.28f * (1f - nav.offset.value) }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f * (1f - nav.offset.value)))
+                        }
+                }
+                Box(layer) { holder.SaveableStateProvider(route.toString()) { content(route) } }
+            }
+        }
+    }
+}
+
+/** Right-swipe anywhere (like Telegram). Vertical scrolling and left swipes (reply) still go to the content. */
+private fun Modifier.swipeToGoBack(nav: SwipeNavState, width: Float): Modifier = pointerInput(nav, width) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val slop = viewConfiguration.touchSlop
+        val velocity = VelocityTracker()
+        var dx = 0f
+        var dy = 0f
+        var dragging = false
+        velocity.addPosition(down.uptimeMillis, down.position)
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) break
+            val delta = change.positionChange()
+            velocity.addPosition(change.uptimeMillis, change.position)
+            if (!dragging) {
+                dx += delta.x
+                dy += delta.y
+                if (kotlin.math.abs(dy) > slop && kotlin.math.abs(dy) > kotlin.math.abs(dx)) return@awaitEachGesture
+                if (dx < -slop) return@awaitEachGesture
+                if (dx > slop * 1.5f && dx > kotlin.math.abs(dy) * 1.6f) dragging = true else continue
+            }
+            change.consume()
+            val next = (nav.offset.value + delta.x / width).coerceIn(0f, 1f)
+            nav.scope?.launch { nav.offset.snapTo(next) }
+        }
+        if (dragging) {
+            val v = velocity.calculateVelocity().x
+            if (nav.offset.value > 0.33f || v > 900f) nav.pop() else nav.scope?.launch { nav.settleBack() }
         }
     }
 }

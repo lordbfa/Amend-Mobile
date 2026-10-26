@@ -152,6 +152,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     var gardenPos by remember { mutableStateOf(Offset.Zero) }
     var accepted by remember { mutableStateOf(repo.isAccepted(peer) || messages.any { it.fromMe }) }
     val reversed = remember(messages) { messages.asReversed() }
+    val byId = remember(messages) { messages.associateBy { it.id } }
     val incomingSosAll by repo.incomingSos.collectAsStateWithLifecycle()
     // The friend's latest SOS start bubble shows their live location while the SOS is active
     val latestSosStartId = remember(messages) { messages.lastOrNull { it.type == MessageType.SOS && !it.fromMe && it.cardId == "start" }?.id }
@@ -209,12 +210,12 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            items(reversed, key = { it.id }) { m ->
+            items(reversed, key = { it.id }, contentType = { it.type }) { m ->
                 MessageBubble(
                     liveSos = if (m.type == MessageType.SOS && !m.fromMe && m.id == latestSosStartId) liveSosLocation else null,
                     repo = repo,
                     message = m,
-                    replied = m.replyTo?.let { id -> messages.firstOrNull { it.id == id } },
+                    replied = m.replyTo?.let { id -> byId[id] },
                     modifier = Modifier.animateItem(),
                     onReply = { replyTo = m; haptics.tick() },
                     onReact = { emoji, pos ->
@@ -731,7 +732,8 @@ private fun Modifier.pointerDragToReply(
             onDragCancel = { scope.launch { drag.animateTo(0f, spring()) } },
         ) { change, amount ->
             change.consume()
-            val next = (drag.value + amount * 0.6f).coerceIn(-threshold * 1.4f, threshold * 1.4f)
+            // left swipe = reply (a right swipe goes back, like Telegram)
+            val next = (drag.value + amount * 0.6f).coerceIn(-threshold * 1.4f, 0f)
             scope.launch { drag.snapTo(next) }
             if (!fired && kotlin.math.abs(next) > threshold) {
                 fired = true

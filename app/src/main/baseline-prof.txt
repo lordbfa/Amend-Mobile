@@ -1,0 +1,10 @@
+# amend Baseline Profile: ahead-of-time compile the app and the UI toolkit on
+# install, so the first launch, scroll and animation are as smooth as later ones.
+HSPLapp/amend/messenger/**->**(**)**
+Lapp/amend/messenger/**;
+HSPLandroidx/compose/runtime/**->**(**)**
+HSPLandroidx/compose/ui/**->**(**)**
+HSPLandroidx/compose/foundation/**->**(**)**
+HSPLandroidx/compose/animation/**->**(**)**
+HSPLandroidx/compose/material3/**->**(**)**
+Landroidx/compose/**;
