@@ -458,6 +458,7 @@ fun CallsCard() {
     val prefs = remember { CallPrefs(context) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val haptics = rememberHaptics()
+    var service by remember { mutableStateOf(prefs.turnService) }
     var metered by remember { mutableStateOf(prefs.meteredLink) }
     var cfKey by remember { mutableStateOf(prefs.cloudflareKeyId) }
     var cfToken by remember { mutableStateOf(prefs.cloudflareToken) }
@@ -471,6 +472,7 @@ fun CallsCard() {
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
 
     fun save() {
+        prefs.turnService = service
         prefs.meteredLink = metered; prefs.cloudflareKeyId = cfKey; prefs.cloudflareToken = cfToken
         prefs.turnUrl = url; prefs.turnUser = user; prefs.turnPass = pass
     }
@@ -484,7 +486,15 @@ fun CallsCard() {
                     "A TURN server relays the encrypted call — it can't listen in. Only one of you needs one.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text("Easiest: free Metered TURN (20 GB/month)", style = MaterialTheme.typography.titleSmall)
+            Text("amend TURN service (Cloudflare)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (CallPrefs.DEFAULT_TURN_SERVICE.isNotBlank() && service == CallPrefs.DEFAULT_TURN_SERVICE)
+                    "Built in ✓ — calls use Cloudflare's global TURN network automatically. Nothing to set up."
+                else "The address of an amend TURN worker (https://…workers.dev). Leave empty to use one of the options below.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(service, { service = it; ok = null }, label = { Text("TURN service address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("Or: free Metered TURN (20 GB/month)", style = MaterialTheme.typography.titleSmall)
             Text(
                 "1. Sign up at metered.ca → TURN Server (free plan)\n2. Open your app → copy the “credentials” link (…metered.live/api/v1/turn/credentials?apiKey=…)\n3. Paste it below, Save, then Test",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -90,7 +90,12 @@ class CallPrefs(context: Context) {
         get() = str("cfToken")
         set(v) = put("cfToken", v)
 
-    val hasTurn: Boolean get() = meteredLink.isNotBlank() || cloudflareKeyId.isNotBlank() || turnUrl.isNotBlank()
+    /** amend's own TURN service (a Cloudflare Worker handing out short-lived Cloudflare TURN credentials). */
+    var turnService: String
+        get() = p.getString("turnService", null) ?: DEFAULT_TURN_SERVICE
+        set(v) = put("turnService", v)
+
+    val hasTurn: Boolean get() = turnService.isNotBlank() || meteredLink.isNotBlank() || cloudflareKeyId.isNotBlank() || turnUrl.isNotBlank()
 
     private fun stun() = listOf(
         IceServerConfig("stun:stun.l.google.com:19302"),
@@ -111,11 +116,18 @@ class CallPrefs(context: Context) {
     }
 
     private fun cachedOrFetch(): List<IceServerConfig> {
-        if (meteredLink.isBlank() && cloudflareKeyId.isBlank()) return emptyList()
+        if (turnService.isBlank() && meteredLink.isBlank() && cloudflareKeyId.isBlank()) return emptyList()
         val until = p.getLong("cacheUntil", 0)
         if (System.currentTimeMillis() < until) parse(p.getString("cache", null))?.let { return it }
         val out = mutableListOf<IceServerConfig>()
         var raw: String? = null
+        if (turnService.startsWith("https://")) {
+            val svc = turnService.trimEnd('/').let { if (it.endsWith("/ice")) it else "$it/ice" }
+            runCatching {
+                http.newCall(okhttp3.Request.Builder().url(svc).header("X-Amend-Key", TURN_SERVICE_APP_KEY).build())
+                    .execute().use { if (it.isSuccessful) it.body?.string() else null }
+            }.getOrNull()?.let { parse(it)?.let { list -> out.addAll(list) } }
+        }
         if (meteredLink.startsWith("https://")) {
             raw = runCatching {
                 http.newCall(okhttp3.Request.Builder().url(meteredLink).build()).execute().use { if (it.isSuccessful) it.body?.string() else null }
@@ -136,12 +148,17 @@ class CallPrefs(context: Context) {
         }
         if (out.isNotEmpty()) {
             val json = app.amend.messenger.core.json.Json.write(out.map { mapOf("urls" to it.url, "username" to it.username, "credential" to it.password) })
-            p.edit().putString("cache", json).putLong("cacheUntil", System.currentTimeMillis() + 6 * 3600_000L).apply()
+            p.edit().putString("cache", json).putLong("cacheUntil", System.currentTimeMillis() + 5 * 3600_000L).apply()
         }
         return out
     }
 
     companion object {
+        /** Set once the Worker in /turn-worker is deployed: every amend user then gets TURN automatically. */
+        const val DEFAULT_TURN_SERVICE = ""
+        /** Must match the Worker's APP_KEY secret (keeps casual scrapers away; not a real secret). */
+        const val TURN_SERVICE_APP_KEY = "amend-calls-v1"
+
         private val http by lazy {
             okhttp3.OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
