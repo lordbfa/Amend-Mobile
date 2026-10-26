@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.webrtc.PeerConnection
 import org.webrtc.VideoTrack
 
@@ -53,24 +55,122 @@ data class CallUi(
     val active: Boolean get() = phase != CallPhase.IDLE && phase != CallPhase.ENDED
 }
 
-/** STUN servers are free; a TURN server (for strict networks) can be added in settings. */
+/**
+ * Where calls find a path between the phones.
+ *
+ * STUN (free, built in) is enough when at least one side has an open network.
+ * Mobile carriers with carrier-grade NAT (common in Bangladesh, India…) need a
+ * TURN server that relays the (still end-to-end encrypted) call. amend can use:
+ *   - a Metered "credentials link" (free 20 GB/month),
+ *   - a Cloudflare TURN key (generous free tier),
+ *   - or any TURN server typed in by hand.
+ * Only one of the two phones needs TURN for a call to connect.
+ */
 class CallPrefs(context: Context) {
     private val p = context.getSharedPreferences("amend_calls", Context.MODE_PRIVATE)
+    private fun str(key: String) = p.getString(key, "") ?: ""
+    private fun put(key: String, v: String) { p.edit().putString(key, v.trim()).remove("cache").remove("cacheUntil").apply() }
+
     var turnUrl: String
-        get() = p.getString("turnUrl", "") ?: ""
-        set(v) = p.edit().putString("turnUrl", v.trim()).apply()
+        get() = str("turnUrl")
+        set(v) = put("turnUrl", v)
     var turnUser: String
-        get() = p.getString("turnUser", "") ?: ""
-        set(v) = p.edit().putString("turnUser", v.trim()).apply()
+        get() = str("turnUser")
+        set(v) = put("turnUser", v)
     var turnPass: String
         get() = p.getString("turnPass", "") ?: ""
-        set(v) = p.edit().putString("turnPass", v).apply()
+        set(v) { p.edit().putString("turnPass", v).remove("cache").remove("cacheUntil").apply() }
+    var meteredLink: String
+        get() = str("metered")
+        set(v) = put("metered", v)
+    var cloudflareKeyId: String
+        get() = str("cfKey")
+        set(v) = put("cfKey", v)
+    var cloudflareToken: String
+        get() = str("cfToken")
+        set(v) = put("cfToken", v)
 
-    fun iceServers(): List<IceServerConfig> = buildList {
-        add(IceServerConfig("stun:stun.l.google.com:19302"))
-        add(IceServerConfig("stun:stun1.l.google.com:19302"))
-        add(IceServerConfig("stun:stun.cloudflare.com:3478"))
-        if (turnUrl.startsWith("turn:") || turnUrl.startsWith("turns:")) add(IceServerConfig(turnUrl, turnUser, turnPass))
+    val hasTurn: Boolean get() = meteredLink.isNotBlank() || cloudflareKeyId.isNotBlank() || turnUrl.isNotBlank()
+
+    private fun stun() = listOf(
+        IceServerConfig("stun:stun.l.google.com:19302"),
+        IceServerConfig("stun:stun1.l.google.com:19302"),
+        IceServerConfig("stun:stun.cloudflare.com:3478"),
+    )
+
+    /** Hand-typed TURN servers (several URLs may be separated by commas or spaces). */
+    private fun manual(): List<IceServerConfig> = turnUrl.split(',', ' ', '\n').map { it.trim() }
+        .filter { it.startsWith("turn:") || it.startsWith("turns:") }
+        .map { IceServerConfig(it, turnUser, turnPass) }
+
+    /** All servers for the next call. Fetches fresh TURN credentials when needed (cached for a few hours). */
+    suspend fun resolveIceServers(onlyTurn: Boolean = false): List<IceServerConfig> = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val fetched = cachedOrFetch()
+        val turn = manual() + fetched.filter { it.url.startsWith("turn") }
+        if (onlyTurn) turn else stun() + fetched.filter { it.url.startsWith("stun") }.take(1) + turn
+    }
+
+    private fun cachedOrFetch(): List<IceServerConfig> {
+        if (meteredLink.isBlank() && cloudflareKeyId.isBlank()) return emptyList()
+        val until = p.getLong("cacheUntil", 0)
+        if (System.currentTimeMillis() < until) parse(p.getString("cache", null))?.let { return it }
+        val out = mutableListOf<IceServerConfig>()
+        var raw: String? = null
+        if (meteredLink.startsWith("https://")) {
+            raw = runCatching {
+                http.newCall(okhttp3.Request.Builder().url(meteredLink).build()).execute().use { if (it.isSuccessful) it.body?.string() else null }
+            }.getOrNull()
+            raw?.let { parse(it)?.let { list -> out.addAll(list) } }
+        }
+        if (cloudflareKeyId.isNotBlank() && cloudflareToken.isNotBlank()) {
+            val body = """{"ttl": 86400}""".toRequestBody("application/json".toMediaType())
+            val r = runCatching {
+                http.newCall(
+                    okhttp3.Request.Builder()
+                        .url("https://rtc.live.cloudflare.com/v1/turn/keys/$cloudflareKeyId/credentials/generate-ice-servers")
+                        .header("Authorization", "Bearer $cloudflareToken")
+                        .post(body).build()
+                ).execute().use { if (it.isSuccessful) it.body?.string() else null }
+            }.getOrNull()
+            r?.let { parse(it)?.let { list -> out.addAll(list) } }
+        }
+        if (out.isNotEmpty()) {
+            val json = app.amend.messenger.core.json.Json.write(out.map { mapOf("urls" to it.url, "username" to it.username, "credential" to it.password) })
+            p.edit().putString("cache", json).putLong("cacheUntil", System.currentTimeMillis() + 6 * 3600_000L).apply()
+        }
+        return out
+    }
+
+    companion object {
+        private val http by lazy {
+            okhttp3.OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
+        }
+
+        /** Reads the usual `iceServers` JSON (an array, or an object holding one). */
+        @Suppress("UNCHECKED_CAST")
+        fun parse(json: String?): List<IceServerConfig>? = try {
+            val root = app.amend.messenger.core.json.Json.parse(json ?: "")
+            val list = when (root) {
+                is List<*> -> root
+                is Map<*, *> -> (root["iceServers"] as? List<*>) ?: emptyList<Any?>()
+                else -> emptyList<Any?>()
+            }
+            list.flatMap { e ->
+                val m = e as? Map<String, Any?> ?: return@flatMap emptyList()
+                val urls = when (val u = m["urls"] ?: m["url"]) {
+                    is String -> listOf(u)
+                    is List<*> -> u.mapNotNull { it as? String }
+                    else -> emptyList()
+                }
+                val user = m["username"] as? String ?: ""
+                val cred = m["credential"] as? String ?: ""
+                urls.filter { it.startsWith("stun:") || it.startsWith("turn:") || it.startsWith("turns:") }
+                    .map { IceServerConfig(it, user, cred) }
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 }
 
@@ -122,9 +222,13 @@ object CallManager {
         Tones.ringback(true)
         scope.launch {
             try {
-                val s = newSession(video)
+                val s = newSession(video, CallPrefs(context).resolveIceServers())
                 val sdp = s.createOffer()
-                if (_state.value.callId != id) return@launch // cancelled meanwhile
+                if (_state.value.callId != id || !_state.value.active) { // cancelled meanwhile
+                    s.close()
+                    if (session === s) session = null
+                    return@launch
+                }
                 val sent = r.sendCallSignal(peer, CallSignal(peer, CallSignal.OFFER, id, video, sdp))
                 if (sent == 0) finish(CallOutcome.FAILED, "No connection to the network")
             } catch (e: Exception) {
@@ -220,8 +324,13 @@ object CallManager {
         startAudio(speakerOn = st.video)
         scope.launch {
             try {
-                val s = newSession(st.video)
+                val s = newSession(st.video, CallPrefs(context).resolveIceServers())
                 val sdp = s.answer(offer.sdp!!)
+                if (_state.value.callId != st.callId || !_state.value.active) {
+                    s.close()
+                    if (session === s) session = null
+                    return@launch
+                }
                 val sent = repo?.sendCallSignal(st.peer, CallSignal(st.peer, CallSignal.ANSWER, st.callId, st.video, sdp)) ?: 0
                 if (sent == 0) finish(CallOutcome.FAILED, "No connection to the network")
                 else watchConnecting(st.callId)
@@ -268,9 +377,9 @@ object CallManager {
         }
     }
 
-    private fun newSession(video: Boolean): RtcSession {
+    private fun newSession(video: Boolean, servers: List<IceServerConfig>): RtcSession {
         session?.close()
-        val s = RtcSession(context, video, CallPrefs(context).iceServers(), object : RtcSession.Listener {
+        val s = RtcSession(context, video, servers, object : RtcSession.Listener {
             override fun onConnectionState(state: PeerConnection.PeerConnectionState) {
                 scope.launch { onConnection(state) }
             }

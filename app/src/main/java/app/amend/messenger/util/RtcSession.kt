@@ -79,6 +79,7 @@ class RtcSession(
     }
 
     private val factory = Rtc.factory(context)
+    private val hasTurn = iceServers.any { it.url.startsWith("turn") }
     private val gathered = CompletableDeferred<Unit>()
     @Volatile private var closed = false
 
@@ -184,7 +185,8 @@ class RtcSession(
 
     private suspend fun finalDescription(): String {
         // wait for STUN/TURN candidates (usually well under a second)
-        withTimeoutOrNull(4_000) { gathered.await() }
+        // a TURN server far away (e.g. over TCP/443) can take a few seconds to answer
+        withTimeoutOrNull(if (hasTurn) 7_000 else 4_000) { gathered.await() }
         return pc.localDescription?.description ?: throw IllegalStateException("no local description")
     }
 
@@ -262,5 +264,59 @@ class RtcSession(
         runCatching { audioSource.dispose() }
         capturer = null
         localVideo = null
+    }
+}
+
+/**
+ * Settings "Test" button: asks the TURN servers for a relay address. If one comes
+ * back, calls across strict networks (carrier NAT) will be able to connect.
+ */
+suspend fun testTurnServers(context: Context, servers: List<IceServerConfig>): Boolean {
+    if (servers.isEmpty()) return false
+    val factory = Rtc.factory(context)
+    val done = CompletableDeferred<Boolean>()
+    val config = PeerConnection.RTCConfiguration(servers.map { s ->
+        PeerConnection.IceServer.builder(s.url).setUsername(s.username).setPassword(s.password).createIceServer()
+    }).apply {
+        sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+        iceTransportsType = PeerConnection.IceTransportsType.RELAY
+    }
+    val pc = factory.createPeerConnection(config, object : PeerConnection.Observer {
+        override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
+        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {}
+        override fun onIceConnectionReceivingChange(receiving: Boolean) {}
+        override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
+            if (state == PeerConnection.IceGatheringState.COMPLETE) done.complete(false)
+        }
+        override fun onIceCandidate(candidate: IceCandidate?) {
+            if (candidate?.sdp?.contains("typ relay") == true) done.complete(true)
+        }
+        override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
+        override fun onAddStream(stream: MediaStream?) {}
+        override fun onRemoveStream(stream: MediaStream?) {}
+        override fun onDataChannel(channel: DataChannel?) {}
+        override fun onRenegotiationNeeded() {}
+    }) ?: return false
+    return try {
+        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO)
+        val offer = suspendCancellableCoroutine<SessionDescription> { c ->
+            pc.createOffer(object : SdpObserver {
+                override fun onCreateSuccess(d: SessionDescription) { if (c.isActive) c.resume(d) }
+                override fun onSetSuccess() {}
+                override fun onCreateFailure(e: String?) { if (c.isActive) c.resumeWithException(IllegalStateException(e)) }
+                override fun onSetFailure(e: String?) {}
+            }, MediaConstraints())
+        }
+        pc.setLocalDescription(object : SdpObserver {
+            override fun onCreateSuccess(d: SessionDescription?) {}
+            override fun onSetSuccess() {}
+            override fun onCreateFailure(e: String?) {}
+            override fun onSetFailure(e: String?) { done.complete(false) }
+        }, offer)
+        withTimeoutOrNull(10_000) { done.await() } ?: false
+    } catch (e: Exception) {
+        false
+    } finally {
+        runCatching { pc.dispose() }
     }
 }
