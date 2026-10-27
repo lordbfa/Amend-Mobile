@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "app.amend.messenger"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.amend.messenger"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 27
-        versionName = "3.7.0"
+        targetSdk = 36
+        versionCode = 28
+        versionName = "3.7.1"
         vectorDrawables.useSupportLibrary = true
     }
 
