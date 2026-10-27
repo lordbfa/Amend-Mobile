@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import app.amend.messenger.ui.tr
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import app.amend.messenger.MainActivity
@@ -43,17 +44,17 @@ object Notifications {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_MESSAGES, context.getString(R.string.channel_messages), NotificationManager.IMPORTANCE_HIGH).apply {
+            NotificationChannel(CHANNEL_MESSAGES, tr(context.getString(R.string.channel_messages)), NotificationManager.IMPORTANCE_HIGH).apply {
                 enableVibration(true)
                 setShowBadge(true)
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_FOREST, context.getString(R.string.channel_forest), NotificationManager.IMPORTANCE_DEFAULT)
+            NotificationChannel(CHANNEL_FOREST, tr(context.getString(R.string.channel_forest)), NotificationManager.IMPORTANCE_DEFAULT)
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_SOS_ALERTS, context.getString(R.string.channel_sos_alerts), NotificationManager.IMPORTANCE_HIGH).apply {
-                description = context.getString(R.string.channel_sos_alerts_description)
+            NotificationChannel(CHANNEL_SOS_ALERTS, tr(context.getString(R.string.channel_sos_alerts)), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = tr(context.getString(R.string.channel_sos_alerts_description))
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 600, 250, 600, 250, 600)
                 setSound(
@@ -64,32 +65,32 @@ object Notifications {
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_SOS_ACTIVE, context.getString(R.string.channel_sos_active), NotificationManager.IMPORTANCE_HIGH)
+            NotificationChannel(CHANNEL_SOS_ACTIVE, tr(context.getString(R.string.channel_sos_active)), NotificationManager.IMPORTANCE_HIGH)
         )
         nm.createNotificationChannel(
             // amend plays the ringtone itself (looping), so the channel stays silent
-            NotificationChannel(CHANNEL_CALLS, "Incoming calls", NotificationManager.IMPORTANCE_HIGH).apply {
+            NotificationChannel(CHANNEL_CALLS, tr("Incoming calls"), NotificationManager.IMPORTANCE_HIGH).apply {
                 setSound(null, null)
                 enableVibration(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ECO_ALERTS, "Weather & air alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Heatwaves, heavy rain, rising rivers, storms and unhealthy air near you"
+            NotificationChannel(CHANNEL_ECO_ALERTS, tr("Weather & air alerts"), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = tr("Heatwaves, heavy rain, rising rivers, storms and unhealthy air near you")
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_CALL_ONGOING, "Ongoing call", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
+            NotificationChannel(CHANNEL_CALL_ONGOING, tr("Ongoing call"), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_WALKING, "Walking", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Daily step goal and the monthly walking report"
+            NotificationChannel(CHANNEL_WALKING, tr("Walking"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = tr("Daily step goal and the monthly walking report")
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_CONNECTION, context.getString(R.string.channel_connection), NotificationManager.IMPORTANCE_MIN).apply {
-                description = context.getString(R.string.channel_connection_description)
+            NotificationChannel(CHANNEL_CONNECTION, tr(context.getString(R.string.channel_connection)), NotificationManager.IMPORTANCE_MIN).apply {
+                description = tr(context.getString(R.string.channel_connection_description))
                 setShowBadge(false)
             }
         )
@@ -118,7 +119,7 @@ object Notifications {
     /** One notification per chat; it updates with the unread count instead of stacking up. */
     fun message(context: Context, peer: String, sender: String, text: String, unread: Int) {
         if (!areEnabled(context)) return
-        val title = if (unread > 1) "$sender · $unread new messages" else sender
+        val title = if (unread > 1) tr("$sender · $unread new messages") else sender
         val n = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -134,8 +135,8 @@ object Notifications {
             .setPublicVersion(
                 NotificationCompat.Builder(context, CHANNEL_MESSAGES)
                     .setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle(context.getString(R.string.app_name))
-                    .setContentText(context.getString(R.string.notif_hidden))
+                    .setContentTitle(tr(context.getString(R.string.app_name)))
+                    .setContentText(tr(context.getString(R.string.notif_hidden)))
                     .build()
             )
             .setContentIntent(openIntent(context, peer))
@@ -155,8 +156,8 @@ object Notifications {
         if (!areEnabled(context)) return
         val n = NotificationCompat.Builder(context, CHANNEL_FOREST)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(R.string.notif_tree_title, speciesName))
-            .setContentText(context.getString(R.string.notif_tree_text, count))
+            .setContentTitle(tr(context.getString(R.string.notif_tree_title, speciesName)))
+            .setContentText(tr(context.getString(R.string.notif_tree_text, count)))
             .setColor(0xFF2BB673.toInt())
             .setAutoCancel(true)
             .setContentIntent(openIntent(context, null))
@@ -172,8 +173,8 @@ object Notifications {
     fun liveConnection(context: Context): Notification =
         NotificationCompat.Builder(context, CHANNEL_CONNECTION)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(R.string.notif_live_title))
-            .setContentText(context.getString(R.string.notif_live_text))
+            .setContentTitle(tr(context.getString(R.string.notif_live_title)))
+            .setContentText(tr(context.getString(R.string.notif_live_text)))
             .setColor(0xFF2BB673.toInt())
             .setOngoing(true)
             .setSilent(true)
@@ -194,13 +195,13 @@ object Notifications {
         val text: String
         when (phase) {
             app.amend.messenger.data.SosPhase.STOP -> {
-                title = "✅ $name is safe now"
-                text = "Their SOS has ended."
+                title = tr("✅ $name is safe now")
+                text = tr("Their SOS has ended.")
             }
             else -> {
-                title = "🆘 $name needs help!"
-                text = sos.location?.let { "Live location shared · ±${it.accuracyM.toInt()} m. Tap to see where they are." }
-                    ?: "They started an SOS. Location is on the way."
+                title = tr("🆘 $name needs help!")
+                text = sos.location?.let { tr("Live location shared · ±${it.accuracyM.toInt()} m. Tap to see where they are.") }
+                    ?: tr("They started an SOS. Location is on the way.")
             }
         }
         val builder = NotificationCompat.Builder(context, if (phase == app.amend.messenger.data.SosPhase.STOP) CHANNEL_MESSAGES else CHANNEL_SOS_ALERTS)
@@ -223,7 +224,7 @@ object Notifications {
                     Intent(Intent.ACTION_VIEW, android.net.Uri.parse(loc.geoUri())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
-                builder.addAction(0, "Open map", map)
+                builder.addAction(0, tr("Open map"), map)
             }
         }
         try {
@@ -242,13 +243,13 @@ object Notifications {
         )
         val n = NotificationCompat.Builder(context, CHANNEL_SOS_ACTIVE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("🆘 Sending SOS in $secondsLeft…")
-            .setContentText("Your live location will go to your contacts. Cancel if this was a mistake.")
+            .setContentTitle(tr("🆘 Sending SOS in $secondsLeft…"))
+            .setContentText(tr("Your live location will go to your contacts. Cancel if this was a mistake."))
             .setColor(0xFFE53935.toInt())
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOnlyAlertOnce(true)
-            .addAction(0, "Cancel", cancel)
+            .addAction(0, tr("Cancel"), cancel)
             .setContentIntent(openIntent(context, null))
             .build()
         try {
@@ -269,15 +270,15 @@ object Notifications {
         )
         return NotificationCompat.Builder(context, CHANNEL_SOS_ACTIVE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("🆘 SOS active — sharing live location")
-            .setContentText(if (total > 0) "Reached $reached of $total contacts. Open amend to stop." else "Open amend to see status or stop.")
+            .setContentTitle(tr("🆘 SOS active — sharing live location"))
+            .setContentText(if (total > 0) tr("Reached $reached of $total contacts. Open amend to stop.") else tr("Open amend to see status or stop."))
             .setColor(0xFFE53935.toInt())
             .setColorized(true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .addAction(0, "Call $number", dial)
+            .addAction(0, tr("Call $number"), dial)
             .setContentIntent(openIntent(context, null))
             .build()
     }
@@ -300,12 +301,12 @@ object Notifications {
     fun stepReport(context: Context, report: app.amend.messenger.data.StepReportMessage) {
         if (!areEnabled(context)) return
         val r = report.report
-        val text = "%,d steps · %s km — tap to see the full report".format(
+        val text = tr("%,d steps · %s km — tap to see the full report".format(
             java.util.Locale.US, r.totalSteps, app.amend.messenger.data.StepLog.formatKm(r.km),
-        )
+        ))
         val n = NotificationCompat.Builder(context, CHANNEL_WALKING)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("👣 Your " + app.amend.messenger.data.StepLog.monthName(report.month) + " walking report")
+            .setContentTitle(tr("👣 Your " + app.amend.messenger.data.StepLog.monthName(report.month) + " walking report"))
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(report.text))
             .setColor(0xFF2BB673.toInt())
@@ -325,8 +326,8 @@ object Notifications {
         if (!areEnabled(context)) return
         val n = NotificationCompat.Builder(context, CHANNEL_WALKING)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("🎉 Daily goal reached!")
-            .setContentText("%,d steps today — your %,d-step goal is done. 🌿".format(java.util.Locale.US, steps, goal))
+            .setContentTitle(tr("🎉 Daily goal reached!"))
+            .setContentText(tr("%,d steps today — your %,d-step goal is done. 🌿".format(java.util.Locale.US, steps, goal)))
             .setColor(0xFF2BB673.toInt())
             .setAutoCancel(true)
             .setContentIntent(openIntent(context, null))
@@ -360,7 +361,7 @@ object Notifications {
         val n = NotificationCompat.Builder(context, CHANNEL_CALLS)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(name)
-            .setContentText(if (video) "Incoming amend video call" else "Incoming amend voice call")
+            .setContentText(if (video) tr("Incoming amend video call") else tr("Incoming amend voice call"))
             .setColor(0xFF2BB673.toInt())
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -392,9 +393,9 @@ object Notifications {
         val name = (context.applicationContext as? app.amend.messenger.AmendApp)?.repository?.value?.displayName(st.peer) ?: "amend"
         val person = androidx.core.app.Person.Builder().setName(name).setKey(st.peer.ifBlank { "amend" }).build()
         val text = when (st.phase) {
-            CallPhase.OUTGOING -> if (st.ringing) "Ringing…" else "Calling…"
-            CallPhase.CONNECTING -> "Connecting…"
-            else -> if (st.video) "amend video call" else "amend voice call"
+            CallPhase.OUTGOING -> if (st.ringing) tr("Ringing…") else tr("Calling…")
+            CallPhase.CONNECTING -> tr("Connecting…")
+            else -> if (st.video) tr("amend video call") else tr("amend voice call")
         }
         val b = NotificationCompat.Builder(context, CHANNEL_CALL_ONGOING)
             .setSmallIcon(R.drawable.ic_notification)
@@ -418,9 +419,9 @@ object Notifications {
         if (!areEnabled(context)) return
         val n = NotificationCompat.Builder(context, CHANNEL_ECO_ALERTS)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(alert.emoji + " " + alert.title + if (place.isNotBlank()) " · $place" else "")
-            .setContentText(alert.advice)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(alert.advice + "\n\nOpen amend to tell your people you're safe."))
+            .setContentTitle(alert.emoji + " " + tr(alert.title) + if (place.isNotBlank()) " · $place" else "")
+            .setContentText(tr(alert.advice))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(tr(alert.advice) + tr("\n\nOpen amend to tell your people you're safe.")))
             .setColor(if (alert.level == app.amend.messenger.data.AlertLevel.DANGER) 0xFFE53935.toInt() else 0xFFFFA000.toInt())
             .setAutoCancel(true)
             .setContentIntent(openIntent(context, null))
@@ -437,8 +438,8 @@ object Notifications {
     fun meshRunning(context: Context): Notification =
         NotificationCompat.Builder(context, CHANNEL_CONNECTION)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Offline mesh is on")
-            .setContentText("Passing encrypted messages between nearby amend phones — works without internet.")
+            .setContentTitle(tr("Offline mesh is on"))
+            .setContentText(tr("Passing encrypted messages between nearby amend phones — works without internet."))
             .setColor(0xFF2BB673.toInt())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)

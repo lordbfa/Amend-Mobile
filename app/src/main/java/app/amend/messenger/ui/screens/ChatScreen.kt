@@ -65,7 +65,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import app.amend.messenger.ui.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -251,7 +251,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                 Box(Modifier.size(width = 3.dp, height = 32.dp).background(MaterialTheme.colorScheme.primary))
                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
                     Text(if (replyTo?.fromMe == true) "You" else repo.displayName(peer), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    Text(replyTo?.text ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                    Text(androidx.compose.ui.text.AnnotatedString(replyTo?.text ?: ""), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                 }
                 IconButton(onClick = { replyTo = null }) { Icon(Icons.Filled.Close, contentDescription = "Cancel reply") }
             }
@@ -555,7 +555,7 @@ private fun MessageBubble(
             Column {
                 replied?.let {
                     Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.12f)).padding(8.dp)) {
-                        Text(it.text, color = textColor.copy(alpha = 0.8f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                        Text(androidx.compose.ui.text.AnnotatedString(it.text), color = textColor.copy(alpha = 0.8f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                     }
                     Spacer(Modifier.height(6.dp))
                 }
@@ -693,7 +693,7 @@ private fun EcoCardContent(repo: AmendRepository, message: ChatMessage) {
     val eco by repo.eco.collectAsStateWithLifecycle()
     var pos by remember { mutableStateOf(Offset.Zero) }
     if (c == null) {
-        Text(message.text, color = Color.White)
+        Text(androidx.compose.ui.text.AnnotatedString(message.text), color = Color.White)
         return
     }
     val doneToday = eco.completedChallenges[java.time.LocalDate.now().toString()]
