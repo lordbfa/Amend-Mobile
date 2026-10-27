@@ -39,6 +39,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // No screenshots or screen recordings of amend, and a blank preview in Recent apps:
+        // conversations stay private even from other apps on the phone.
+        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
         useHighestRefreshRate()
         handleIntent(intent)
         val app = application as AmendApp
