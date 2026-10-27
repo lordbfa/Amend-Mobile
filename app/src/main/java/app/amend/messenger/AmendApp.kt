@@ -66,6 +66,7 @@ class AmendApp : Application() {
         app.amend.messenger.util.Mesh.init(this)
         app.amend.messenger.util.Mesh.attach(repo)
         app.amend.messenger.util.EcoWeather.schedule(this)
+        runCatching { app.amend.messenger.util.WearSync.attach(this, repo) }
         eventsJob?.cancel()
         eventsJob = appScope.launch { repo.events.collect { notifyFor(repo, it) } }
         rescheduleBackground(repo)

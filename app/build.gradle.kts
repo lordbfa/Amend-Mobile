@@ -12,8 +12,9 @@ android {
         applicationId = "app.amend.messenger"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "3.7.1"
+        // one version for phone and watch: see gradle.properties
+        versionCode = (project.property("amend.versionCode") as String).toInt()
+        versionName = project.property("amend.versionName") as String
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -106,6 +107,8 @@ dependencies {
     // installs the Baseline Profile (ours + Compose's) so code is pre-compiled: no first-scroll jank
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")
+    // Wear OS companion: sync with the amend watch app
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
     // Nearby pulls in an old androidx.fragment; activity-result APIs need >= 1.3
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("io.getstream:stream-webrtc-android:1.3.7")
