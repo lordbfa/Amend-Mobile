@@ -63,7 +63,6 @@ private val TREE_ORGS = listOf(
 @Composable
 fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
     val eco by repo.eco.collectAsStateWithLifecycle()
-    val statuses by repo.relayStatuses.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptics = rememberHaptics()
     var showAssumptions by remember { mutableStateOf(false) }
@@ -149,7 +148,7 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
         }
         SettingSwitch(
             "⚡ Carbon-aware sync",
-            if (eco.instantNotifications) "Applies when Instant notifications (in the You tab) are off: background checks then only run while charging on Wi-Fi — like carbon-aware system updates."
+            if (eco.instantNotifications) "Applies when Instant notifications (Settings → Notifications) are off: background checks then only run while charging on Wi-Fi — like carbon-aware system updates."
             else "Background checks only while charging on Wi-Fi — like carbon-aware system updates. Messages still arrive instantly while amend is open.",
             eco.carbonAwareSync,
         ) {
@@ -183,42 +182,6 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
             }
         }
 
-        // The decentralised network
-        Text("Your network 🍄", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 6.dp))
-        Text(
-            "Like mycelium linking a forest, your messages travel through independent relays run by different people. No single company holds them — and they're encrypted so relays can't read them.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp)) {
-                MyceliumNetwork(statuses, Modifier.fillMaxWidth().height(240.dp))
-                statuses.forEach { s ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val col = when (s.state) {
-                            RelayState.ONLINE -> Color(0xFF5BE39B)
-                            RelayState.CONNECTING -> Color(0xFFFFC145)
-                            RelayState.ERROR -> Color(0xFFFF7A7A)
-                            RelayState.OFFLINE -> Color(0xFF6E8A7C)
-                        }
-                        Box(Modifier.size(10.dp).clip(RoundedCornerShape(5.dp)).background(col))
-                        Spacer(Modifier.width(10.dp))
-                        Text(s.url.removePrefix("wss://"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Text(
-                            when (s.state) {
-                                RelayState.ONLINE -> s.latencyMs?.let { "${it} ms" } ?: "online"
-                                RelayState.CONNECTING -> "connecting"
-                                RelayState.ERROR -> "unreachable"
-                                RelayState.OFFLINE -> "offline"
-                            },
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (!(LocalContext.current.applicationContext as AmendApp).nativeCrypto) {
-                    Text("Using portable crypto (native library unavailable on this device).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
-                }
-            }
-        }
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -241,5 +204,47 @@ fun SettingSwitch(title: String, subtitle: String, checked: Boolean, onChange: (
             Spacer(Modifier.width(12.dp))
             Switch(checked = checked, onCheckedChange = onChange)
         }
+    }
+}
+
+/** The relays your messages travel through, live — shown in Settings → Your network. */
+@Composable
+fun NetworkSection(repo: AmendRepository) {
+    val statuses by repo.relayStatuses.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+        "Like mycelium linking a forest, your messages travel through independent relays run by different people. No single company holds them — and they're encrypted so relays can't read them.",
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            MyceliumNetwork(statuses, Modifier.fillMaxWidth().height(240.dp))
+            statuses.forEach { s ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val col = when (s.state) {
+                        RelayState.ONLINE -> Color(0xFF5BE39B)
+                        RelayState.CONNECTING -> Color(0xFFFFC145)
+                        RelayState.ERROR -> Color(0xFFFF7A7A)
+                        RelayState.OFFLINE -> Color(0xFF6E8A7C)
+                    }
+                    Box(Modifier.size(10.dp).clip(RoundedCornerShape(5.dp)).background(col))
+                    Spacer(Modifier.width(10.dp))
+                    Text(s.url.removePrefix("wss://"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text(
+                        when (s.state) {
+                            RelayState.ONLINE -> s.latencyMs?.let { "${it} ms" } ?: "online"
+                            RelayState.CONNECTING -> "connecting"
+                            RelayState.ERROR -> "unreachable"
+                            RelayState.OFFLINE -> "offline"
+                        },
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (!(LocalContext.current.applicationContext as AmendApp).nativeCrypto) {
+                Text("Using portable crypto (native library unavailable on this device).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+            }
+        }
+    }
     }
 }

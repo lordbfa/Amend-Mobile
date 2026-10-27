@@ -1,5 +1,7 @@
 package app.amend.messenger.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloat
@@ -70,79 +72,95 @@ import kotlinx.coroutines.launch
 private val AVATAR_CHOICES = listOf("🌿", "🍃", "🌸", "🌻", "🌵", "🍄", "🌾", "🌺", "🍀", "🌼", "🌳", "🪴", "🐝", "🦋", "🐢", "🦊")
 
 @Composable
-fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
+fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) {
     val profiles by repo.profiles.collectAsStateWithLifecycle()
-    val relays by repo.relayUrls.collectAsStateWithLifecycle()
     val me = profiles[repo.me]
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }
-    var confirmSignOut by remember { mutableStateOf(false) }
     val npub = repo.keys.npub
 
-    Column(Modifier.verticalScroll(rememberScrollState()).statusBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    var bigQr by remember { mutableStateOf(false) }
+    Column(
+        Modifier.verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        // title + settings
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LeafAvatar(repo.me, me, 76.dp, modifier = Modifier.clickable { editing = true })
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(me?.name?.ifBlank { null } ?: "Set your name", style = MaterialTheme.typography.headlineSmall)
-                if (!me?.about.isNullOrBlank()) Text(me!!.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = { editing = true }) { Text("Edit profile") }
+            Text("You", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            androidx.compose.material3.IconButton(onClick = { haptics.tap(); openSettings() }) {
+                androidx.compose.material3.Icon(Icons.Rounded.Settings, contentDescription = "Settings")
             }
         }
 
+        // profile
         GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Your amend ID", style = MaterialTheme.typography.titleMedium)
-                Text("Friends scan or paste this to message you", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxWidth().padding(vertical = 22.dp, horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                LeafAvatar(repo.me, me, 96.dp, modifier = Modifier.clickable { editing = true })
                 Spacer(Modifier.height(12.dp))
-                LeafQr("nostr:$npub", Modifier.size(220.dp))
-                Spacer(Modifier.height(12.dp))
-                Text(npub, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(me?.name?.ifBlank { null } ?: "Set your name", style = MaterialTheme.typography.headlineSmall)
+                if (!me?.about.isNullOrBlank()) {
+                    Text(
+                        me!!.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { clipboard.setText(AnnotatedString(npub)); haptics.success() }, shape = RoundedCornerShape(16.dp)) { Text("Copy") }
-                    OutlinedButton(onClick = {
-                        haptics.tap()
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, "Chat with me privately on amend 🌱 — my ID: $npub")
-                        }
-                        context.startActivity(Intent.createChooser(send, "Share your amend ID"))
-                    }, shape = RoundedCornerShape(16.dp)) { Text("Share") }
+                OutlinedButton(onClick = { editing = true }, shape = RoundedCornerShape(16.dp)) { Text("Edit profile") }
+            }
+        }
+
+        // amend ID: compact, tap the code for a big one
+        GlassCard(Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(96.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).clickable { haptics.tap(); bigQr = true }.padding(6.dp)) {
+                    LeafQr("nostr:$npub", Modifier.fillMaxSize())
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Your amend ID", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        npub.take(14) + "…" + npub.takeLast(6), fontFamily = FontFamily.Monospace, fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { clipboard.setText(AnnotatedString(npub)); haptics.success() }, shape = RoundedCornerShape(14.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Text("Copy") }
+                        OutlinedButton(onClick = {
+                            haptics.tap()
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "Chat with me privately on amend 🌱 — my ID: $npub")
+                            }
+                            context.startActivity(Intent.createChooser(send, "Share your amend ID"))
+                        }, shape = RoundedCornerShape(14.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Text("Share") }
+                    }
                 }
             }
         }
-
-        SafetyCard(repo)
-
-        MeshCard()
-
-        IconStyleCard()
-
-        NotificationsCard(app, repo)
-
-        CallsCard()
-
-        RelayEditor(relays) { repo.setRelays(it) }
-
-        BackupCard(repo.keys.nsec)
-
-        OutlinedButton(
-            onClick = { confirmSignOut = true },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        ) { Text("Remove identity from this phone") }
-
         Text(
-            "amend is open source and built on the Nostr protocol. Your key works in any Nostr app.",
+            "Friends scan your code or paste your ID to start a private chat.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
-        MadeWithLove(Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
+    }
+
+    if (bigQr) {
+        AlertDialog(
+            onDismissRequest = { bigQr = false },
+            confirmButton = { TextButton(onClick = { bigQr = false }) { Text("Done") } },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    LeafQr("nostr:$npub", Modifier.size(260.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text(npub, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+        )
     }
 
     if (editing) {
@@ -190,15 +208,6 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openReports: () -> Unit = {}) {
         )
     }
 
-    if (confirmSignOut) {
-        AlertDialog(
-            onDismissRequest = { confirmSignOut = false },
-            title = { Text("Remove your identity?") },
-            text = { Text("Your key and all messages will be deleted from this phone. Without your backup key you can't get this identity back.") },
-            confirmButton = { TextButton(onClick = { confirmSignOut = false; app.signOut() }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
-        )
-    }
 }
 
 /** QR code drawn with rounded "leaf" modules instead of squares. */
@@ -233,7 +242,7 @@ fun LeafQr(content: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit) {
+internal fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit) {
     var adding by remember { mutableStateOf("") }
     val haptics = rememberHaptics()
     GlassCard(Modifier.fillMaxWidth()) {
@@ -263,7 +272,7 @@ private fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit) 
 
 /** Secret key backup, revealed only while the user holds their finger on it. */
 @Composable
-private fun BackupCard(nsec: String) {
+internal fun BackupCard(nsec: String) {
     var revealed by remember { mutableStateOf(false) }
     val blur by animateFloatAsState(if (revealed) 0f else 1f, tween(250), label = "reveal")
     val clipboard = LocalClipboardManager.current
@@ -307,7 +316,7 @@ private fun BackupCard(nsec: String) {
 
 /** "With 💚, Ahmed Bhuiyan Faisal" — the heart beats like a real heartbeat (lub-dub, pause). */
 @Composable
-private fun MadeWithLove(modifier: Modifier = Modifier) {
+internal fun MadeWithLove(modifier: Modifier = Modifier) {
     val beat = androidx.compose.animation.core.rememberInfiniteTransition(label = "heartbeat")
     val scale by beat.animateFloat(
         initialValue = 1f,
@@ -338,7 +347,7 @@ private fun MadeWithLove(modifier: Modifier = Modifier) {
  * keeps the connection alive on aggressive phones.
  */
 @Composable
-private fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
+internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
     val eco by repo.eco.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptics = rememberHaptics()
@@ -402,25 +411,13 @@ private fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
                     }
                 }, shape = RoundedCornerShape(16.dp)) { Text("Allow background activity") }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Read receipts", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Your little message tree turns 🌱 green when sent, 🌳 deep green when it reaches your friend's phone, and 🌸 blue with blossoms when they've seen it. " +
-                            if (eco.readReceipts) "Friends also see when you've read theirs." else "Off: friends won't see when you read their messages.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                androidx.compose.material3.Switch(checked = eco.readReceipts, onCheckedChange = { haptics.tick(); repo.setReadReceipts(it) })
-            }
         }
     }
 }
 
 /** The launcher icon changes with the sun: white by day, grey at dusk, dark at night. */
 @Composable
-private fun IconStyleCard() {
+internal fun IconStyleCard() {
     val context = LocalContext.current
     var on by remember { mutableStateOf(app.amend.messenger.util.DynamicIcon.isEnabled(context)) }
     GlassCard(Modifier.fillMaxWidth()) {
@@ -438,6 +435,28 @@ private fun IconStyleCard() {
                 on = it
                 app.amend.messenger.util.DynamicIcon.setEnabled(context, it)
             })
+        }
+    }
+}
+
+@Composable
+internal fun ReadReceiptsCard(repo: AmendRepository) {
+    val eco by repo.eco.collectAsStateWithLifecycle()
+    val haptics = rememberHaptics()
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Read receipts", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Your little message tree turns 🌱 green when sent, 🌳 deep green when it reaches your friend's phone, and 🌸 blue with blossoms when they've seen it. " +
+                            if (eco.readReceipts) "Friends also see when you've read theirs." else "Off: friends won't see when you read their messages.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                androidx.compose.material3.Switch(checked = eco.readReceipts, onCheckedChange = { haptics.tick(); repo.setReadReceipts(it) })
+            }
         }
     }
 }
