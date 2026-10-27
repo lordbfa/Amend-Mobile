@@ -61,7 +61,9 @@ val LocalParticles = androidx.compose.runtime.staticCompositionLocalOf<app.amend
 fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableState<String?>) {
     val particles = rememberParticleField()
     particles.reduced = LocalEfficiency.current
-    androidx.compose.runtime.CompositionLocalProvider(LocalParticles provides particles) {
+    // Arabic and Urdu read right-to-left: mirror the whole layout
+    val direction = if (I18n.isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
+    androidx.compose.runtime.CompositionLocalProvider(LocalParticles provides particles, androidx.compose.ui.platform.LocalLayoutDirection provides direction) {
         Box(Modifier.fillMaxSize()) {
             AnimatedContent(
                 targetState = repository,

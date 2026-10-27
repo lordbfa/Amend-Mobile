@@ -58,7 +58,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.Text
+import app.amend.messenger.ui.Text
+import app.amend.messenger.ui.tr
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -471,14 +472,15 @@ private fun ConversationRow(repo: AmendRepository, c: Conversation, profile: Pro
                     Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 }
                 Spacer(Modifier.height(2.dp))
+                // a friend's words are shown as they are; only amend's own labels are translated
                 Text(
-                    when {
-                        isRequest -> "Wants to chat · tap to review"
-                        last == null -> "${garden.species.emoji} Say hello to grow your garden"
-                        last.type == MessageType.ECO_CARD -> "🌱 Eco challenge"
-                        last.type == MessageType.SOS -> if (last.cardId == "stop") "✅ SOS ended" else "🆘 SOS"
-                        else -> (if (last.fromMe) "You: " else "") + last.text
-                    },
+                    androidx.compose.ui.text.AnnotatedString(when {
+                        isRequest -> tr("Wants to chat · tap to review")
+                        last == null -> tr("${garden.species.emoji} Say hello to grow your garden")
+                        last.type == MessageType.ECO_CARD -> tr("🌱 Eco challenge")
+                        last.type == MessageType.SOS -> tr(if (last.cardId == "stop") "✅ SOS ended" else "🆘 SOS")
+                        else -> (if (last.fromMe) tr("You: ") else "") + last.text
+                    }),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
