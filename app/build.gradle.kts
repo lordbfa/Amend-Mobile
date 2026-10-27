@@ -52,6 +52,11 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        // The release lint check is heavy; on a laptop it runs at the same time as R8 and can
+        // exhaust memory. CI (GitHub Actions sets CI=true) still runs it on every build.
+        checkReleaseBuilds = System.getenv("CI") != null
+    }
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module")
     }
