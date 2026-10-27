@@ -391,7 +391,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     if (showVideoRecorder) {
         Dialog(
             onDismissRequest = { showVideoRecorder = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
+            // decorFitsSystemWindows = false: the dialog learns the system bar sizes, so nothing hides under them
+            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false),
         ) {
             VideoRecorderScreen(
                 onDone = { file, duration, w, h ->

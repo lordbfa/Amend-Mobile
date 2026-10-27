@@ -44,6 +44,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -614,8 +616,14 @@ fun VideoRecorderScreen(onDone: (File, Long, Int, Int) -> Unit, onClose: () -> U
         onClose()
     }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF06140E))) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF06140E))) {
+        // Size the round preview to the screen: phones, big phones, tablets and landscape
+        val ring = minOf(maxWidth * 0.78f, maxHeight * 0.46f, 460.dp)
+        Column(
+            // safeDrawing = status bar + navigation bar + display cutouts, on every screen size
+            Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.safeDrawing),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { recording?.stop(); recording = null; onClose() }) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
@@ -629,9 +637,9 @@ fun VideoRecorderScreen(onDone: (File, Long, Int, Int) -> Unit, onClose: () -> U
             }
             Spacer(Modifier.weight(1f))
             // round preview with a progress ring
-            Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(ring), contentAlignment = Alignment.Center) {
                 AndroidView(
-                    modifier = Modifier.size(280.dp).clip(CircleShape),
+                    modifier = Modifier.size(ring - 20.dp).clip(CircleShape),
                     factory = { ctx -> PreviewView(ctx).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER } },
                     update = { view ->
                         val future = ProcessCameraProvider.getInstance(context)
