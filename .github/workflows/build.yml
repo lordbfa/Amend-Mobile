@@ -46,7 +46,7 @@ jobs:
           rm -f ice.json
 
       - name: Build APKs
-        run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace 2>&1 | tee -a build-output.txt; exit ${PIPESTATUS[0]}
+        run: ./gradlew :app:assembleDebug :app:assembleRelease :wear:assembleDebug :wear:assembleRelease --stacktrace 2>&1 | tee -a build-output.txt; exit ${PIPESTATUS[0]}
 
       # Turn compiler and test errors into annotations so they're visible without opening logs
       - name: Report errors
@@ -87,12 +87,15 @@ jobs:
           fi
 
       - name: Build Play Store bundle (unsigned)
-        run: ./gradlew :app:bundleRelease -Pamend.unsigned=true --stacktrace 2>&1 | tail -20; exit ${PIPESTATUS[0]}
+        run: ./gradlew :app:bundleRelease :wear:bundleRelease -Pamend.unsigned=true --stacktrace 2>&1 | tail -20; exit ${PIPESTATUS[0]}
 
       - name: Collect APKs
         run: |
           mkdir -p out
           cp app/build/outputs/bundle/release/*.aab out/amend-release-unsigned.aab
+          cp wear/build/outputs/bundle/release/*.aab out/amend-wear-release-unsigned.aab
+          cp wear/build/outputs/apk/release/*.apk out/amend-wear-release.apk
+          cp wear/build/outputs/apk/debug/*.apk out/amend-wear-debug.apk
           cp app/build/outputs/apk/release/*.apk out/amend-release.apk
           cp app/build/outputs/apk/debug/*.apk out/amend-debug.apk
           ls -la out

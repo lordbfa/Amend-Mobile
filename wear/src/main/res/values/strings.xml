@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">amend</string>
+    <string name="tile_label">amend · forest &amp; steps</string>
+    <string name="tile_description">Today\'s steps and your amend forest</string>
+</resources>

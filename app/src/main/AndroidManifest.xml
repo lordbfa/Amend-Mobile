@@ -163,5 +163,14 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Replies and "read" from the amend watch app -->
+        <service
+            android:name=".util.WearMessageService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/amend" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
