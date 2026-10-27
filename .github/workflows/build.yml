@@ -86,9 +86,13 @@ jobs:
             echo "::notice title=Blossom scan::$(sed -z 's/\n/%0A/g' app/build/blob-scan.txt)"
           fi
 
+      - name: Build Play Store bundle (unsigned)
+        run: ./gradlew :app:bundleRelease -Pamend.unsigned=true --stacktrace 2>&1 | tail -20; exit ${PIPESTATUS[0]}
+
       - name: Collect APKs
         run: |
           mkdir -p out
+          cp app/build/outputs/bundle/release/*.aab out/amend-release-unsigned.aab
           cp app/build/outputs/apk/release/*.apk out/amend-release.apk
           cp app/build/outputs/apk/debug/*.apk out/amend-debug.apk
           ls -la out
@@ -97,7 +101,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: amend-apk
-          path: out/*.apk
+          path: |
+            out/*.apk
+            out/*.aab
 
       - name: Attach to GitHub release
         if: startsWith(github.ref, 'refs/tags/v')

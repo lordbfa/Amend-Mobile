@@ -37,7 +37,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("dev")
+            // -Pamend.unsigned=true builds an unsigned release (the Play Store bundle from CI),
+            // which the owner signs on their own computer with the private upload key.
+            signingConfig = if (project.findProperty("amend.unsigned") == "true") null else signingConfigs.getByName("dev")
         }
     }
 
