@@ -642,6 +642,8 @@ fun VideoRecorderScreen(onDone: (File, Long, Int, Int) -> Unit, onClose: () -> U
                     modifier = Modifier.size(ring - 20.dp).clip(CircleShape),
                     factory = { ctx -> PreviewView(ctx).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER } },
                     update = { view ->
+                        // read the camera choice here, so flipping it re-runs this block and re-binds the camera
+                        val useFront = front
                         val future = ProcessCameraProvider.getInstance(context)
                         future.addListener({
                             val provider = future.get()
@@ -655,7 +657,7 @@ fun VideoRecorderScreen(onDone: (File, Long, Int, Int) -> Unit, onClose: () -> U
                                 provider.unbindAll()
                                 provider.bindToLifecycle(
                                     lifecycleOwner,
-                                    if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA,
+                                    if (useFront) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA,
                                     preview, capture,
                                 )
                                 videoCapture = capture

@@ -389,10 +389,11 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     }
 
     if (showVideoRecorder) {
-        Dialog(
-            onDismissRequest = { showVideoRecorder = false },
-            // decorFitsSystemWindows = false: the dialog learns the system bar sizes, so nothing hides under them
-            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false),
+        // Full-screen layer in the app's own window (not a dialog): the system-bar sizes are always
+        // known here, so the record button sits above the navigation bar on every phone and tablet.
+        Box(
+            Modifier.fillMaxSize()
+                .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false).consume() } } // keep touches off the chat below
         ) {
             VideoRecorderScreen(
                 onDone = { file, duration, w, h ->
