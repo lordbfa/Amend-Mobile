@@ -41,6 +41,7 @@ class AmendApp : Application() {
         instance = this
         nativeCrypto = NativeSecp.install()
         keyStore = SecureKeyStore(this)
+        app.amend.messenger.ui.I18n.init(this)
         Notifications.createChannels(this)
         StepTracker.init(this)
         app.amend.messenger.util.DynamicIcon.schedule(this)

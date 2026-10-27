@@ -31,6 +31,9 @@ import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Check
+import app.amend.messenger.ui.I18n
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Policy
@@ -43,7 +46,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import app.amend.messenger.ui.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -84,6 +87,7 @@ private enum class Section(val id: String, val title: String, val icon: ImageVec
     CALLS("calls", "Calls", Icons.Rounded.Call, 0xFF2BB673),
     MESH("mesh", "Offline mesh", Icons.Rounded.WifiTethering, 0xFF00897B),
     NETWORK("network", "Your network & relays", Icons.Rounded.Hub, 0xFF8E24AA),
+    LANGUAGE("language", "Language", Icons.Rounded.Language, 0xFF0097A7),
     APPEARANCE("appearance", "Appearance", Icons.Rounded.Palette, 0xFFFB8C00),
     ABOUT("about", "About amend", Icons.Rounded.Spa, 0xFF2E7D32),
     POLICY("policy", "Privacy policy", Icons.Rounded.Policy, 0xFF546E7A),
@@ -129,12 +133,13 @@ private fun SettingsList(repo: AmendRepository, onOpen: (Section) -> Unit) {
         Section.MESH -> if (mesh.enabled) (if (mesh.peers > 0) "${mesh.peers} nearby" else "On") else "Off"
         Section.NETWORK -> "$online of ${statuses.size} relays online"
         Section.APPEARANCE -> if (DynamicIcon.isEnabled(context)) "Icon follows the sun" else null
+        Section.LANGUAGE -> I18n.languages.firstOrNull { it.code == I18n.current }?.native
         Section.INFO -> "v${BuildConfig.VERSION_NAME}"
         else -> null
     }
     Group(listOf(Section.NOTIFICATIONS, Section.PRIVACY, Section.SAFETY), ::status, onOpen)
     Group(listOf(Section.CALLS, Section.MESH, Section.NETWORK), ::status, onOpen)
-    Group(listOf(Section.APPEARANCE), ::status, onOpen)
+    Group(listOf(Section.LANGUAGE, Section.APPEARANCE), ::status, onOpen)
     Group(listOf(Section.ABOUT, Section.POLICY, Section.CONTACT, Section.INFO), ::status, onOpen)
     MadeWithLove(Modifier.fillMaxWidth())
 }
@@ -181,6 +186,7 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
             RelayEditor(relays) { repo.setRelays(it) }
         }
         Section.APPEARANCE -> IconStyleCard()
+        Section.LANGUAGE -> LanguagePage()
         Section.ABOUT -> AboutPage()
         Section.POLICY -> PolicyPage()
         Section.CONTACT -> ContactPage()
@@ -294,3 +300,33 @@ private fun AppInfoPage(app: AmendApp) {
         }
     }, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) { Text("Android app settings (storage, permissions)") }
 }
+
+/** Pick the app's language. Changes everything at once — no restart. */
+@Composable
+private fun LanguagePage() {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    val choice = I18n.choice
+    val systemName = I18n.languages.firstOrNull { it.code == I18n.resolve("system") }?.native ?: "English"
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column {
+            val rows = listOf(Triple("system", "System default", systemName)) +
+                I18n.languages.map { Triple(it.code, it.native, if (it.native != it.english) it.english else "") }
+            rows.forEachIndexed { i, (code, title, sub) ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { haptics.tick(); I18n.select(context, code) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        // language names are always shown in their own script, never translated
+                        androidx.compose.material3.Text(if (code == "system") I18n.tr(title) else title, style = MaterialTheme.typography.bodyLarge)
+                        if (sub.isNotBlank()) androidx.compose.material3.Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (choice == code) Icon(Icons.Rounded.Check, contentDescription = null, tint = Color(0xFF2BB673))
+                }
+                if (i < rows.lastIndex) HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
+        }
+    }
+}
+
