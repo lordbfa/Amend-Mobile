@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "amend"
-include(":app")
+include(":app", ":wear")
