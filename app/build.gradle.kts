@@ -12,8 +12,8 @@ android {
         applicationId = "app.amend.messenger"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "3.5.0"
+        versionCode = 23
+        versionName = "3.6.0"
         vectorDrawables.useSupportLibrary = true
     }
 
