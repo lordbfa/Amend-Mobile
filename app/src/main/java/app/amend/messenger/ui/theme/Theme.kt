@@ -106,11 +106,15 @@ val LocalDark = staticCompositionLocalOf { true }
 fun AmendTheme(efficiency: Boolean = false, content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme() || efficiency // efficiency mode forces dark (saves power on OLED)
     CompositionLocalProvider(LocalEfficiency provides efficiency, LocalDark provides dark) {
+        val colors = if (dark) DarkColors else LightColors
         MaterialTheme(
-            colorScheme = if (dark) DarkColors else LightColors,
+            colorScheme = colors,
             typography = AmendType,
             shapes = AmendShapes,
-            content = content,
-        )
+        ) {
+            // Text and icons outside a Surface/Scaffold (e.g. full-screen pages) follow the theme too,
+            // so they flip to light text in dark mode.
+            CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides colors.onBackground, content = content)
+        }
     }
 }
