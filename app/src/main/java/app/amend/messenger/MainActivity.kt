@@ -41,7 +41,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // No screenshots or screen recordings of amend, and a blank preview in Recent apps:
         // conversations stay private even from other apps on the phone.
-        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        // The debug build (installed beside the real app as "app.amend.messenger.debug") allows
+        // screenshots, so store screenshots can be taken. Release builds always block them.
+        if (!BuildConfig.DEBUG) {
+            window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
         useHighestRefreshRate()
         handleIntent(intent)
         val app = application as AmendApp
