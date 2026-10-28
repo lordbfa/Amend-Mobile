@@ -13,6 +13,7 @@ import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.StepTracker
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +60,12 @@ class AmendApp : Application() {
     fun openRepository(keys: KeyPair): AmendRepository {
         _repository.value?.let { if (it.me == keys.publicKeyHex) return it }
         val repo = AmendRepository(dataDir(), keys)
+        // Listen for events BEFORE the repository starts: messages that were waiting on the
+        // relays arrive within moments of connecting, and an event emitted before anyone
+        // listens is lost (that is how a first message or a message request went unnotified).
+        notifySince = notifySinceFor(repo.me)
+        eventsJob?.cancel()
+        eventsJob = appScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.events.collect { notifyFor(repo, it) } }
         repo.start()
         _repository.value = repo
         app.amend.messenger.util.CallManager.attach(this, repo)
@@ -67,8 +74,6 @@ class AmendApp : Application() {
         app.amend.messenger.util.Mesh.attach(repo)
         app.amend.messenger.util.EcoWeather.schedule(this)
         runCatching { app.amend.messenger.util.WearSync.attach(this, repo) }
-        eventsJob?.cancel()
-        eventsJob = appScope.launch { repo.events.collect { notifyFor(repo, it) } }
         rescheduleBackground(repo)
         return repo
     }
@@ -81,8 +86,10 @@ class AmendApp : Application() {
         when (e) {
             is AmendEvent.MessageArrived -> {
                 val chatOnScreen = AppVisibility.isForeground && AppVisibility.openPeer == e.peer
-                // Don't notify for old history fetched after restoring a key.
-                val recent = e.message.createdAt >= System.currentTimeMillis() / 1000 - 6 * 3600
+                // Don't notify for old history fetched after restoring a key on this phone, but do
+                // notify for anything that arrived while the phone was off or offline (up to a week).
+                val now = System.currentTimeMillis() / 1000
+                val recent = e.message.createdAt >= notifySince - 60 && e.message.createdAt >= now - 7 * 24 * 3600
                 if (chatOnScreen || !recent) return
                 val text = if (e.message.type == MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text
                 val unread = repo.conversations.value[e.peer]?.unread ?: 1
@@ -101,6 +108,22 @@ class AmendApp : Application() {
     }
 
     /** Applies the current notification/sync settings: live connection and/or periodic checks. */
+    /** Messages older than this (when this identity was set up on this phone) are history, not news. */
+    @Volatile private var notifySince = 0L
+
+    private fun notifySinceFor(me: String): Long {
+        val prefs = getSharedPreferences("amend_notify", MODE_PRIVATE)
+        val key = "since_$me"
+        val saved = prefs.getLong(key, 0L)
+        if (saved > 0) return saved
+        // First start of this identity here (new install, new identity or restored key).
+        // Existing users updating the app keep getting notified for the last 6 hours.
+        val now = System.currentTimeMillis() / 1000
+        val since = if (prefs.getBoolean("upgraded", false) || !File(dataDir(), "settings.json").exists()) now else now - 6 * 3600
+        prefs.edit().putLong(key, since).putBoolean("upgraded", true).apply()
+        return since
+    }
+
     fun rescheduleBackground(repository: AmendRepository? = _repository.value) {
         val repo = repository ?: return
         val eco = repo.eco.value
