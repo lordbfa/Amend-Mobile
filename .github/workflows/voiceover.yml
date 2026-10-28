@@ -2,6 +2,10 @@ name: Voiceover
 # Generates the narration for promo videos (run by hand; not part of the app build).
 on:
   workflow_dispatch:
+    inputs:
+      script:
+        description: "Script file in promo/ (without .json)"
+        default: voiceover
 permissions:
   contents: write
 jobs:
@@ -18,7 +22,7 @@ jobs:
           curl -sSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
           curl -sSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
       - name: Speak
-        run: python promo/tts.py promo/voiceover.json voice
+        run: python promo/tts.py promo/${{ inputs.script }}.json voice
       - uses: actions/upload-artifact@v4
         with:
           name: voiceover
@@ -28,4 +32,4 @@ jobs:
           mkdir -p /tmp/pub && cp voice/*.wav /tmp/pub/
           cd /tmp/pub && git init -q -b promo-voice && git add . \
             && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "voiceover" \
-            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" promo-voice
+            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:promo-voice-${{ inputs.script }}
