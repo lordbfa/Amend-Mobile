@@ -341,7 +341,7 @@ class AmendRepository(
                 val accepted = runCatching {
                     val wrap = GiftWrap.wrap(rumor, keys, peer)
                     mutex.withLock { seenWraps.add(wrap.id) }
-                    pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+                    pool.publish(wrap, inboxFor(peer)).count { it.accepted }
                 }.getOrDefault(0)
                 if (phase != SosPhase.UPDATE) {
                     mutex.withLock {
@@ -381,6 +381,13 @@ class AmendRepository(
         inboxRelays = inboxRelays + (ev.pubkey to urls)
         store.saveInboxRelays(inboxRelays)
     }
+
+    /**
+     * Where to deliver to [peer]. Until their inbox relay list (kind 10050) has arrived — as
+     * with a brand-new contact — also use amend's default relays, so a first message or
+     * request still reaches them even if our own relay list differs from theirs.
+     */
+    private fun inboxFor(peer: String): List<String> = inboxRelays[peer] ?: RelayPool.DEFAULT_RELAYS
 
     /** Returns true if the message is new. */
     private suspend fun upsertMessage(message: ChatMessage, countUnread: Boolean): Boolean {
@@ -450,7 +457,7 @@ class AmendRepository(
             toSelf?.let { seenWraps.add(it.id) }
         }
         meshOutbox?.invoke(toPeer)
-        val results = pool.publish(toPeer, inboxRelays[peer].orEmpty())
+        val results = pool.publish(toPeer, inboxFor(peer))
         toSelf?.let { scope.launch { pool.publish(it) } }
         return results.count { it.accepted }
     }
@@ -555,7 +562,7 @@ class AmendRepository(
         val rumor = GiftWrap.rumor(me, Kinds.CALL_SIGNAL, signal.contentJson(), listOf(listOf("p", peer), listOf("amend", "call", signal.type)))
         val wrap = GiftWrap.wrap(rumor, keys, peer, ephemeral = !stored)
         mutex.withLock { seenWraps.add(wrap.id) }
-        return pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+        return pool.publish(wrap, inboxFor(peer)).count { it.accepted }
     }
 
     /** Adds (or updates) the call entry in a chat. Local only: each side keeps its own call history. */
@@ -634,7 +641,7 @@ class AmendRepository(
         val wrap = GiftWrap.wrap(rumor, keys, peer)
         mutex.withLock { seenWraps.add(wrap.id) }
         meshOutbox?.invoke(wrap)
-        val n = pool.publish(wrap, inboxRelays[peer].orEmpty()).count { it.accepted }
+        val n = pool.publish(wrap, inboxFor(peer)).count { it.accepted }
         return if (n == 0 && meshOutbox != null) 1 else n
     }
 

@@ -162,6 +162,31 @@ class LiveRelayTest {
         assertTrue("at least two default relays must work", working >= 2)
     }
 
+    /** A first message from someone Bob has never talked to (a request) must raise an event — that's what notifies. */
+    @Test
+    fun firstMessageFromAStrangerRaisesAnEvent(): Unit = runBlocking {
+        assumeTrue(live)
+        val alice = AmendRepository(Files.createTempDirectory("alice2").toFile(), KeyPair.generate())
+        val bob = AmendRepository(Files.createTempDirectory("bob2").toFile(), KeyPair.generate())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val arrived = scope.async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            bob.events.filterIsInstance<app.amend.messenger.data.AmendEvent.MessageArrived>().first()
+        }
+        bob.goOnline()
+        alice.goOnline()
+        assertTrue(alice.awaitOnline(20_000))
+        assertTrue(bob.awaitOnline(20_000))
+        delay(2_000)
+        alice.addContact(bob.me) // Alice knows Bob; Bob has never heard of Alice
+        alice.sendText(bob.me, "Hi! First time writing to you 🌱")
+        val event = withTimeoutOrNull(30_000) { arrived.await() }
+        report("message request event: ${event != null}, bob accepted alice: ${bob.isAccepted(alice.me)}")
+        scope.cancel()
+        alice.goOffline(); bob.goOffline()
+        assertNotNull("A first message from a stranger should raise MessageArrived", event)
+        assertEquals(alice.me, event!!.peer)
+    }
+
     @Test
     fun aliceSendsBobAMessageThroughTheNetwork(): Unit = runBlocking {
         assumeTrue(live)
