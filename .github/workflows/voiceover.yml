@@ -2,6 +2,8 @@ name: Voiceover
 # Generates the narration for promo videos (run by hand; not part of the app build).
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   tts:
     runs-on: ubuntu-latest
@@ -21,3 +23,9 @@ jobs:
         with:
           name: voiceover
           path: voice/*.wav
+      - name: Publish to the promo-voice branch
+        run: |
+          mkdir -p /tmp/pub && cp voice/*.wav /tmp/pub/
+          cd /tmp/pub && git init -q -b promo-voice && git add . \
+            && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "voiceover" \
+            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" promo-voice
