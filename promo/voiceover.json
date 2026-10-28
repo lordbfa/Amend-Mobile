@@ -1,0 +1,11 @@
+{"voice": "af_heart", "speed": 0.95, "lines": [
+"This is amend, a private, end-to-end encrypted messenger. Here is why amend asks for each permission. Every one of them powers a feature you choose to use.",
+"Location, including background location, is used for S O S. Press the power button four times, even when the phone is locked. After a five second countdown, your live location is sent, encrypted, only to the contacts you choose, until you stop it. Allow all the time is needed so this trigger works while amend is closed. Location is never used outside an S O S you start.",
+"Approximate location powers weather and air alerts. Your position, rounded to about one kilometre, is sent to Open-Meteo, to warn you about heatwaves, floods, storms and unhealthy air.",
+"On the community eco map, a location is attached only when you choose to report pollution, or a tree you planted.",
+"The physical activity permission lets amend count your steps with the phone's low-power sensor, for a daily goal and a monthly report. Your steps never leave your phone.",
+"Nearby devices, Bluetooth and Wi-Fi, power the offline mesh, which is off by default. When the internet is down, nearby amend phones pass encrypted messages to each other. They cannot read them.",
+"The camera scans a friend's Q R code, takes photos, and records video messages. The microphone is used for voice messages and calls. Both work only while you use these features.",
+"Notifications deliver messages, calls, and a friend's S O S alert instantly, through a small background connection, without Google servers.",
+"Every feature can be switched off in settings. amend has no ads and no tracking. Your messages stay encrypted, and yours."
+]}

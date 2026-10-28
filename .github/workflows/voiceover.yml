@@ -1,0 +1,23 @@
+name: Voiceover
+# Generates the narration for promo videos (run by hand; not part of the app build).
+on:
+  workflow_dispatch:
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Kokoro TTS
+        run: |
+          pip install kokoro-onnx==0.4.9 soundfile
+          curl -sSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+          curl -sSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+      - name: Speak
+        run: python promo/tts.py promo/voiceover.json voice
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voiceover
+          path: voice/*.wav
