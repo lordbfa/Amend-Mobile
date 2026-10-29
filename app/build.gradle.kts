@@ -117,12 +117,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:19.0.0")
     // Nearby pulls in an old androidx.fragment; activity-result APIs need >= 1.3
     implementation("androidx.fragment:fragment-ktx:1.8.5")
-    // WebRTC prebuilt (org.webrtc.*). webrtc-sdk's builds are 16 KB page aligned for
-    // Android 15+; Stream's stream-webrtc-android 1.3.x was not. Same package, drop-in.
-    implementation("io.github.webrtc-sdk:android:150.7871.01")
+    implementation("io.getstream:stream-webrtc-android:1.3.7")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
-    // 0.24.0 builds native libs with CMake/NDK for 16 KB page sizes (Android 15+)
-    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.24.0")
+    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
