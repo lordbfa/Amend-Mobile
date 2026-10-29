@@ -119,7 +119,7 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     // WebRTC prebuilt (org.webrtc.*). webrtc-sdk's builds are 16 KB page aligned for
     // Android 15+; Stream's stream-webrtc-android 1.3.x was not. Same package, drop-in.
-    implementation("io.github.webrtc-sdk:android:137.7151.05")
+    implementation("io.github.webrtc-sdk:android:150.7871.01")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     // 0.24.0 builds native libs with CMake/NDK for 16 KB page sizes (Android 15+)
     implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.24.0")
