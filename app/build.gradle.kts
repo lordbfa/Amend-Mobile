@@ -48,9 +48,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -78,6 +75,12 @@ android {
             it.systemProperty("amend.relayScan", System.getProperty("amend.relayScan") ?: "false")
             it.systemProperty("amend.blobScan", System.getProperty("amend.blobScan") ?: "false")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
