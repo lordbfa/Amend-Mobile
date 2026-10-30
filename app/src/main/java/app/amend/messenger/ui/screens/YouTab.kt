@@ -371,12 +371,11 @@ internal fun MadeWithLove(modifier: Modifier = Modifier) {
             Text("made with ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("💚", fontSize = 14.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
             Text(" by Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = primary)
-            Spacer(Modifier.width(5.dp))
-            androidx.compose.material3.Icon(
-                androidx.compose.material.icons.Icons.Rounded.OpenInNew,
-                contentDescription = "Open fahmed.me",
-                tint = primary,
-                modifier = Modifier.size(14.dp).graphicsLayer { translationX = 1.5f * glow; translationY = -1.5f * glow },
+            Text(
+                " ↗",
+                style = MaterialTheme.typography.bodySmall,
+                color = primary,
+                modifier = Modifier.graphicsLayer { translationX = 1.5f * glow; translationY = -1.5f * glow },
             )
         }
     }
