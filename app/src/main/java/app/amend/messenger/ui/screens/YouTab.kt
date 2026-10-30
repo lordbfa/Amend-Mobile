@@ -373,10 +373,10 @@ internal fun MadeWithLove(modifier: Modifier = Modifier) {
             Text(" by Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = primary)
             Spacer(Modifier.width(5.dp))
             androidx.compose.material3.Icon(
-                androidx.compose.material.icons.Icons.Rounded.NorthEast,
+                androidx.compose.material.icons.Icons.Rounded.OpenInNew,
                 contentDescription = "Open fahmed.me",
                 tint = primary,
-                modifier = Modifier.size(14.dp).graphicsLayer { translationX = 2f * glow; translationY = -2f * glow },
+                modifier = Modifier.size(14.dp).graphicsLayer { translationX = 1.5f * glow; translationY = -1.5f * glow },
             )
         }
     }
