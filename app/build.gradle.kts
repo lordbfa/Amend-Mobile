@@ -38,6 +38,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Bundle native debug symbols (for WebRTC / secp256k1) into the AAB so Play can
+            // symbolicate native crashes and ANRs. Uploaded to Play only, never shipped to users.
+            ndk { debugSymbolLevel = "FULL" }
             // -Pamend.unsigned=true builds an unsigned release (the Play Store bundle from CI),
             // which the owner signs on their own computer with the private upload key.
             signingConfig = if (project.findProperty("amend.unsigned") == "true") null else signingConfigs.getByName("dev")
