@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.lerp
 import app.amend.messenger.eco.TreeSpecies
 import kotlin.math.PI
 import kotlin.math.cos
@@ -27,6 +28,8 @@ fun DrawScope.drawTree(
     sway: Float,
     shake: Float = 0f,
     night: Boolean = false,
+    autumn: Float = 0f,
+    snow: Float = 0f,
 ) {
     val p = progress.coerceIn(0f, 1f)
     if (p < 0.1f) {
@@ -35,7 +38,7 @@ fun DrawScope.drawTree(
     }
     val g = (p - 0.1f) / 0.9f // 0..1 growth after sprouting
     if (species.conifer) {
-        drawConifer(species, g, base, height, sway + shake, night)
+        drawConifer(species, g, base, height, sway + shake, night, snow)
         return
     }
     val model = TreeModels.get(species, seed, g)
@@ -61,15 +64,30 @@ fun DrawScope.drawTree(
     }
     val leafR = height * 0.045f * species.crown * (0.5f + 0.5f * g)
     val colors = if (night) model.leafNight else model.leafDay
+    val a = autumn.coerceIn(0f, 1f)
     for (k in 0 until model.leafCount) {
         val node = model.leafNode[k]
+        val col = if (a > 0f) lerp(colors[k], AUTUMN_LEAF[k % AUTUMN_LEAF.size], a * 0.8f) else colors[k]
         drawCircle(
-            colors[k],
+            col,
             leafR * model.leafScale[k],
             Offset(ex[node] + model.leafDx[k] * leafR, ey[node] + model.leafDy[k] * leafR),
         )
     }
-    if (model.bloomCount > 0 && g > 0.55f) {
+    // snow settling on the crown
+    if (snow > 0.02f) {
+        val s = snow.coerceIn(0f, 1f)
+        val cap = Color.White.copy(alpha = 0.85f * s)
+        for (k in 0 until model.leafCount step 2) {
+            val node = model.leafNode[k]
+            drawCircle(
+                cap,
+                leafR * model.leafScale[k] * 0.72f,
+                Offset(ex[node] + model.leafDx[k] * leafR, ey[node] + model.leafDy[k] * leafR - leafR * 0.4f * s),
+            )
+        }
+    }
+    if (model.bloomCount > 0 && g > 0.55f && a < 0.4f && snow < 0.3f) {
         val bloom = if (night) model.bloomNight else model.bloomDay
         for (k in 0 until model.bloomCount) {
             val node = model.bloomNode[k]
@@ -218,11 +236,12 @@ private fun DrawScope.drawSeedling(base: Offset, height: Float, t: Float, sway: 
     drawOval(Color(0xFF4FB560), topLeft = Offset(tip.x, tip.y - leaf * 0.8f), size = androidx.compose.ui.geometry.Size(leaf * 1.8f, leaf))
 }
 
-private fun DrawScope.drawConifer(species: TreeSpecies, g: Float, base: Offset, height: Float, sway: Float, night: Boolean) {
+private fun DrawScope.drawConifer(species: TreeSpecies, g: Float, base: Offset, height: Float, sway: Float, night: Boolean, snow: Float = 0f) {
     val h = height * (0.3f + 0.6f * g)
     val trunkW = height * (0.02f + 0.02f * g)
     drawLine(Color.hsl(species.trunkHue, 0.35f, 0.25f), base, Offset(base.x, base.y - h * 0.25f), trunkW, StrokeCap.Round)
     val tiers = 3 + (3 * g).toInt()
+    val s = snow.coerceIn(0f, 1f)
     for (i in 0 until tiers) {
         val f = i / tiers.toFloat()
         val tierBase = base.y - h * (0.15f + 0.75f * f)
@@ -236,5 +255,49 @@ private fun DrawScope.drawConifer(species: TreeSpecies, g: Float, base: Offset, 
             close()
         }
         drawPath(path, Color.hsl(species.leafHue, species.leafSat, (if (night) 0.18f else 0.30f) + f * 0.08f))
+        if (s > 0.02f) {
+            // a lighter snow cap sitting on the upper half of each tier
+            val snowPath = Path().apply {
+                moveTo(base.x - w * 0.28f + lean * 0.5f, tierBase - h * 0.16f)
+                lineTo(base.x + w * 0.28f + lean * 0.5f, tierBase - h * 0.16f)
+                lineTo(base.x + lean, topY)
+                close()
+            }
+            drawPath(snowPath, Color.White.copy(alpha = 0.8f * s))
+        }
+    }
+}
+
+/** Warm autumn leaf colours, blended in as the season turns. */
+private val AUTUMN_LEAF = arrayOf(
+    Color(0xFFE2711D), Color(0xFFD1410C), Color(0xFFF2B707), Color(0xFFB5641E), Color(0xFFC0392B), Color(0xFFE8A33D),
+)
+
+/**
+ * Rain streaks and/or drifting snow drawn over the forest canvas. [phase] (0..1, looping)
+ * drives the fall; [reduced] thins everything out for Efficiency mode.
+ */
+fun DrawScope.drawPrecip(rain: Float, snow: Float, phase: Float, reduced: Boolean) {
+    val w = size.width
+    val h = size.height
+    if (rain > 0.02f) {
+        val n = ((if (reduced) 24 else 58) * rain).toInt()
+        val len = h * 0.07f
+        for (i in 0 until n) {
+            val x = (((i * 73) % 100) / 100f) * w
+            val yBase = ((i * 137) % 100) / 100f
+            val y = ((yBase + phase * 1.7f) % 1f) * h
+            drawLine(Color(0x99BBD6FF), Offset(x, y), Offset(x - len * 0.22f, y + len), strokeWidth = 2f)
+        }
+    }
+    if (snow > 0.02f) {
+        val n = ((if (reduced) 22 else 52) * snow).toInt()
+        for (i in 0 until n) {
+            val drift = sin((phase * 2f + i) * PI.toFloat()) * 0.03f
+            val x = ((((i * 53) % 100) / 100f) + drift) * w
+            val yBase = ((i * 97) % 100) / 100f
+            val y = ((yBase + phase * 0.75f) % 1f) * h
+            drawCircle(Color.White.copy(alpha = 0.85f), 2f + (i % 3), Offset(x, y))
+        }
     }
 }

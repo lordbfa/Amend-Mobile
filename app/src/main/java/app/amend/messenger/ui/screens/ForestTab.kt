@@ -70,6 +70,7 @@ import app.amend.messenger.ui.LocalParticles
 import app.amend.messenger.ui.components.GlassCard
 import app.amend.messenger.ui.components.LivingSky
 import app.amend.messenger.ui.components.ParticleKind
+import app.amend.messenger.ui.components.drawPrecip
 import app.amend.messenger.ui.components.drawTree
 import app.amend.messenger.ui.components.isNight
 import app.amend.messenger.ui.components.rememberHaptics
@@ -139,6 +140,17 @@ private fun ForestScene(repo: AmendRepository) {
     var origin by remember { mutableStateOf(Offset.Zero) }
     val scroll = rememberScrollState()
     val night = isNight(hour)
+    // Season + live weather decide how the forest looks (autumn leaves, snow, rain).
+    val mood = app.amend.messenger.util.rememberSceneFx()
+    val precipTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "precip")
+    val precipPhase by precipTransition.animateFloat(
+        0f, 1f,
+        androidx.compose.animation.core.infiniteRepeatable(
+            tween(if (efficiency) 3200 else 1500, easing = androidx.compose.animation.core.LinearEasing),
+            androidx.compose.animation.core.RepeatMode.Restart,
+        ),
+        label = "precipPhase",
+    )
 
     BoxWithConstraints(Modifier.fillMaxWidth().height(380.dp).clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))) {
         // The ground/hills must always cover at least the full width of this device's screen;
@@ -184,17 +196,25 @@ private fun ForestScene(repo: AmendRepository) {
                     ),
                     topLeft = Offset(0f, ground), size = androidx.compose.ui.geometry.Size(size.width, size.height - ground),
                 )
+                // snow settling over the ground
+                if (mood.snow > 0.02f) {
+                    drawRect(
+                        Color.White.copy(alpha = 0.5f * mood.snow),
+                        topLeft = Offset(0f, ground - 14f),
+                        size = androidx.compose.ui.geometry.Size(size.width, size.height - ground + 14f),
+                    )
+                }
                 eco.trees.forEach { tree ->
                     val x = treeSpacing * 0.5f + tree.index * treeSpacing
                     val shake = (shakes[tree.index] ?: 0f) * kotlin.math.sin((shakes[tree.index] ?: 0f) * 30f) * 0.25f
-                    drawTree(tree.species, 1f, tree.seedHex.take(6).toInt(16), Offset(x, ground + 6f), size.height * 0.5f, sway * (1f + (tree.index % 3) * 0.2f), shake, night)
+                    drawTree(tree.species, 1f, tree.seedHex.take(6).toInt(16), Offset(x, ground + 6f), size.height * 0.5f, sway * (1f + (tree.index % 3) * 0.2f), shake, night, autumn = mood.autumn, snow = mood.snow)
                 }
                 // the growing tree, slightly larger and in front
                 val ix = eco.trees.size
                 val x = treeSpacing * 0.5f + ix * treeSpacing
                 val shake = (shakes[ix] ?: 0f) * kotlin.math.sin((shakes[ix] ?: 0f) * 30f) * 0.25f
                 val species = Species.all[(ix * 3 + 1) % Species.all.size]
-                drawTree(species, growth, 1000 + ix, Offset(x, ground + 14f), size.height * 0.62f, sway, shake, night)
+                drawTree(species, growth, 1000 + ix, Offset(x, ground + 14f), size.height * 0.62f, sway, shake, night, autumn = mood.autumn, snow = mood.snow)
                 // progress ring under the growing tree
                 drawArc(
                     Color(0x55FFFFFF), -90f, 360f, false,
@@ -206,14 +226,16 @@ private fun ForestScene(repo: AmendRepository) {
                     topLeft = Offset(x - 22f, ground + 26f), size = androidx.compose.ui.geometry.Size(44f, 44f),
                     style = Stroke(6f, cap = StrokeCap.Round),
                 )
-                // fireflies at night
-                if (night && !efficiency) {
+                // fireflies at night (hidden while it's snowing/raining)
+                if (night && !efficiency && !mood.hasPrecip) {
                     repeat(14) { i ->
                         val fx = (i * 137f + sway * 900f * (if (i % 2 == 0) 1 else -1)) % size.width
                         val fy = ground - 40f - (i * 53f) % 160f
                         drawCircle(Color(0x88FFF59D), 3f + (i % 3), Offset(abs(fx), fy))
                     }
                 }
+                // rain / snow falling over the forest
+                if (mood.hasPrecip) drawPrecip(mood.rain, mood.snow, precipPhase, efficiency)
             }
         }
         Column(Modifier.statusBarsPadding().padding(20.dp)) {
