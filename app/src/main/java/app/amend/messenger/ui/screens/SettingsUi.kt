@@ -132,7 +132,7 @@ private fun SettingsList(repo: AmendRepository, onOpen: (Section) -> Unit) {
         Section.CALLS -> if (CallPrefs(context).hasTurn) "Works across networks" else "Direct only"
         Section.MESH -> if (mesh.enabled) (if (mesh.peers > 0) "${mesh.peers} nearby" else "On") else "Off"
         Section.NETWORK -> "$online of ${statuses.size} relays online"
-        Section.APPEARANCE -> if (DynamicIcon.isEnabled(context)) "Icon follows the sun" else null
+        Section.APPEARANCE -> app.amend.messenger.ui.theme.AppThemes.current.let { t -> t.emoji + " " + t.label }
         Section.LANGUAGE -> I18n.languages.firstOrNull { it.code == I18n.current }?.native
         Section.INFO -> "v${BuildConfig.VERSION_NAME}"
         else -> null
@@ -141,7 +141,6 @@ private fun SettingsList(repo: AmendRepository, onOpen: (Section) -> Unit) {
     Group(listOf(Section.CALLS, Section.MESH, Section.NETWORK), ::status, onOpen)
     Group(listOf(Section.LANGUAGE, Section.APPEARANCE), ::status, onOpen)
     Group(listOf(Section.ABOUT, Section.POLICY, Section.CONTACT, Section.INFO), ::status, onOpen)
-    MadeWithLove(Modifier.fillMaxWidth())
 }
 
 @Composable
@@ -185,7 +184,7 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
             val relays by repo.relayUrls.collectAsStateWithLifecycle()
             RelayEditor(relays) { repo.setRelays(it) }
         }
-        Section.APPEARANCE -> IconStyleCard()
+        Section.APPEARANCE -> AppearancePage()
         Section.LANGUAGE -> LanguagePage()
         Section.ABOUT -> AboutPage()
         Section.POLICY -> PolicyPage()
