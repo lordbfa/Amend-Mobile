@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -315,10 +319,14 @@ internal fun BackupCard(nsec: String) {
     }
 }
 
-/** "With 💚, Ahmed Bhuiyan Faisal" — the heart beats like a real heartbeat (lub-dub, pause). */
+/**
+ * "made with 💚 by Ahmed Bhuiyan Faisal" — a tappable credit that opens the maker's
+ * page (fahmed.me). The heart beats (lub-dub) and the pill gently glows to invite a tap.
+ */
 @Composable
 internal fun MadeWithLove(modifier: Modifier = Modifier) {
-    val beat = androidx.compose.animation.core.rememberInfiniteTransition(label = "heartbeat")
+    val context = LocalContext.current
+    val beat = androidx.compose.animation.core.rememberInfiniteTransition(label = "madeby")
     val scale by beat.animateFloat(
         initialValue = 1f,
         targetValue = 1f,
@@ -335,10 +343,42 @@ internal fun MadeWithLove(modifier: Modifier = Modifier) {
         ),
         label = "heartScale",
     )
-    Row(modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Text("With ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("💚", fontSize = 14.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
-        Text(", Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // a slow breathing glow + nudging arrow, so the credit reads as something to tap
+    val glow by beat.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            tween(1700), androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "glow",
+    )
+    val primary = MaterialTheme.colorScheme.primary
+    Box(modifier.padding(top = 14.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .border(1.dp, primary.copy(alpha = 0.22f + 0.30f * glow), RoundedCornerShape(22.dp))
+                .background(primary.copy(alpha = 0.05f + 0.06f * glow))
+                .clickable {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://fahmed.me/#about")))
+                    }
+                }
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("made with ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("💚", fontSize = 14.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
+            Text(" by Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = primary)
+            Spacer(Modifier.width(5.dp))
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.Rounded.NorthEast,
+                contentDescription = "Open fahmed.me",
+                tint = primary,
+                modifier = Modifier.size(14.dp).graphicsLayer { translationX = 2f * glow; translationY = -2f * glow },
+            )
+        }
     }
 }
 
@@ -411,6 +451,71 @@ internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
                         context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                     }
                 }, shape = RoundedCornerShape(16.dp)) { Text("Allow background activity") }
+            }
+        }
+    }
+}
+
+/** Appearance settings: colour theme + the sun-timed launcher icon. Layout never changes. */
+@Composable
+internal fun AppearancePage() {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ThemeCard()
+        IconStyleCard()
+    }
+}
+
+/** A grid of colour themes (festivals included). Tapping one recolours the whole app at once. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ThemeCard() {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    val dark = app.amend.messenger.ui.theme.LocalDark.current
+    val current = app.amend.messenger.ui.theme.AppThemes.current
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Theme", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Pick a colour mood — the layout stays the same. Perfect for festivals.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(14.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                app.amend.messenger.ui.theme.AppThemes.all.forEach { t ->
+                    val accent = if (dark) t.accentDark else t.accentLight
+                    val selected = t.id == current.id
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(62.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { haptics.tick(); app.amend.messenger.ui.theme.AppThemes.select(context, t.id) }
+                            .padding(vertical = 4.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(accent)
+                                .border(
+                                    if (selected) 3.dp else 1.dp,
+                                    if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.outlineVariant,
+                                    CircleShape,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(t.emoji, fontSize = 20.sp) }
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            t.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
