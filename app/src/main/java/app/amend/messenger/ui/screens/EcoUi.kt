@@ -602,6 +602,11 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
                 val uri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f", r.lat, r.lon, r.lat, r.lon))
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
             }) { Text("Directions") }
+            if (!mine) {
+                TextButton(onClick = { EcoMap.hide(r); haptics.heavy(); onClose() }) {
+                    Text("Report", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }

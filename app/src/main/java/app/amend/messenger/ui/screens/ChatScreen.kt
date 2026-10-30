@@ -200,6 +200,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             RequestBanner(
                 onAccept = { repo.accept(peer); accepted = true; haptics.success(); repo.markSeen(peer) },
                 onBlock = { repo.block(peer); haptics.heavy(); onBack() },
+                onReport = { repo.report(peer); haptics.heavy(); onBack() },
             )
         }
 
@@ -459,6 +460,7 @@ private fun GardenHeader(
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text(if (conv?.pinned == true) "Unpin" else "Pin") }, onClick = { repo.setPinned(peer, conv?.pinned != true); menu = false })
                     DropdownMenuItem(text = { Text("Block") }, onClick = { repo.block(peer); menu = false; onBack() })
+                    DropdownMenuItem(text = { Text("Report") }, onClick = { repo.report(peer); menu = false; onBack() })
                 }
             }
             IconButton(onClick = { onCall(false) }) { Icon(Icons.Rounded.Call, contentDescription = "Voice call", tint = Color.White) }
@@ -468,20 +470,21 @@ private fun GardenHeader(
 }
 
 @Composable
-private fun RequestBanner(onAccept: () -> Unit, onBlock: () -> Unit) {
+private fun RequestBanner(onAccept: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp)
     ) {
         Text("New message request", style = MaterialTheme.typography.titleMedium)
         Text(
-            "You haven't chatted with this person before. Accept to reply, or block to never hear from them again.",
+            "You haven't chatted with this person before. Accept to reply, block to never hear from them again, or report if it's abusive.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onAccept, shape = RoundedCornerShape(16.dp)) { Text("Accept") }
             OutlinedButton(onClick = onBlock, shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Block") }
+            TextButton(onClick = onReport) { Text("Report", color = MaterialTheme.colorScheme.error) }
         }
     }
 }
