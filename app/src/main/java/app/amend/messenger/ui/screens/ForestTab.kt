@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -134,12 +135,16 @@ private fun ForestScene(repo: AmendRepository) {
     val growth by animateFloatAsState(eco.forest.currentProgress.coerceAtLeast(0.04f), spring(Spring.DampingRatioLowBouncy, 30f), label = "growth")
     val density = LocalDensity.current
     val treeSpacing = with(density) { 86.dp.toPx() }
-    val widthDp = with(density) { ((eco.trees.size + 2) * treeSpacing).toDp() }.coerceAtLeast(400.dp)
+    val contentWidth = with(density) { ((eco.trees.size + 2) * treeSpacing).toDp() }
     var origin by remember { mutableStateOf(Offset.Zero) }
     val scroll = rememberScrollState()
     val night = isNight(hour)
 
-    Box(Modifier.fillMaxWidth().height(380.dp).clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(380.dp).clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))) {
+        // The ground/hills must always cover at least the full width of this device's screen;
+        // more trees extend it further and make it scroll sideways. A fixed width left a gap
+        // on the right of wider screens (e.g. Pixel 10).
+        val widthDp = maxOf(contentWidth, maxWidth)
         LivingSky(Modifier.fillMaxSize(), hour = hour, animate = !efficiency)
         Box(Modifier.fillMaxSize().horizontalScroll(scroll)) {
             Canvas(
