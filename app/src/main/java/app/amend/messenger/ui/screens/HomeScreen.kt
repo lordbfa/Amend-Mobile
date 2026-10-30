@@ -352,6 +352,16 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
     val hour = rememberHourOfDay()
     val sway by rememberSway()
     val efficiency = LocalEfficiency.current
+    val mood = app.amend.messenger.util.rememberSceneFx()
+    val precipPhase by androidx.compose.animation.core.rememberInfiniteTransition(label = "precip")
+        .animateFloat(
+            0f, 1f,
+            androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(if (efficiency) 3200 else 1500, easing = androidx.compose.animation.core.LinearEasing),
+                androidx.compose.animation.core.RepeatMode.Restart,
+            ),
+            label = "precipPhase",
+        )
     val greeting = when (hour.toInt()) {
         in 5..11 -> "Good morning"
         in 12..17 -> "Good afternoon"
@@ -383,8 +393,16 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             }
             val night = isNight(hour)
             drawPath(hill, if (night) Color(0xFF0F2E21) else Color(0xFF66C47A))
+            if (mood.snow > 0.02f) {
+                drawRect(
+                    Color.White.copy(alpha = 0.5f * mood.snow),
+                    topLeft = Offset(0f, ground - 12f),
+                    size = androidx.compose.ui.geometry.Size(size.width, size.height - ground + 12f),
+                )
+            }
             treeCenter = Offset(size.width * 0.78f, ground - 40f)
-            drawTree(app.amend.messenger.eco.Species.all[(trees) % app.amend.messenger.eco.Species.all.size], progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night)
+            drawTree(app.amend.messenger.eco.Species.all[(trees) % app.amend.messenger.eco.Species.all.size], progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night, autumn = mood.autumn, snow = mood.snow)
+            if (mood.hasPrecip) app.amend.messenger.ui.components.drawPrecip(mood.rain, mood.snow, precipPhase, efficiency)
         }
         // SOS (tap 4×) and QR scanner, top-right
         Row(
