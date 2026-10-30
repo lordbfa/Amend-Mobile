@@ -78,7 +78,9 @@ import app.amend.messenger.util.Mesh
 const val SETTINGS_ROUTE = "amend:settings"
 
 /** Where people can reach the team. Empty until an address is chosen; the Contact page adapts. */
-const val SUPPORT_EMAIL = ""
+const val SUPPORT_EMAIL = "pabblesart@protonmail.com"
+const val SUPPORT_NAME = "Ahmed Bhuiyan Faisal"
+const val SUPPORT_ADDRESS = "40700, Jyväskylä, Finland"
 
 private enum class Section(val id: String, val title: String, val icon: ImageVector, val color: Long) {
     NOTIFICATIONS("notifications", "Notifications", Icons.Rounded.Notifications, 0xFFE53935),
@@ -264,11 +266,17 @@ private fun ContactPage() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (SUPPORT_EMAIL.isNotBlank()) {
                 Text("We'd love to hear from you — ideas, problems or just hello.", style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = {
-                    val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$SUPPORT_EMAIL"))
-                        .putExtra(Intent.EXTRA_SUBJECT, "amend feedback").putExtra(Intent.EXTRA_TEXT, "\n\n—\n$info")
-                    runCatching { context.startActivity(i) }
-                }, shape = RoundedCornerShape(16.dp)) { Text("Email us") }
+                Text(SUPPORT_NAME, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(SUPPORT_EMAIL, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                Text(SUPPORT_ADDRESS, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = {
+                        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$SUPPORT_EMAIL"))
+                            .putExtra(Intent.EXTRA_SUBJECT, "amend feedback").putExtra(Intent.EXTRA_TEXT, "\n\n—\n$info")
+                        runCatching { context.startActivity(i) }
+                    }, shape = RoundedCornerShape(16.dp)) { Text("Email us") }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(SUPPORT_EMAIL)); haptics.success() }) { Text("Copy email") }
+                }
             } else {
                 Text("A contact address is coming soon.", style = MaterialTheme.typography.bodyMedium)
                 Text(
