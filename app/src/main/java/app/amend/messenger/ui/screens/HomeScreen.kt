@@ -4,6 +4,7 @@ import app.amend.messenger.util.StepTracker
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -100,6 +101,7 @@ import app.amend.messenger.ui.components.LeafAvatar
 import app.amend.messenger.ui.components.LivingSky
 import app.amend.messenger.ui.components.ParticleKind
 import app.amend.messenger.ui.components.bouncy
+import app.amend.messenger.ui.components.drawPrecip
 import app.amend.messenger.ui.components.drawTree
 import app.amend.messenger.ui.components.isNight
 import app.amend.messenger.ui.components.rememberHaptics
@@ -402,7 +404,7 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             }
             treeCenter = Offset(size.width * 0.78f, ground - 40f)
             drawTree(app.amend.messenger.eco.Species.all[(trees) % app.amend.messenger.eco.Species.all.size], progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night, autumn = mood.autumn, snow = mood.snow)
-            if (mood.hasPrecip) app.amend.messenger.ui.components.drawPrecip(mood.rain, mood.snow, precipPhase, efficiency)
+            if (mood.hasPrecip) drawPrecip(mood.rain, mood.snow, precipPhase, efficiency)
         }
         // SOS (tap 4×) and QR scanner, top-right
         Row(
