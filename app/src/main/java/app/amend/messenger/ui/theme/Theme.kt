@@ -9,8 +9,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -98,6 +101,54 @@ private val AmendShapes = Shapes(
     large = RoundedCornerShape(28.dp),
 )
 
+/**
+ * A selectable colour theme. Only the accent colours change — the layout, type,
+ * shapes, backgrounds and Efficiency mode stay exactly the same, so every screen
+ * keeps working and only the mood of the colours shifts.
+ */
+class AppTheme(
+    val id: String,
+    val label: String,
+    val emoji: String,
+    val accentLight: Color,
+    val accentDark: Color,
+    val secondary: Color,
+    val tertiary: Color,
+    val isDefault: Boolean = false,
+)
+
+object AppThemes {
+    val all = listOf(
+        AppTheme("forest", "Forest", "🌿", Palette.Moss, Palette.LeafBright, Palette.Sun, Palette.Sky, isDefault = true),
+        AppTheme("halloween", "Halloween", "🎃", Color(0xFFD9540B), Color(0xFFFF7A1A), Color(0xFF8E44AD), Color(0xFF66BB6A)),
+        AppTheme("eid", "Eid", "🌙", Color(0xFF117A5B), Color(0xFF3FD9A0), Color(0xFFCBA14B), Color(0xFF66D1C4)),
+        AppTheme("puja", "Puja", "🪷", Color(0xFFC0392B), Color(0xFFFF6F6B), Color(0xFFE2B007), Color(0xFFEF6C9A)),
+        AppTheme("christmas", "Christmas", "🎄", Color(0xFF1B7a3d), Color(0xFF53D07E), Color(0xFFD7263D), Color(0xFFE8B923)),
+        AppTheme("newyear", "New Year", "🎆", Color(0xFF8E44AD), Color(0xFFC792EA), Color(0xFFE2B007), Color(0xFF4FC3F7)),
+        AppTheme("sakura", "Sakura", "🌸", Color(0xFFD6468A), Color(0xFFFF9EC4), Color(0xFF8E7CC3), Color(0xFF7FD1AE)),
+        AppTheme("ocean", "Ocean", "🌊", Color(0xFF0C7C96), Color(0xFF34D0E6), Color(0xFF3FB6A8), Color(0xFF6C8EF5)),
+        AppTheme("sunset", "Sunset", "🌅", Color(0xFFD85A3A), Color(0xFFFF9166), Color(0xFFE85C8A), Color(0xFFF2B33D)),
+        AppTheme("autumn", "Autumn", "🍂", Color(0xFFB5641E), Color(0xFFF2A65A), Color(0xFFCE7B3C), Color(0xFF7BA05B)),
+        AppTheme("lavender", "Lavender", "💜", Color(0xFF6C4FB3), Color(0xFFB79CF0), Color(0xFFE48FC4), Color(0xFF7FB7E8)),
+        AppTheme("midnight", "Midnight", "🌌", Color(0xFF3B5BD9), Color(0xFF7D9BFF), Color(0xFF9B7BE0), Color(0xFF45C7C0)),
+        AppTheme("rose", "Rosé", "🌹", Color(0xFFC0325B), Color(0xFFFF88A6), Color(0xFFCE8E4C), Color(0xFF8E7CC3)),
+        AppTheme("mono", "Graphite", "⚫", Color(0xFF4A4A4A), Color(0xFFB8C0BC), Color(0xFF8A8F8C), Color(0xFF6E8F7E)),
+    )
+
+    private const val PREFS = "amend_theme"
+    private var currentId by androidx.compose.runtime.mutableStateOf("forest")
+    val current: AppTheme get() = all.firstOrNull { it.id == currentId } ?: all[0]
+
+    fun load(context: android.content.Context) {
+        currentId = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString("id", "forest") ?: "forest"
+    }
+
+    fun select(context: android.content.Context, id: String) {
+        currentId = id
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putString("id", id).apply()
+    }
+}
+
 /** When true, animations and particle effects are reduced (Efficiency mode). */
 val LocalEfficiency = staticCompositionLocalOf { false }
 val LocalDark = staticCompositionLocalOf { true }
@@ -106,7 +157,20 @@ val LocalDark = staticCompositionLocalOf { true }
 fun AmendTheme(efficiency: Boolean = false, content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme() || efficiency // efficiency mode forces dark (saves power on OLED)
     CompositionLocalProvider(LocalEfficiency provides efficiency, LocalDark provides dark) {
-        val colors = if (dark) DarkColors else LightColors
+        val base = if (dark) DarkColors else LightColors
+        val theme = AppThemes.current
+        val colors = if (theme.isDefault) base else {
+            val accent = if (dark) theme.accentDark else theme.accentLight
+            val onAccent = if (accent.luminance() > 0.5f) Color(0xFF0B130E) else Color.White
+            base.copy(
+                primary = accent,
+                onPrimary = onAccent,
+                primaryContainer = androidx.compose.ui.graphics.lerp(base.surface, accent, 0.30f),
+                onPrimaryContainer = base.onSurface,
+                secondary = theme.secondary,
+                tertiary = theme.tertiary,
+            )
+        }
         MaterialTheme(
             colorScheme = colors,
             typography = AmendType,
