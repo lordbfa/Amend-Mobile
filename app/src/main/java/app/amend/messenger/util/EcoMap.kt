@@ -41,6 +41,7 @@ object EcoMap {
 
     private val pendingReactions = mutableMapOf<String, MutableList<Pair<String, String>>>()
     private val watched = mutableSetOf<String>()
+    private val hidden = mutableSetOf<String>()
     private var center: Pair<Double, Double>? = null
 
     private fun prefs() = context.getSharedPreferences("amend_eco_map", Context.MODE_PRIVATE)
@@ -48,6 +49,8 @@ object EcoMap {
     fun attach(appContext: Context, repository: AmendRepository) {
         context = appContext.applicationContext
         repo = repository
+        hidden.clear()
+        runCatching { hidden.addAll(prefs().getStringSet("hidden", emptySet()) ?: emptySet()) }
         listenJob?.cancel()
         listenJob = scope.launch { repository.ecoEvents.collect { onEvent(it) } }
         // our own reports and planted trees, wherever they are
@@ -77,6 +80,7 @@ object EcoMap {
         when (ev.kind) {
             EcoReports.KIND -> {
                 val parsed = EcoReports.parse(ev) ?: return
+                if (parsed.address in hidden) return // a post the user reported/hid
                 var isNew = false
                 _reports.update { all ->
                     val old = all[parsed.address]
@@ -119,6 +123,14 @@ object EcoMap {
     }
 
     // ------------------------------------------------------------------ actions
+
+    /** Report & hide an abusive or inappropriate post. With no central moderator on an open
+     *  network, we remove it from this phone and remember it so it never comes back. */
+    fun hide(report: EcoReport) {
+        hidden.add(report.address)
+        runCatching { prefs().edit().putStringSet("hidden", hidden.toSet()).apply() }
+        _reports.update { it - report.address }
+    }
 
     /** Publishes a new report (photo optional). Returns it, or null if no relay took it. */
     suspend fun submit(category: EcoCategory, note: String, lat: Double, lon: Double, jpeg: ByteArray?): EcoReport? {

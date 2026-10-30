@@ -866,6 +866,10 @@ class AmendRepository(
         persistSettings()
     }
 
+    /** Report a person for abuse. With no central server to appeal to, the strongest
+     *  action we can take for the user is to block them and remove the conversation. */
+    fun report(peer: String) = block(peer)
+
     fun deleteConversation(peer: String) {
         _conversations.update { it - peer }
         store.deleteChat(peer)
