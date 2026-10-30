@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -88,6 +90,7 @@ fun SafetyCard(repo: AmendRepository) {
     var number by remember { mutableStateOf(prefs.customNumber) }
     var excluded by remember { mutableStateOf(prefs.excluded) }
     var showPeople by remember { mutableStateOf(false) }
+    var bgDisclosure by remember { mutableStateOf(false) }
     val country = remember { SosManager.countryIso(context) }
     val detected = remember(country) { EmergencyNumbers.forCountry(country) }
 
@@ -117,11 +120,9 @@ fun SafetyCard(repo: AmendRepository) {
                             if (!hasLocation) {
                                 locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                             } else {
-                                // Android only allows "all the time" from the app's settings page
-                                context.startActivity(
-                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName))
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
+                                // Prominent disclosure first (Google Play policy), then the settings page
+                                // where Android lets the user choose "Allow all the time".
+                                bgDisclosure = true
                             }
                         }
                     }
@@ -184,12 +185,38 @@ fun SafetyCard(repo: AmendRepository) {
                     ) { Text("Practice SOS (nothing is sent)") }
 
                     Text(
-                        "Tip: also turn on your phone's own Emergency SOS (Settings → Safety & emergency). It can place the emergency call by itself, which apps aren't allowed to do.",
+                        "amend isn't an emergency service and can't call the authorities for you. Also turn on your phone's own Emergency SOS (Settings → Safety & emergency) — it can place the emergency call by itself, which apps aren't allowed to do.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
+    }
+
+    if (bgDisclosure) {
+        AlertDialog(
+            onDismissRequest = { bgDisclosure = false },
+            icon = { Text("📍") },
+            title = { Text("Location in the background") },
+            text = {
+                Text(
+                    "amend collects location in the background only to share your live location with the SOS contacts you choose, when you trigger an SOS with the power button while amend is closed or your screen is locked.\n\n" +
+                        "It is used for nothing else. Your location is never collected for ads, never sold, and never sent anywhere except to the contacts you picked, encrypted end-to-end.\n\n" +
+                        "On the next screen choose Permissions → Location → \"Allow all the time\".",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    bgDisclosure = false
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }) { Text("Continue") }
+            },
+            dismissButton = { TextButton(onClick = { bgDisclosure = false }) { Text("Not now") } },
+        )
     }
 }
 
