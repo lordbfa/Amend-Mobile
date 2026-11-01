@@ -84,13 +84,17 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
                 }
             }
             ParticleLayer(particles, Modifier.fillMaxSize())
+            // in the small picture-in-picture window only the video call (and an SOS) is shown
+            val inPip = (androidx.compose.ui.platform.LocalContext.current as? app.amend.messenger.MainActivity)?.inPictureInPicture?.value == true
             // calls above the app, SOS countdown / active screen above everything
             CallOverlay(repository)
             SosOverlay(repository)
-            FakeCallOverlay()
-            AchievementCelebration(repository)
-            // cameras, stories, Instants and photo viewers, above everything
-            FullScreenHost()
+            if (!inPip) {
+                FakeCallOverlay()
+                AchievementCelebration(repository)
+                // cameras, stories, Instants and photo viewers, above everything
+                FullScreenHost()
+            }
         }
     }
 }
