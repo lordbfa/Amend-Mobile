@@ -157,6 +157,12 @@ fun CallOverlay(repo: AmendRepository?) {
         }
     }
 
+    // amend shrunk into the floating picture-in-picture window: only the friend's picture fits there
+    if ((context as? MainActivity)?.inPictureInPicture?.value == true) {
+        PipCall(repo, st)
+        return
+    }
+
     var minimized by remember(st.callId) { mutableStateOf(false) }
     if (minimized && st.phase != CallPhase.INCOMING && st.phase != CallPhase.ENDED) {
         ReturnToCallBar(repo, st) { minimized = false }
@@ -167,6 +173,25 @@ fun CallOverlay(repo: AmendRepository?) {
     Box(Modifier.fillMaxSize().background(Color(0xFF06140E)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}) {
         if (st.phase == CallPhase.INCOMING) IncomingCall(repo, st, onAnswer = { answer() }, onDecline = { CallManager.decline() })
         else InCall(repo, st, onMinimize = { minimized = true })
+    }
+}
+
+/** The call inside the small picture-in-picture window: the friend's video, or their name and the call status. */
+@Composable
+private fun PipCall(repo: AmendRepository, st: CallUi) {
+    val remote by CallManager.remoteVideo.collectAsStateWithLifecycle()
+    val r = remote
+    Box(Modifier.fillMaxSize().background(Color(0xFF06140E)), contentAlignment = Alignment.Center) {
+        if (st.video && r != null && st.phase == CallPhase.CONNECTED) {
+            VideoRenderer(r, mirror = false, overlay = false, modifier = Modifier.fillMaxSize())
+        } else {
+            Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(repo.displayName(st.peer), color = Color.White, style = MaterialTheme.typography.titleSmall)
+                statusText(st).takeIf { it.isNotEmpty() }?.let {
+                    Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
     }
 }
 
