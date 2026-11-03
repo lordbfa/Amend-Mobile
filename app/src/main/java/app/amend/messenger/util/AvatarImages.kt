@@ -43,7 +43,7 @@ object AvatarImages {
     }
 
     private val http by lazy {
-        OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+        OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).proxySelector(app.amend.messenger.net.TorProxy).build()
     }
 
     private fun key(picture: String) = Hashes.sha256(picture.toByteArray()).toHex()

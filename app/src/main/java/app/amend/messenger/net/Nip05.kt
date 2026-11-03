@@ -23,6 +23,7 @@ object Nip05 {
             .readTimeout(8, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
+            .proxySelector(TorProxy)
             .build()
     }
     private val HOST = Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")

@@ -80,6 +80,10 @@ class AmendRepository(
     private val _eco = MutableStateFlow(store.loadEco())
     val eco: StateFlow<EcoState> = _eco.asStateFlow()
 
+    private val _friendStats = MutableStateFlow(store.loadFriendStats())
+    /** Contacts who share their forest with me (friends' leaderboard). */
+    val friendStats: StateFlow<Map<String, FriendStats>> = _friendStats.asStateFlow()
+
     private val _relays = MutableStateFlow(settings.relays)
     val relayUrls: StateFlow<List<String>> = _relays.asStateFlow()
 
@@ -150,6 +154,7 @@ class AmendRepository(
             while (true) {
                 runCatching { purgeExpired() }
                 runCatching { sendDueScheduled() }
+                runCatching { sendEcoStatsIfDue() }
                 delay(20_000)
             }
         }
@@ -343,6 +348,7 @@ class AmendRepository(
                 applyReaction(peer, target, rumor.pubkey, rumor.content.take(8))
             }
             Kinds.RECEIPT -> if (!fromMe) applyReceipt(peer, rumor)
+            Kinds.ECO_STATS -> if (!fromMe && !inGroup && peer in settings.accepted) applyFriendStats(peer, rumor)
             Kinds.CALL_SIGNAL -> if (!fromMe && !inGroup) {
                 CallSignal.parse(peer, rumor, ephemeral = wrap.kind == Kinds.EPHEMERAL_GIFT_WRAP)?.let { _callSignals.tryEmit(it) }
                 return
@@ -1297,10 +1303,58 @@ class AmendRepository(
             it.copy(
                 completedChallenges = it.completedChallenges + (day to challengeId),
                 co2AvoidedGrams = it.co2AvoidedGrams + c.co2Grams,
+                dailyAvoided = (it.dailyAvoided + (day to (it.dailyAvoided[day] ?: 0L) + c.co2Grams)).lastDays(),
             )
         }
         award(EcoPoints.CHALLENGE, "Challenge: ${c.title}", isMessage = false)
         return true
+    }
+
+    // ---------------------------------------------------------------- friends' leaderboard
+
+    /** Opt in/out of sharing my forest with my contacts. Turning it off tells them to forget it. */
+    fun setShareStats(on: Boolean) {
+        _eco.update { it.copy(shareStats = on, statsSentDay = "") }
+        store.saveEco(_eco.value)
+        if (!on) scope.launch { runCatching { broadcastEcoStats(off = true) } }
+    }
+
+    /** Once a day (while online): my trees/points/streak to each accepted contact, gift-wrapped. */
+    private suspend fun sendEcoStatsIfDue() {
+        val e = _eco.value
+        if (!e.shareStats || e.statsSentDay == today() || !isOnline()) return
+        _eco.update { it.copy(statsSentDay = today()) }
+        store.saveEco(_eco.value)
+        broadcastEcoStats(off = false)
+    }
+
+    private suspend fun broadcastEcoStats(off: Boolean) {
+        val e = _eco.value
+        val content = app.amend.messenger.core.json.Json.write(
+            if (off) linkedMapOf("off" to true) else linkedMapOf("trees" to e.trees.size, "points" to e.totalPoints, "streak" to e.streak)
+        )
+        val contacts = _conversations.value.values
+            .filter { !it.isGroup && it.peer != me && it.peer in settings.accepted && it.peer !in settings.blocked }
+            .sortedByDescending { it.lastActivity }.take(50).map { it.peer }
+        contacts.forEach { peer ->
+            val rumor = GiftWrap.rumor(me, Kinds.ECO_STATS, content, listOf(listOf("p", peer), listOf("amend", "eco-stats")))
+            val wrap = GiftWrap.wrap(rumor, keys, peer)
+            mutex.withLock { seenWraps.add(wrap.id) }
+            runCatching { pool.publish(wrap, inboxFor(peer)) }
+        }
+    }
+
+    private fun applyFriendStats(peer: String, rumor: Event) {
+        val m = runCatching { app.amend.messenger.core.json.Json.parseObject(rumor.content) }.getOrNull() ?: return
+        val old = _friendStats.value[peer]
+        if (old != null && old.updatedAt > rumor.createdAt) return
+        if (m["off"] == true) {
+            _friendStats.update { it - peer }
+        } else {
+            fun n(k: String) = ((m[k] as? Number)?.toInt() ?: 0).coerceIn(0, 10_000_000)
+            _friendStats.update { it + (peer to FriendStats(n("trees"), n("points"), n("streak"), rumor.createdAt)) }
+        }
+        store.saveFriendStats(_friendStats.value)
     }
 
     fun setEfficiencyMode(on: Boolean) {
@@ -1337,7 +1391,13 @@ class AmendRepository(
         val s = pendingBytesSent.getAndSet(0)
         val r = pendingBytesReceived.getAndSet(0)
         if (s == 0L && r == 0L) return
-        _eco.update { it.copy(bytesSent = it.bytesSent + s, bytesReceived = it.bytesReceived + r) }
+        val day = today()
+        _eco.update {
+            it.copy(
+                bytesSent = it.bytesSent + s, bytesReceived = it.bytesReceived + r,
+                dailyBytes = (it.dailyBytes + (day to (it.dailyBytes[day] ?: 0L) + s + r)).lastDays(),
+            )
+        }
         store.saveEco(_eco.value)
     }
 

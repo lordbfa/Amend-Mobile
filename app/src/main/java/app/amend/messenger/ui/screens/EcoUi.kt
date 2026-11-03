@@ -121,7 +121,7 @@ const val ECO_MAP_PLANT_ROUTE = "amend:ecomap:plant"
 // ======================================================================= remote images
 
 private object ImageCache {
-    val http by lazy { OkHttpClient() }
+    val http by lazy { OkHttpClient.Builder().proxySelector(app.amend.messenger.net.TorProxy).build() }
     val cache = LruCache<String, ImageBitmap>(40)
 }
 

@@ -36,6 +36,7 @@ import app.amend.messenger.ui.screens.ChatScreen
 import app.amend.messenger.ui.screens.HomeScreen
 import app.amend.messenger.ui.screens.OnboardingScreen
 import app.amend.messenger.ui.screens.SosOverlay
+import app.amend.messenger.ui.screens.FakeCallOverlay
 import app.amend.messenger.ui.screens.CallOverlay
 import app.amend.messenger.ui.screens.WalkingReportsScreen
 import app.amend.messenger.ui.screens.EcoMapScreen
@@ -80,7 +81,7 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
             // calls above the app, SOS countdown / active screen above everything
             CallOverlay(repository)
             SosOverlay(repository)
-            app.amend.messenger.ui.screens.FakeCallOverlay()
+            FakeCallOverlay()
         }
     }
 }
