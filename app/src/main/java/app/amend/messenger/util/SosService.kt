@@ -26,7 +26,10 @@ class SosService : Service() {
     // All four methods overridden: on Android < 11 the extra ones are abstract and
     // would crash with AbstractMethodError if left to the interface defaults.
     private val listener = object : LocationListener {
-        override fun onLocationChanged(location: Location) = SosManager.onLocation(this@SosService, location)
+        override fun onLocationChanged(location: Location) {
+            SosManager.onLocation(this@SosService, location)
+            LiveShareManager.onLocation(this@SosService, location)
+        }
         override fun onProviderEnabled(provider: String) {}
         override fun onProviderDisabled(provider: String) {}
         @Deprecated("Deprecated in Java")
@@ -42,9 +45,10 @@ class SosService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         goForeground()
-        // Restarted by the system after the process died: pick the SOS back up.
+        // Restarted by the system after the process died: pick the SOS / live sharing back up.
         SosManager.restoreIfNeeded(this)
-        if (!SosManager.isActive) {
+        LiveShareManager.restoreIfNeeded(this)
+        if (!SosManager.isActive && !LiveShareManager.sharing) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -55,10 +59,14 @@ class SosService : Service() {
     private fun goForeground() {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
         try {
-            ServiceCompat.startForeground(
-                this, Notifications.SOS_ACTIVE_ID,
-                Notifications.sosActiveNotification(this, 0, 0, SosManager.emergencyNumber(this)), type,
-            )
+            if (SosManager.isActive || !LiveShareManager.sharing) {
+                ServiceCompat.startForeground(
+                    this, Notifications.SOS_ACTIVE_ID,
+                    Notifications.sosActiveNotification(this, 0, 0, SosManager.emergencyNumber(this)), type,
+                )
+            } else {
+                ServiceCompat.startForeground(this, Notifications.LIVE_SHARE_ID, Notifications.liveShareNotification(this), type)
+            }
         } catch (e: Exception) {
             // Location foreground service not allowed right now (no permission or background start).
             // The SOS still runs with the last known location and periodic updates.
@@ -93,7 +101,12 @@ class SosService : Service() {
             }
         }
 
+        /** Stops tracking — unless live location is still being shared (then it just swaps the notification). */
         fun stop(context: Context) {
+            if (LiveShareManager.sharing || SosManager.isActive) {
+                start(context)
+                return
+            }
             context.stopService(Intent(context, SosService::class.java))
         }
     }

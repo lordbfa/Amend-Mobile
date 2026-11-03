@@ -169,6 +169,12 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     var showRename by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var unsendTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var showLive by remember { mutableStateOf(false) }
+    val myShares by app.amend.messenger.util.LiveShareManager.shares.collectAsStateWithLifecycle()
+    val liveShares by repo.liveShares.collectAsStateWithLifecycle()
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        if (r.values.any { it }) showLive = true
+    }
 
     DisposableEffect(peer) {
         AppVisibility.openPeer = peer
@@ -210,6 +216,12 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             onMembers = { showMembers = true },
             onRename = { showRename = true },
             onLeave = { confirmLeave = true },
+            sharingLive = peer in myShares,
+            onLive = {
+                if (peer in myShares) app.amend.messenger.util.LiveShareManager.stop(context, peer)
+                else if (app.amend.messenger.util.SosManager.hasLocationPermission(context)) showLive = true
+                else locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            },
         )
 
         // A live SOS from this person stays pinned at the top of the chat
@@ -254,6 +266,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
                     onRetry = { scope.launch { repo.retry(peer, m.id) } },
                     onCall = { video -> startCall(peer, video) },
                     authorName = if (isGroup && !m.fromMe) m.author?.let { repo.displayName(it) } else null,
+                    liveShare = if (m.type == MessageType.LIVE) liveShares["$peer|${if (m.fromMe) repo.me else (m.author ?: peer)}"] else null,
+                    onStopLive = { app.amend.messenger.util.LiveShareManager.stop(context, peer) },
                     canUnsend = repo.canUnsend(m),
                     onUnsend = { unsendTarget = m },
                     onSendNow = { scope.launch { repo.sendDueScheduled(forceId = m.id) } },
@@ -434,6 +448,34 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
         }
     }
 
+    if (showLive) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showLive = false },
+            title = { Text("📍 Share live location") },
+            text = {
+                Column {
+                    Text(
+                        (if (isGroup) "Everyone in this garden" else repo.displayName(peer)) +
+                            " sees where you are, updating as you move, end-to-end encrypted. It stops by itself.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    listOf(15 to "15 minutes", 60 to "1 hour", 8 * 60 to "8 hours").forEach { (min, label) ->
+                        Text(
+                            label, style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
+                                showLive = false
+                                haptics.success()
+                                if (!accepted) { repo.accept(peer); accepted = true }
+                                app.amend.messenger.util.LiveShareManager.start(context, peer, min)
+                            }.padding(vertical = 12.dp, horizontal = 8.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showLive = false }) { Text("Cancel") } },
+        )
+    }
     if (showDisappear) {
         DisappearDialog(
             current = conv?.disappearSecs ?: 0,
@@ -557,6 +599,8 @@ private fun GardenHeader(
     onMembers: () -> Unit = {},
     onRename: () -> Unit = {},
     onLeave: () -> Unit = {},
+    sharingLive: Boolean = false,
+    onLive: () -> Unit = {},
 ) {
     val hour = rememberHourOfDay()
     val sway by rememberSway()
@@ -600,6 +644,10 @@ private fun GardenHeader(
                     DropdownMenuItem(
                         text = { Text("Disappearing messages · " + app.amend.messenger.data.Disappear.label(disappearSecs)) },
                         onClick = { menu = false; onDisappear() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (sharingLive) "Stop sharing live location" else "Share live location") },
+                        onClick = { menu = false; onLive() },
                     )
                     if (isGroup) {
                         DropdownMenuItem(text = { Text("Members & add people") }, onClick = { menu = false; onMembers() })
@@ -653,6 +701,8 @@ private fun MessageBubble(
     onRetry: () -> Unit,
     onCall: (Boolean) -> Unit = {},
     authorName: String? = null,
+    liveShare: app.amend.messenger.data.LiveShare? = null,
+    onStopLive: () -> Unit = {},
     canUnsend: Boolean = false,
     onUnsend: () -> Unit = {},
     onSendNow: () -> Unit = {},
@@ -704,6 +754,7 @@ private fun MessageBubble(
                 .background(
                     if (unsent) Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant))
                     else if (scheduled) Brush.linearGradient(listOf(Color(0xFF2BB673).copy(alpha = 0.55f), Color(0xFF1C9A62).copy(alpha = 0.55f)))
+                    else if (message.type == MessageType.LIVE) Brush.linearGradient(listOf(Color(0xFF0C7C96), Color(0xFF2BB673)))
                     else if (message.type == MessageType.SOS) {
                         if (message.cardId == "stop") Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673)))
                         else Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFF7F0000)))
@@ -721,7 +772,7 @@ private fun MessageBubble(
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             val textColor = if (unsent) MaterialTheme.colorScheme.onSurfaceVariant
-                else if (mine || message.type == MessageType.ECO_CARD || message.type == MessageType.SOS) Color.White else MaterialTheme.colorScheme.onSurface
+                else if (mine || message.type == MessageType.ECO_CARD || message.type == MessageType.SOS || message.type == MessageType.LIVE) Color.White else MaterialTheme.colorScheme.onSurface
             Column {
                 replied?.let {
                     Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.12f)).padding(8.dp)) {
@@ -735,6 +786,8 @@ private fun MessageBubble(
                         color = textColor, style = MaterialTheme.typography.bodyMedium,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                     )
+                } else if (message.type == MessageType.LIVE) {
+                    LiveMessageContent(message, liveShare, onStopLive)
                 } else if (message.type == MessageType.SOS) {
                     SosMessageContent(message, liveSos)
                 } else if (message.type == MessageType.ECO_CARD) {
@@ -1091,4 +1144,29 @@ private fun GroupMembersDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+
+/** A live-location bubble: the pin follows the sender while the share is running. */
+@Composable
+private fun LiveMessageContent(message: ChatMessage, share: app.amend.messenger.data.LiveShare?, onStop: () -> Unit) {
+    val stored = app.amend.messenger.data.SosLocation.decode(message.extra, message.createdAt)
+    val active = share != null && share.active
+    val loc = (if (active) share?.location else null) ?: stored
+    val until = Instant.ofEpochSecond(message.scheduledAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))
+    Column {
+        Text(if (message.fromMe) "📍 You're sharing your live location" else "📍 Live location", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        if (loc != null) {
+            Spacer(Modifier.height(8.dp))
+            app.amend.messenger.ui.components.LiveMap(loc, Modifier.size(width = 260.dp, height = 170.dp), live = active)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (active) "Live until $until · ±${(loc?.accuracyM ?: 0f).toInt()} m" else "Sharing ended",
+            color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall,
+        )
+        if (message.fromMe && active) {
+            TextButton(onClick = onStop) { Text("Stop sharing", color = Color.White) }
+        }
+    }
 }

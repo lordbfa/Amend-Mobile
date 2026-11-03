@@ -73,6 +73,8 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         intent?.getStringExtra(Notifications.EXTRA_PEER)?.let { pendingPeer.value = it }
+        // a fake call rings over the lock screen like a real one
+        if (intent?.getBooleanExtra(app.amend.messenger.util.FakeCall.EXTRA, false) == true) showOverLockScreen(true)
         intent?.getStringExtra(Notifications.EXTRA_CALL)?.let { mode ->
             // an incoming call opens amend over the lock screen
             showOverLockScreen(true)

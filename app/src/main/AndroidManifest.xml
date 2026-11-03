@@ -129,6 +129,11 @@
             android:name=".util.SosActionReceiver"
             android:exported="false" />
 
+        <!-- Safety check-in reminders/deadline and scheduled fake calls -->
+        <receiver
+            android:name=".util.SafetyAlarmReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

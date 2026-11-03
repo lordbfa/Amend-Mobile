@@ -113,6 +113,11 @@ object Kinds {
     const val EPHEMERAL_GIFT_WRAP = 21059
     /** amend call signal (offer / answer / hangup …), WebRTC session data inside. */
     const val CALL_SIGNAL = 25050
+    /**
+     * "Someone nearby needs help": an anonymous SOS beacon that only travels over the
+     * offline mesh (never uploaded to relays), signed by a one-time key.
+     */
+    const val NEARBY_SOS = 21911
     const val DM_RELAYS = 10050
     const val CLIENT_AUTH = 22242
 }
