@@ -123,6 +123,16 @@ class Store(private val dir: File) {
 
     fun saveInboxRelays(m: Map<String, List<String>>) = write("inbox_relays.json", Json.write(m))
 
+    // --- friends' shared forests ---------------------------------------------------
+
+    @Suppress("UNCHECKED_CAST")
+    fun loadFriendStats(): Map<String, FriendStats> {
+        val m = read("friend_stats.json")?.let { runCatching { Json.parseObject(it) }.getOrNull() } ?: return emptyMap()
+        return m.mapNotNull { (k, v) -> (v as? Map<String, Any?>)?.let { k to FriendStats.fromMap(it) } }.toMap()
+    }
+
+    fun saveFriendStats(m: Map<String, FriendStats>) = write("friend_stats.json", Json.write(m.mapValues { it.value.toMap() }))
+
     // --- eco --------------------------------------------------------------------
 
     fun loadEco(): EcoState =

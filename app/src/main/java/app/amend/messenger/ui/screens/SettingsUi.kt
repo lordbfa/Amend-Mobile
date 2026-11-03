@@ -1,5 +1,6 @@
 package app.amend.messenger.ui.screens
 
+import app.amend.messenger.net.TorProxy
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -46,6 +47,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Switch
 import app.amend.messenger.ui.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -187,6 +192,7 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
         Section.CALLS -> CallsCard()
         Section.MESH -> MeshCard()
         Section.NETWORK -> {
+            TorCard(repo)
             NetworkSection(repo)
             val relays by repo.relayUrls.collectAsStateWithLifecycle()
             RelayEditor(relays) { repo.setRelays(it) }
@@ -342,3 +348,74 @@ private fun LanguagePage() {
     }
 }
 
+
+
+/** Settings → Network: hide your IP from relays by routing through Orbot (Tor). */
+@Composable
+private fun TorCard(repo: AmendRepository) {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(TorProxy.enabled) }
+    var running by remember { mutableStateOf<Boolean?>(null) }
+    val installed = remember {
+        context.packageManager.getLaunchIntentForPackage(TorProxy.ORBOT_PACKAGE) != null
+    }
+    LaunchedEffect(on) {
+        while (on) {
+            running = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { TorProxy.orbotRunning() }
+            kotlinx.coroutines.delay(4_000)
+        }
+    }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Route through Tor (Orbot) 🧅", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Relays, file servers and the weather service see a Tor address instead of yours. Slower, but nobody can link your messages to your IP. If Orbot isn't running, amend stays offline rather than connecting without Tor. Calls still connect directly.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Switch(checked = on, onCheckedChange = {
+                    on = it
+                    haptics.tick()
+                    TorProxy.enabled = it
+                    context.getSharedPreferences("amend_net", android.content.Context.MODE_PRIVATE).edit().putBoolean("tor", it).apply()
+                    // reconnect so every open connection takes the new route
+                    scope.launch { repo.goOffline(); kotlinx.coroutines.delay(300); repo.goOnline() }
+                })
+            }
+            if (on) {
+                when {
+                    !installed -> {
+                        Text("Orbot isn't installed.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + TorProxy.ORBOT_PACKAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }.onFailure {
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + TorProxy.ORBOT_PACKAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                            }
+                        }, shape = RoundedCornerShape(16.dp)) { Text("Get Orbot") }
+                    }
+                    running == true -> Text("✅ Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    else -> {
+                        Text("Orbot isn't running yet — amend is waiting offline.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = {
+                            context.sendBroadcast(
+                                Intent("org.torproject.android.intent.action.START")
+                                    .setPackage(TorProxy.ORBOT_PACKAGE)
+                                    .putExtra("org.torproject.android.intent.extra.PACKAGE_NAME", context.packageName)
+                            )
+                            runCatching {
+                                context.packageManager.getLaunchIntentForPackage(TorProxy.ORBOT_PACKAGE)
+                                    ?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                            }
+                        }, shape = RoundedCornerShape(16.dp)) { Text("Start Orbot") }
+                    }
+                }
+            }
+        }
+    }
+}

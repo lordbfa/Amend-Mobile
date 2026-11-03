@@ -37,6 +37,7 @@ class RelayPool(
         .pingInterval(30, TimeUnit.SECONDS)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .proxySelector(TorProxy)
         .build()
 
     private val _incoming = MutableSharedFlow<RelayIncoming>(

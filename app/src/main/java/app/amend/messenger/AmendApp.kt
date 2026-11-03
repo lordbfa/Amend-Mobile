@@ -47,6 +47,7 @@ class AmendApp : Application() {
         app.amend.messenger.ui.I18n.init(this)
         app.amend.messenger.ui.theme.AppThemes.load(this)
         app.amend.messenger.util.CheckIn.restore(this)
+        app.amend.messenger.net.TorProxy.enabled = getSharedPreferences("amend_net", MODE_PRIVATE).getBoolean("tor", false)
         Notifications.createChannels(this)
         StepTracker.init(this)
         app.amend.messenger.util.DynamicIcon.schedule(this)

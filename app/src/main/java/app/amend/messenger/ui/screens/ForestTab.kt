@@ -104,6 +104,8 @@ fun ForestTab(repo: AmendRepository, openChat: (String) -> Unit) {
         }
         item { ChallengeDeck(repo, openChat) }
         item { Spacer(Modifier.height(12.dp)) }
+        item { FriendsLeaderboardCard(repo, openChat) }
+        item { Spacer(Modifier.height(12.dp)) }
         item { WeatherCard(repo) }
         item { Spacer(Modifier.height(12.dp)) }
         item { EcoMapCard(onOpen = { openChat(ECO_MAP_ROUTE) }, onPlant = { openChat(ECO_MAP_PLANT_ROUTE) }) }
@@ -353,5 +355,54 @@ private fun ChallengeDeck(repo: AmendRepository, openChat: (String) -> Unit) {
             },
             confirmButton = { TextButton(onClick = { sharing = null }) { Text("Close") } },
         )
+    }
+}
+
+
+/** Friends' forests: contacts who opted in share trees/points/streak, end-to-end encrypted. */
+@Composable
+private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> Unit) {
+    val eco by repo.eco.collectAsStateWithLifecycle()
+    val friends by repo.friendStats.collectAsStateWithLifecycle()
+    val profiles by repo.profiles.collectAsStateWithLifecycle()
+    val rows = remember(eco, friends, profiles) {
+        (friends.map { (k, f) -> Triple(k, repo.displayName(k), f) } +
+            Triple(repo.me, "You", app.amend.messenger.data.FriendStats(eco.trees.size, eco.totalPoints, eco.streak, 0)))
+            .sortedWith(compareByDescending<Triple<String, String, app.amend.messenger.data.FriendStats>> { it.third.trees }.thenByDescending { it.third.points })
+    }
+    app.amend.messenger.ui.components.GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("🏆 Friends' forests", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (eco.shareStats) "Sharing your forest with your contacts (encrypted)."
+                        else "Share your trees, points and streak with your contacts — encrypted, never public.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                androidx.compose.material3.Switch(checked = eco.shareStats, onCheckedChange = { repo.setShareStats(it) })
+            }
+            if (rows.size > 1) {
+                Spacer(Modifier.height(10.dp))
+                rows.take(10).forEachIndexed { i, (key, name, f) ->
+                    val medal = when (i) { 0 -> "🥇"; 1 -> "🥈"; 2 -> "🥉"; else -> "${i + 1}." }
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .then(if (key != repo.me) Modifier.clickable { openChat(key) } else Modifier)
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(medal, modifier = Modifier.width(32.dp))
+                        Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1)
+                        Text("🌳 ${f.trees}  🌱 ${f.points}  🔥 ${f.streak}", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            } else if (eco.shareStats) {
+                Spacer(Modifier.height(8.dp))
+                Text("No friends are sharing yet — invite them to turn this on.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }

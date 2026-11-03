@@ -241,6 +241,13 @@ data class EcoState(
     val instantNotifications: Boolean = true,
     /** Tell friends when you've seen their messages. */
     val readReceipts: Boolean = true,
+    /** Data transferred per day (ISO date → bytes), last 30 days, for the weekly chart. */
+    val dailyBytes: Map<String, Long> = emptyMap(),
+    /** CO₂ avoided by challenges per day (ISO date → grams), last 30 days. */
+    val dailyAvoided: Map<String, Long> = emptyMap(),
+    /** Share trees/points/streak with my contacts (encrypted) for the friends' leaderboard. */
+    val shareStats: Boolean = false,
+    val statsSentDay: String = "",
 ) {
     val forest: ForestState get() = ForestState(totalPoints, trees)
     val totalBytes: Long get() = bytesSent + bytesReceived
@@ -257,6 +264,8 @@ data class EcoState(
         "co2AvoidedGrams" to co2AvoidedGrams,
         "instantNotifications" to instantNotifications,
         "readReceipts" to readReceipts,
+        "dailyBytes" to dailyBytes, "dailyAvoided" to dailyAvoided,
+        "shareStats" to shareStats, "statsSentDay" to statsSentDay,
     )
 
     companion object {
@@ -281,9 +290,28 @@ data class EcoState(
             co2AvoidedGrams = m.long("co2AvoidedGrams") ?: 0,
             instantNotifications = m["instantNotifications"] != false,
             readReceipts = m["readReceipts"] != false,
+            dailyBytes = (m["dailyBytes"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
+            dailyAvoided = (m["dailyAvoided"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
+            shareStats = m["shareStats"] == true,
+            statsSentDay = m.str("statsSentDay") ?: "",
         )
     }
 }
+
+/** A friend's forest, as they chose to share it (encrypted, contacts only). */
+data class FriendStats(val trees: Int, val points: Int, val streak: Int, val updatedAt: Long) {
+    fun toMap(): Map<String, Any?> = linkedMapOf("trees" to trees, "points" to points, "streak" to streak, "updatedAt" to updatedAt)
+
+    companion object {
+        fun fromMap(m: Map<String, Any?>) = FriendStats(
+            (m.long("trees") ?: 0).toInt(), (m.long("points") ?: 0).toInt(), (m.long("streak") ?: 0).toInt(), m.long("updatedAt") ?: 0,
+        )
+    }
+}
+
+/** Keeps only the newest [days] entries of a per-day map. */
+fun <V> Map<String, V>.lastDays(days: Int = 30): Map<String, V> =
+    if (size <= days) this else entries.sortedBy { it.key }.takeLast(days).associate { it.key to it.value }
 
 /** Result of adding points: did a tree finish growing? */
 data class GrowthEvent(val pointsAdded: Int, val newTree: PlantedTree?)

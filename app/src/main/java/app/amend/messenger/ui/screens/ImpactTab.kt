@@ -117,6 +117,8 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
             StatChip("💡", String.format("%.1fs", Footprint.ledSeconds(eco.totalBytes)), "of LED light", Modifier.weight(1f))
         }
 
+        WeeklyCarbonCard(eco)
+
         // Walking: every km on foot is a km not driven
         StepsCard(onOpenReports = openReports)
 
@@ -183,6 +185,64 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
         }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Last 7 days: amend's data footprint (red) against what challenges avoided (green). */
+@Composable
+private fun WeeklyCarbonCard(eco: app.amend.messenger.data.EcoState) {
+    val days = remember(eco.dailyBytes, eco.dailyAvoided) {
+        val today = java.time.LocalDate.now()
+        (6 downTo 0).map { back ->
+            val d = today.minusDays(back.toLong())
+            Triple(
+                d.dayOfWeek.getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault()),
+                Footprint.gramsCo2(eco.dailyBytes[d.toString()] ?: 0L),
+                (eco.dailyAvoided[d.toString()] ?: 0L).toDouble(),
+            )
+        }
+    }
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { grow.animateTo(1f, tween(900, easing = FastOutSlowInEasing)) }
+    val weekCaused = days.sumOf { it.second }
+    val weekAvoided = days.sumOf { it.third }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Your digital carbon this week", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Footprint ${Footprint.formatGrams(weekCaused)} · avoided ${Footprint.formatGrams(weekAvoided)}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            val max = days.maxOf { maxOf(it.second, it.third) }.coerceAtLeast(0.001)
+            val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+            Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                days.forEach { (label, caused, avoided) ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Canvas(Modifier.width(26.dp).height(88.dp)) {
+                            val bw = size.width / 2 - 2.dp.toPx()
+                            val r = androidx.compose.ui.geometry.CornerRadius(bw / 2, bw / 2)
+                            fun bar(x: Float, v: Double, c: Color) {
+                                drawRoundRect(track, Offset(x, 0f), Size(bw, size.height), r)
+                                val h = (size.height * (v / max).toFloat() * grow.value).coerceAtLeast(if (v > 0) 3f else 0f)
+                                if (h > 0) drawRoundRect(c, Offset(x, size.height - h), Size(bw, h), r)
+                            }
+                            bar(0f, caused, Color(0xFFFF8A80))
+                            bar(size.width - bw, avoided, Color(0xFF2BB673))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFFFF8A80)))
+                Text("  data footprint    ", style = MaterialTheme.typography.labelSmall)
+                Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF2BB673)))
+                Text("  CO₂ avoided", style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 
