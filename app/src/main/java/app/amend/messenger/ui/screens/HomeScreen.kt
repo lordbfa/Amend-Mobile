@@ -18,6 +18,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -132,6 +136,8 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
     val haptics = rememberHaptics()
     val context = LocalContext.current
     var toast by remember { mutableStateOf<String?>(null) }
+    // screen-level, so work started from a dialog isn't cancelled when the dialog closes
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(Unit) { (context as? MainActivity)?.requestNotificationPermission() }
 
@@ -265,47 +271,137 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
 
     if (showNewChat) {
         NewChatDialog(
+            repo = repo,
             onDismiss = { showNewChat = false },
-            onStart = { pub, nick ->
-                repo.addContact(pub, nick)
+            onStart = { pubOrName, nick ->
+                if (pubOrName.contains("@")) {
+                    // a name like faisal@getamend.app: look up its key first
+                    scope.launch {
+                        val pub = app.amend.messenger.net.Nip05.resolve(pubOrName)
+                        if (pub == null) {
+                            haptics.reject()
+                            toast = "Couldn't find $pubOrName"
+                        } else {
+                            repo.addContact(pub, nick)
+                            showNewChat = false
+                            haptics.success()
+                            openChat(pub)
+                        }
+                    }
+                } else {
+                    repo.addContact(pubOrName, nick)
+                    showNewChat = false
+                    haptics.success()
+                    openChat(pubOrName)
+                }
+            },
+            onGarden = { name, members ->
                 showNewChat = false
                 haptics.success()
-                openChat(pub)
+                scope.launch { runCatching { repo.createGroup(name, members) }.onSuccess { openChat(it) } }
             },
         )
     }
 }
 
 @Composable
-private fun NewChatDialog(onDismiss: () -> Unit, onStart: (String, String) -> Unit) {
+private fun NewChatDialog(
+    repo: AmendRepository,
+    onDismiss: () -> Unit,
+    onStart: (String, String) -> Unit,
+    onGarden: (String, List<String>) -> Unit,
+) {
+    var garden by remember { mutableStateOf(false) }
     var key by remember { mutableStateOf("") }
     var nick by remember { mutableStateOf("") }
+    var gardenName by remember { mutableStateOf("") }
+    val picked = remember { androidx.compose.runtime.mutableStateListOf<String>() }
     val parsed = Nip19.parsePublicKey(key)
     val haptics = rememberHaptics()
+    val conversations by repo.conversations.collectAsStateWithLifecycle()
+    val contacts = remember(conversations) {
+        conversations.values.filter { !it.isGroup && it.peer != repo.me && repo.isAccepted(it.peer) }
+            .sortedByDescending { it.lastActivity }.map { it.peer }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Start a conversation") },
+        title = { Text(if (garden) "Plant a shared garden" else "Start a conversation") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Paste your friend's amend ID (npub1…). Any Nostr app that supports private messages (NIP-17) works too.", style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(
-                    value = key, onValueChange = { key = it.trim() },
-                    label = { Text("npub1…") }, singleLine = true,
-                    isError = key.isNotEmpty() && parsed == null,
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = nick, onValueChange = { nick = it.take(40) },
-                    label = { Text("Nickname (optional)") }, singleLine = true,
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ModePill("💬 Chat", !garden) { garden = false; haptics.tick() }
+                    ModePill("🌳 Shared garden", garden) { garden = true; haptics.tick() }
+                }
+                if (!garden) {
+                    Text("Paste your friend's amend ID (npub1…) or their name@domain address. Any Nostr app that supports private messages (NIP-17) works too.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = key, onValueChange = { key = it.trim() },
+                        label = { Text("npub1… or name@getamend.app") }, singleLine = true,
+                        isError = key.isNotEmpty() && parsed == null && !key.contains("@"),
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = nick, onValueChange = { nick = it.take(40) },
+                        label = { Text("Nickname (optional)") }, singleLine = true,
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Text(
+                        "A group chat where everyone grows one plant together. End-to-end encrypted: each message is sealed separately for every member.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = gardenName, onValueChange = { gardenName = it.take(60) },
+                        label = { Text("Garden name (e.g. Family 🌻)") }, singleLine = true,
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("Who's in it · ${picked.size} picked", style = MaterialTheme.typography.titleSmall)
+                    if (contacts.isEmpty()) {
+                        Text("Chat with people one-to-one first — then you can plant a garden with them.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                        contacts.forEach { pub ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                    .clickable { if (pub in picked) picked.remove(pub) else picked.add(pub); haptics.tick() }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                androidx.compose.material3.Checkbox(checked = pub in picked, onCheckedChange = { on -> if (on) picked.add(pub) else picked.remove(pub) })
+                                Text(repo.displayName(pub), style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { if (parsed != null) onStart(parsed, nick) else haptics.reject() }, enabled = key.isNotEmpty()) { Text("Start") }
+            if (!garden) {
+                TextButton(onClick = {
+                    when {
+                        parsed != null -> onStart(parsed, nick)
+                        key.contains("@") -> onStart(key, nick) // a NIP-05 name: resolved by the caller
+                        else -> haptics.reject()
+                    }
+                }, enabled = key.isNotEmpty()) { Text("Start") }
+            } else {
+                TextButton(onClick = { onGarden(gardenName, picked.toList()) }, enabled = picked.size >= 2) { Text("Plant") }
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Composable
+private fun ModePill(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(50))
+            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 // ------------------------------------------------------------------- Chats tab
@@ -489,16 +585,23 @@ private fun ConversationRow(repo: AmendRepository, c: Conversation, profile: Pro
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (c.pinned) Text("📌 ", fontSize = 12.sp)
+                    if (c.isGroup) Text("🌳 ", fontSize = 12.sp)
+                    if (c.disappearSecs > 0) Text("⏳ ", fontSize = 12.sp)
                     Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 }
                 Spacer(Modifier.height(2.dp))
                 // a friend's words are shown as they are; only amend's own labels are translated
                 Text(
                     androidx.compose.ui.text.AnnotatedString(when {
+                        isRequest && c.isGroup -> tr("Invited you to a shared garden · tap to review")
                         isRequest -> tr("Wants to chat · tap to review")
                         last == null -> tr("${garden.species.emoji} Say hello to grow your garden")
+                        last.type == MessageType.UNSENT -> tr("🚫 Message unsent")
+                        last.status == app.amend.messenger.data.MessageStatus.SCHEDULED -> tr("🕒 Scheduled: ") + last.text
+                        last.type == MessageType.NOTICE -> last.text
                         last.type == MessageType.ECO_CARD -> tr("🌱 Eco challenge")
                         last.type == MessageType.SOS -> tr(if (last.cardId == "stop") "✅ SOS ended" else "🆘 SOS")
+                        c.isGroup && !last.fromMe && last.author != null -> repo.displayName(last.author) + ": " + last.text
                         else -> (if (last.fromMe) tr("You: ") else "") + last.text
                     }),
                     style = MaterialTheme.typography.bodyMedium,

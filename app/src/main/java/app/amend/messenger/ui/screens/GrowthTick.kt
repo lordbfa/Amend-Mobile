@@ -76,11 +76,16 @@ fun statusLabel(status: MessageStatus, relays: Int): String = when (status) {
     MessageStatus.SEEN -> "Seen"
     MessageStatus.FAILED -> "Not sent — tap ⚠ to retry"
     MessageStatus.RECEIVED -> ""
+    MessageStatus.SCHEDULED -> "Scheduled — it sends by itself at the time you chose"
 }
 
 @Composable
 fun GrowthTick(status: MessageStatus, onRetry: () -> Unit, onBubble: Boolean = true) {
     if (status == MessageStatus.RECEIVED) return
+    if (status == MessageStatus.SCHEDULED) {
+        app.amend.messenger.ui.Text("🕒", fontSize = 12.sp, modifier = Modifier.semantics { contentDescription = statusLabel(status, 0) })
+        return
+    }
     val growth by animateFloatAsState(
         when (status) {
             MessageStatus.SENDING -> 0.3f

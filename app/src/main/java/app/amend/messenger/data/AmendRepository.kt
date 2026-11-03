@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,6 +66,13 @@ class AmendRepository(
 
     private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
     val conversations: StateFlow<Map<String, Conversation>> = _conversations.asStateFlow()
+
+    private val _groups = MutableStateFlow(settings.groups)
+    /** Shared gardens (encrypted group chats) by key. */
+    val groups: StateFlow<Map<String, GroupInfo>> = _groups.asStateFlow()
+
+    fun isGroup(peer: String) = GroupInfo.isKey(peer)
+    fun groupInfo(peer: String): GroupInfo? = _groups.value[peer]
 
     private val _profiles = MutableStateFlow(store.loadProfiles())
     val profiles: StateFlow<Map<String, Profile>> = _profiles.asStateFlow()
@@ -115,6 +123,7 @@ class AmendRepository(
                 messages = msgs.sortedBy { it.createdAt },
                 pinned = peer in settings.pinned,
                 nickname = settings.nicknames[peer] ?: "",
+                disappearSecs = settings.disappear[peer] ?: 0,
             )
         }
         pool.setRelays(settings.relays)
@@ -130,6 +139,14 @@ class AmendRepository(
             while (true) {
                 delay(5_000)
                 flushBytes()
+            }
+        }
+        // disappearing messages and scheduled sends
+        scope.launch {
+            while (true) {
+                runCatching { purgeExpired() }
+                runCatching { sendDueScheduled() }
+                delay(20_000)
             }
         }
         subscribeAll()
@@ -179,7 +196,8 @@ class AmendRepository(
     }
 
     private fun resubscribeMetadata() {
-        val authors = (_conversations.value.keys + settings.accepted + me).filter { it.length == 64 }.distinct()
+        val authors = (_conversations.value.keys + settings.accepted + me + _groups.value.values.flatMap { it.members })
+            .filter { it.length == 64 }.distinct()
         pool.subscribe(SUB_META, listOf(linkedMapOf("kinds" to listOf(Kinds.METADATA, Kinds.DM_RELAYS), "authors" to authors)))
     }
 
@@ -214,9 +232,32 @@ class AmendRepository(
             return
         }
         val fromMe = rumor.pubkey == me
-        val peer = if (fromMe) rumor.tagValues("p").firstOrNull { it != me } ?: me else rumor.pubkey
-        if (peer in settings.blocked) return
-        if (rumor.kind == Kinds.CHAT_MESSAGE) {
+        // NIP-17: the room is the sender plus everyone in the "p" tags. Three or more people = a shared garden.
+        val participants = (rumor.tagValues("p") + rumor.pubkey).filter { it.length == 64 }.distinct()
+        val inGroup = participants.size >= 3
+        val peer = when {
+            inGroup -> GroupInfo.keyFor(participants)
+            fromMe -> rumor.tagValues("p").firstOrNull { it != me } ?: me
+            else -> rumor.pubkey
+        }
+        if (peer in settings.blocked || (!fromMe && rumor.pubkey in settings.blocked)) return
+        if (inGroup) registerGroup(peer, participants, rumor)
+        val author = if (inGroup) rumor.pubkey else null
+        // disappearing messages: drop anything already past its time
+        val expiresAt = rumor.firstTag("expiration")?.toLongOrNull() ?: 0L
+        if (expiresAt in 1..Event.nowSeconds()) return
+        fun finish(m: ChatMessage): ChatMessage {
+            var x = m.copy(author = author, expiresAt = expiresAt)
+            // this message was unsent before its copy reached us
+            if (settings.unsent[x.id] == rumor.pubkey) x = tombstone(x)
+            return x
+        }
+        if (rumor.kind == Kinds.DELETION) {
+            rumor.tagValues("e").forEach { applyUnsend(peer, it, rumor.pubkey, rumor.createdAt) }
+            persistSettingsSoon()
+            return
+        }
+        if (rumor.kind == Kinds.CHAT_MESSAGE && !inGroup) {
             SosProtocol.parse(rumor)?.let { signal ->
                 handleSos(rumor, peer, fromMe, signal)
                 persistSettingsSoon()
@@ -234,15 +275,27 @@ class AmendRepository(
                     replyTo = rumor.firstTag("e"),
                     status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
                     extra = media.toJson(),
-                )
-                val added = upsertMessage(message, countUnread = !fromMe)
-                if (added && !fromMe) {
+                ).let(::finish)
+                val added = upsertMessage(message, countUnread = !fromMe && message.type != MessageType.UNSENT)
+                if (added && !fromMe && message.type != MessageType.UNSENT) {
                     recordMessageStats(received = true)
                     _events.tryEmit(AmendEvent.MessageArrived(peer, message))
                     queueDelivered(message)
                 }
             }
             Kinds.CHAT_MESSAGE -> {
+                val disappear = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "disappear" }?.get(2)?.toLongOrNull()
+                val groupNote = rumor.tags.any { it.size >= 3 && it[0] == "amend" && it[1] == "group" }
+                if (disappear != null) setDisappearLocal(peer, disappear, rumor.createdAt)
+                if (disappear != null || groupNote) {
+                    val note = ChatMessage(
+                        id = rumor.id, peer = peer, fromMe = fromMe, text = rumor.content, createdAt = rumor.createdAt,
+                        type = MessageType.NOTICE, status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED, receipt = 2,
+                    ).let(::finish)
+                    upsertMessage(note, countUnread = false)
+                    persistSettingsSoon()
+                    return
+                }
                 val cardId = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "card" }?.get(2)
                 val proof = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "proof" }?.get(2)
                 val message = if (proof != null) ChatMessage(
@@ -266,11 +319,12 @@ class AmendRepository(
                     replyTo = rumor.firstTag("e"),
                     status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
                 )
-                val added = upsertMessage(message, countUnread = !fromMe)
-                if (added && !fromMe) {
+                val final = finish(message)
+                val added = upsertMessage(final, countUnread = !fromMe && final.type != MessageType.UNSENT)
+                if (added && !fromMe && final.type != MessageType.UNSENT) {
                     recordMessageStats(received = true)
-                    _events.tryEmit(AmendEvent.MessageArrived(peer, message))
-                    queueDelivered(message)
+                    _events.tryEmit(AmendEvent.MessageArrived(peer, final))
+                    queueDelivered(final)
                 }
             }
             Kinds.REACTION -> {
@@ -278,7 +332,7 @@ class AmendRepository(
                 applyReaction(peer, target, rumor.pubkey, rumor.content.take(8))
             }
             Kinds.RECEIPT -> if (!fromMe) applyReceipt(peer, rumor)
-            Kinds.CALL_SIGNAL -> if (!fromMe) {
+            Kinds.CALL_SIGNAL -> if (!fromMe && !inGroup) {
                 CallSignal.parse(peer, rumor, ephemeral = wrap.kind == Kinds.EPHEMERAL_GIFT_WRAP)?.let { _callSignals.tryEmit(it) }
                 return
             }
@@ -316,7 +370,7 @@ class AmendRepository(
     /** People who receive my SOS: everyone I've chatted with, minus [excluded] and blocked contacts. */
     fun sosRecipients(excluded: Set<String>): List<String> =
         _conversations.value.values
-            .filter { it.peer != me && it.peer !in settings.blocked && it.peer !in excluded }
+            .filter { it.peer != me && !it.isGroup && it.peer !in settings.blocked && it.peer !in excluded }
             .filter { isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }
             .map { it.peer }
 
@@ -400,6 +454,7 @@ class AmendRepository(
                     peer = message.peer,
                     pinned = message.peer in settings.pinned,
                     nickname = settings.nicknames[message.peer] ?: "",
+                    disappearSecs = settings.disappear[message.peer] ?: 0,
                 )
                 val idx = conv.messages.indexOfFirst { it.id == message.id }
                 val newMessages = if (idx >= 0) {
@@ -448,18 +503,29 @@ class AmendRepository(
 
     // ---------------------------------------------------------------- outgoing
 
-    /** Wraps a rumor for the peer and for ourselves, and publishes both. Returns relays that accepted. */
-    private suspend fun publishRumor(peer: String, rumor: Event): Int {
-        val toPeer = GiftWrap.wrap(rumor, keys, peer)
-        val toSelf = if (peer != me) GiftWrap.wrap(rumor, keys, me) else null
+    /** Who a rumor in this chat is wrapped for (besides ourselves). */
+    private fun recipientsOf(peer: String): List<String> =
+        if (isGroup(peer)) groupInfo(peer)?.members.orEmpty().filter { it != me } else listOf(peer)
+
+    /** The "p" tags for a chat: the friend, or every other member of a shared garden. */
+    fun pTags(peer: String): List<List<String>> = recipientsOf(peer).map { listOf("p", it) }
+
+    /**
+     * Wraps a rumor separately for every recipient and for ourselves, and publishes them.
+     * Returns how many relays accepted (the best recipient, for a shared garden).
+     */
+    private suspend fun publishRumor(peer: String, rumor: Event, expiration: Long? = null): Int {
+        val recipients = recipientsOf(peer).ifEmpty { return 0 }
+        val wraps = recipients.map { it to GiftWrap.wrap(rumor, keys, it, expiration = expiration) }
+        val toSelf = if (peer != me) GiftWrap.wrap(rumor, keys, me, expiration = expiration) else null
         mutex.withLock {
-            seenWraps.add(toPeer.id)
+            wraps.forEach { seenWraps.add(it.second.id) }
             toSelf?.let { seenWraps.add(it.id) }
         }
-        meshOutbox?.invoke(toPeer)
-        val results = pool.publish(toPeer, inboxFor(peer))
+        wraps.forEach { meshOutbox?.invoke(it.second) }
+        val counts = wraps.map { (who, w) -> scope.async { runCatching { pool.publish(w, inboxFor(who)).count { it.accepted } }.getOrDefault(0) } }.awaitAll()
         toSelf?.let { scope.launch { pool.publish(it) } }
-        return results.count { it.accepted }
+        return counts.maxOrNull() ?: 0
     }
 
     // ---------------------------------------------------------------- offline mesh
@@ -476,7 +542,7 @@ class AmendRepository(
     suspend fun publishRaw(ev: Event): Int = runCatching { pool.publish(ev).count { it.accepted } }.getOrDefault(0)
 
     suspend fun sendText(peer: String, text: String, replyTo: String? = null): ChatMessage {
-        val tags = mutableListOf(listOf("p", peer))
+        val tags = pTags(peer).toMutableList()
         replyTo?.let { tags.add(listOf("e", it)) }
         return sendRumor(peer, text.trim(), tags, MessageType.TEXT, null, replyTo)
     }
@@ -484,21 +550,29 @@ class AmendRepository(
     suspend fun shareChallenge(peer: String, challengeId: String): ChatMessage {
         val c = Challenges.byId(challengeId) ?: throw IllegalArgumentException("unknown challenge")
         val text = "${c.category.emoji} Eco challenge: ${c.title} — ${c.description}"
-        val msg = sendRumor(peer, text, listOf(listOf("p", peer), listOf("amend", "card", c.id)), MessageType.ECO_CARD, c.id, null)
+        val msg = sendRumor(peer, text, pTags(peer) + listOf(listOf("amend", "card", c.id)), MessageType.ECO_CARD, c.id, null)
         award(EcoPoints.SHARE_CARD, "Shared an eco challenge", isMessage = false)
         return msg
     }
 
     private suspend fun sendRumor(
         peer: String, content: String, tags: List<List<String>>, type: MessageType, cardId: String?, replyTo: String?,
+        noExpiry: Boolean = false,
     ): ChatMessage {
-        val rumor = GiftWrap.rumor(me, Kinds.CHAT_MESSAGE, content, tags)
-        val local = ChatMessage(rumor.id, peer, true, content, rumor.createdAt, type, cardId, replyTo, status = MessageStatus.SENDING)
+        val timer = _conversations.value[peer]?.disappearSecs ?: settings.disappear[peer] ?: 0L
+        val expiresAt = if (timer > 0 && !noExpiry) Event.nowSeconds() + timer else 0L
+        val allTags = if (expiresAt > 0) tags + listOf(listOf("expiration", expiresAt.toString())) else tags
+        val rumor = GiftWrap.rumor(me, Kinds.CHAT_MESSAGE, content, allTags)
+        val local = ChatMessage(
+            rumor.id, peer, true, content, rumor.createdAt, type, cardId, replyTo, status = MessageStatus.SENDING,
+            receipt = if (type == MessageType.NOTICE) 2 else 0,
+            author = if (isGroup(peer)) me else null, expiresAt = expiresAt,
+        )
         upsertMessage(local, countUnread = false)
         accept(peer)
-        recordMessageStats(received = false)
+        if (type != MessageType.NOTICE) recordMessageStats(received = false)
         val accepted = try {
-            publishRumor(peer, rumor)
+            publishRumor(peer, rumor, expiresAt.takeIf { it > 0 })
         } catch (e: Exception) {
             0
         }
@@ -545,6 +619,8 @@ class AmendRepository(
         report.imageUrl?.let { tags.add(listOf("image", it)) }
         tags.add(listOf("location", String.format(java.util.Locale.US, "%.5f,%.5f", report.lat, report.lon)))
         val text = "🌳 I planted a real tree! " + (if (report.note.isNotBlank()) "“${report.note}” " else "") + "Can you check it and verify?"
+        tags.removeAll { it.firstOrNull() == "p" }
+        tags.addAll(0, pTags(peer))
         return sendRumor(peer, text, tags, MessageType.ECO_PROOF, null, null)
     }
 
@@ -594,7 +670,7 @@ class AmendRepository(
 
     /** Receipts go only to accepted contacts (a stranger doesn't learn you're online) and only for recent messages. */
     private fun wantsReceipt(m: ChatMessage) =
-        !m.fromMe && m.peer in settings.accepted && m.createdAt > Event.nowSeconds() - RECEIPT_MAX_AGE
+        !m.fromMe && !isGroup(m.peer) && m.peer in settings.accepted && m.createdAt > Event.nowSeconds() - RECEIPT_MAX_AGE
 
     private fun queueDelivered(m: ChatMessage) {
         if (!wantsReceipt(m) || m.receipt >= 1) return
@@ -729,7 +805,7 @@ class AmendRepository(
         }
         pendingBytesSent.addAndGet(enc.data.size.toLong() * blobs.size)
         val media = draft.copy(urls = blobs.map { it.url })
-        val tags = media.tags(peer).toMutableList()
+        val tags = (pTags(peer) + media.tags(peer).filter { it.firstOrNull() != "p" }).toMutableList()
         replyTo?.let { tags.add(listOf("e", it)) }
         val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags)
         // swap the temporary bubble for the real message id
@@ -779,7 +855,7 @@ class AmendRepository(
             return
         }
         setMessageStatus(peer, msg.id, MessageStatus.SENDING, 0)
-        val tags = media.tags(peer).toMutableList()
+        val tags = (pTags(peer) + media.tags(peer).filter { it.firstOrNull() != "p" }).toMutableList()
         msg.replyTo?.let { tags.add(listOf("e", it)) }
         val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags, msg.createdAt)
         val accepted = runCatching { publishRumor(peer, rumor) }.getOrDefault(0)
@@ -804,12 +880,12 @@ class AmendRepository(
 
     suspend fun retry(peer: String, messageId: String) {
         val msg = _conversations.value[peer]?.messages?.firstOrNull { it.id == messageId } ?: return
-        if (msg.type == MessageType.CALL) return
+        if (msg.type == MessageType.CALL || msg.type == MessageType.UNSENT || msg.status == MessageStatus.SCHEDULED) return
         if (msg.type == MessageType.VOICE || msg.type == MessageType.VIDEO || msg.type == MessageType.FILE) {
             retryMedia(peer, msg)
             return
         }
-        val tags = mutableListOf(listOf("p", peer))
+        val tags = pTags(peer).toMutableList()
         msg.replyTo?.let { tags.add(listOf("e", it)) }
         msg.cardId?.let { tags.add(listOf("amend", "card", it)) }
         val rumor = Event.unsigned(me, Kinds.CHAT_MESSAGE, msg.text, tags, msg.createdAt)
@@ -827,8 +903,197 @@ class AmendRepository(
 
     suspend fun react(peer: String, messageId: String, emoji: String) {
         applyReaction(peer, messageId, me, emoji)
-        val rumor = GiftWrap.rumor(me, Kinds.REACTION, emoji, listOf(listOf("e", messageId), listOf("p", peer), listOf("k", "14")))
+        val rumor = GiftWrap.rumor(me, Kinds.REACTION, emoji, listOf(listOf("e", messageId)) + pTags(peer) + listOf(listOf("k", "14")))
         runCatching { publishRumor(peer, rumor) }
+    }
+
+    // ---------------------------------------------------------------- unsend
+
+    /** A sent message can be taken back for this long. */
+    fun canUnsend(m: ChatMessage): Boolean =
+        m.fromMe && m.type != MessageType.UNSENT && m.type != MessageType.CALL && m.type != MessageType.NOTICE &&
+            m.status != MessageStatus.SCHEDULED && Event.nowSeconds() - m.createdAt <= UNSEND_WINDOW
+
+    /**
+     * Takes back one of my messages (within [UNSEND_WINDOW]): it becomes "message unsent" here
+     * at once, and a gift-wrapped NIP-09 deletion tells the other phones to do the same.
+     */
+    suspend fun unsend(peer: String, messageId: String): Boolean {
+        val m = _conversations.value[peer]?.messages?.firstOrNull { it.id == messageId } ?: return false
+        if (!canUnsend(m)) return false
+        applyUnsend(peer, messageId, me, Event.nowSeconds())
+        persistSettings()
+        val rumor = GiftWrap.rumor(me, Kinds.DELETION, "", pTags(peer) + listOf(listOf("e", messageId), listOf("k", "14")))
+        return runCatching { publishRumor(peer, rumor) }.getOrDefault(0) > 0 || meshOutbox != null
+    }
+
+    private fun tombstone(m: ChatMessage) =
+        m.copy(type = MessageType.UNSENT, text = "", extra = null, cardId = null, reactions = emptyMap(), replyTo = null)
+
+    /** Applies an unsend from [by] — only the message's own author, and only inside the window. */
+    private suspend fun applyUnsend(peer: String, id: String, by: String, at: Long) {
+        settings = settings.copy(unsent = settings.unsent + (id to by))
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.map { m ->
+                    val author = m.author ?: if (m.fromMe) me else m.peer
+                    if (m.id == id && author == by && at - m.createdAt <= UNSEND_WINDOW + 300 && m.type != MessageType.UNSENT) {
+                        if (m.type == MessageType.VOICE || m.type == MessageType.VIDEO || m.type == MessageType.FILE) {
+                            MediaInfo.fromJson(m.extra)?.let { runCatching { localMediaFile(it).delete() } }
+                        }
+                        tombstone(m)
+                    } else m
+                }))
+            }
+            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        }
+    }
+
+    // ---------------------------------------------------------------- disappearing messages
+
+    /** Turns disappearing messages on/off for a chat and tells the other side(s). */
+    suspend fun setDisappearing(peer: String, secs: Long) {
+        setDisappearLocal(peer, secs, Event.nowSeconds())
+        val label = if (secs <= 0) "off" else Disappear.label(secs)
+        sendRumor(
+            peer, "⏳ ${myName()} turned disappearing messages ${if (secs <= 0) "off" else "on · $label"}",
+            pTags(peer) + listOf(listOf("amend", "disappear", secs.coerceAtLeast(0).toString())),
+            MessageType.NOTICE, null, null, noExpiry = true,
+        )
+    }
+
+    private fun setDisappearLocal(peer: String, secs: Long, at: Long) {
+        // history can arrive out of order: only a newer change wins
+        if ((settings.disappearAt[peer] ?: 0L) > at) return
+        settings = settings.copy(
+            disappear = if (secs > 0) settings.disappear + (peer to secs) else settings.disappear - peer,
+            disappearAt = settings.disappearAt + (peer to at),
+        )
+        _conversations.update { all -> all[peer]?.let { all + (peer to it.copy(disappearSecs = secs.coerceAtLeast(0))) } ?: all }
+        persistSettingsSoon()
+    }
+
+    /** Deletes messages whose disappearing time has come (and their media). */
+    private suspend fun purgeExpired() {
+        val now = Event.nowSeconds()
+        val hit = _conversations.value.values.filter { c -> c.messages.any { it.expiresAt in 1..now } }
+        if (hit.isEmpty()) return
+        mutex.withLock {
+            hit.forEach { c ->
+                c.messages.filter { it.expiresAt in 1..now }.forEach { m ->
+                    if (m.type == MessageType.VOICE || m.type == MessageType.VIDEO || m.type == MessageType.FILE) {
+                        MediaInfo.fromJson(m.extra)?.let { runCatching { localMediaFile(it).delete() } }
+                    }
+                }
+            }
+            _conversations.update { all ->
+                all.mapValues { (_, c) -> if (c.messages.any { it.expiresAt in 1..now }) c.copy(messages = c.messages.filter { it.expiresAt !in 1..now }) else c }
+            }
+            hit.forEach { c -> _conversations.value[c.peer]?.let { store.saveChat(c.peer, it.messages) } }
+        }
+    }
+
+    // ---------------------------------------------------------------- scheduled messages
+
+    /** Keeps a message on this phone and sends it at [at] (unix seconds). */
+    suspend fun scheduleText(peer: String, text: String, at: Long, replyTo: String? = null): ChatMessage {
+        val id = "sched-" + Hashes.sha256("$peer:$at:${System.nanoTime()}:$text".toByteArray()).toHex().take(24)
+        val m = ChatMessage(
+            id, peer, true, text.trim(), at, MessageType.TEXT, replyTo = replyTo, status = MessageStatus.SCHEDULED,
+            scheduledAt = at, receipt = 2, author = if (isGroup(peer)) me else null,
+        )
+        upsertMessage(m, countUnread = false)
+        accept(peer)
+        return m
+    }
+
+    suspend fun cancelScheduled(peer: String, id: String) {
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.filter { !(it.id == id && it.status == MessageStatus.SCHEDULED) }))
+            }
+            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        }
+    }
+
+    /** Sends every scheduled message whose time has come (or [force] one now). Returns how many. */
+    suspend fun sendDueScheduled(forceId: String? = null): Int {
+        if (!isOnline() && meshOutbox == null) return 0
+        val now = Event.nowSeconds()
+        val due = _conversations.value.values.flatMap { c ->
+            c.messages.filter { it.status == MessageStatus.SCHEDULED && (it.scheduledAt <= now || it.id == forceId) }
+        }
+        due.forEach { m ->
+            cancelScheduled(m.peer, m.id)
+            runCatching { sendText(m.peer, m.text, m.replyTo) }
+        }
+        return due.size
+    }
+
+    /** The earliest pending scheduled send, if any (unix seconds). */
+    fun nextScheduledAt(): Long? = _conversations.value.values
+        .flatMap { c -> c.messages.filter { it.status == MessageStatus.SCHEDULED }.map { it.scheduledAt } }
+        .minOrNull()
+
+    // ---------------------------------------------------------------- shared gardens (groups)
+
+    private fun myName() = myProfile.name.ifBlank { "Someone" }
+
+    private fun registerGroup(key: String, participants: List<String>, rumor: Event) {
+        val subject = rumor.firstTag("subject")?.trim()?.take(60)
+        val old = _groups.value[key]
+        if (old != null && (subject == null || subject == old.name)) return
+        val g = (old ?: GroupInfo(key, participants.sorted(), createdBy = rumor.pubkey)).let { if (subject != null) it.copy(name = subject) else it }
+        _groups.update { it + (key to g) }
+        settings = settings.copy(groups = _groups.value)
+        // a garden planted by someone you already talk to opens straight away; from a stranger it's a request
+        if (old == null && (rumor.pubkey == me || rumor.pubkey in settings.accepted)) accept(key) else persistSettingsSoon()
+        if (old == null) resubscribeMetadata()
+    }
+
+    /** Plants a new shared garden with [members] (public keys) and announces it. Returns its key. */
+    suspend fun createGroup(name: String, members: List<String>): String {
+        val all = (members + me).filter { it.length == 64 && it !in settings.blocked }.distinct()
+        require(all.size >= 3) { "A shared garden needs at least two other people" }
+        val key = GroupInfo.keyFor(all)
+        val g = GroupInfo(key, all.sorted(), name.trim().take(60), me)
+        _groups.update { it + (key to g) }
+        settings = settings.copy(groups = _groups.value)
+        accept(key)
+        _conversations.update { a -> if (a.containsKey(key)) a else a + (key to Conversation(key)) }
+        persistSettings()
+        resubscribeMetadata()
+        val tags = pTags(key) + listOf(listOf("amend", "group", "create")) +
+            (if (g.name.isNotBlank()) listOf(listOf("subject", g.name)) else emptyList())
+        sendRumor(key, "🌱 ${myName()} planted this shared garden" + (if (g.name.isNotBlank()) " · “${g.name}”" else ""), tags, MessageType.NOTICE, null, null, noExpiry = true)
+        return key
+    }
+
+    suspend fun renameGroup(key: String, name: String) {
+        val g = groupInfo(key) ?: return
+        val clean = name.trim().take(60)
+        _groups.update { it + (key to g.copy(name = clean)) }
+        settings = settings.copy(groups = _groups.value)
+        persistSettings()
+        sendRumor(
+            key, "✏️ ${myName()} named the garden “$clean”",
+            pTags(key) + listOf(listOf("amend", "group", "rename"), listOf("subject", clean)), MessageType.NOTICE, null, null, noExpiry = true,
+        )
+    }
+
+    /** Leave without waiting: keeps going after the chat screen closes. */
+    fun leaveGroupInBackground(key: String) {
+        scope.launch { leaveGroup(key) }
+    }
+
+    /** Says goodbye in the garden, then stops receiving it on this phone. */
+    suspend fun leaveGroup(key: String) {
+        runCatching {
+            sendRumor(key, "👋 ${myName()} left the garden", pTags(key) + listOf(listOf("amend", "group", "leave")), MessageType.NOTICE, null, null, noExpiry = true)
+        }
+        block(key)
     }
 
     // ---------------------------------------------------------------- contacts
@@ -881,6 +1146,16 @@ class AmendRepository(
     }
 
     fun displayName(peer: String): String {
+        if (isGroup(peer)) {
+            val g = groupInfo(peer)
+            if (!g?.name.isNullOrBlank()) return g!!.name
+            val others = g?.members.orEmpty().filter { it != me }.map { displayName(it) }
+            return when {
+                others.isEmpty() -> "Shared garden"
+                others.size <= 2 -> others.joinToString(" & ")
+                else -> others.take(2).joinToString(", ") + " & ${others.size - 2} more"
+            }
+        }
         val conv = _conversations.value[peer]
         if (!conv?.nickname.isNullOrBlank()) return conv!!.nickname
         val p = _profiles.value[peer]
@@ -896,13 +1171,13 @@ class AmendRepository(
      * Saves and publishes the profile. [picture] null keeps the current photo,
      * "" removes it, otherwise a small data URI or https URL.
      */
-    suspend fun updateProfile(name: String, about: String, avatar: String, hue: Float, picture: String? = null) {
+    suspend fun updateProfile(name: String, about: String, avatar: String, hue: Float, picture: String? = null, nip05: String? = null) {
         val pic = when {
             picture == null -> myProfile.picture
             picture.isEmpty() || Profile.isValidPicture(picture) -> picture
             else -> myProfile.picture
         }
-        val p = Profile(me, name.trim().take(60), about.trim().take(300), avatar, hue, Event.nowSeconds(), pic)
+        val p = Profile(me, name.trim().take(60), about.trim().take(300), avatar, hue, Event.nowSeconds(), pic, nip05?.trim()?.take(100) ?: myProfile.nip05)
         _profiles.update { it + (me to p) }
         store.saveProfiles(_profiles.value)
         val ev = Event.sign(keys.secretKey, Kinds.METADATA, p.toMetadataJson())
@@ -1027,5 +1302,7 @@ class AmendRepository(
         const val SUB_ECO_PREFIX = "eco-"
         /** Receipts are only sent for messages from the last week. */
         const val RECEIPT_MAX_AGE = 7L * 24 * 3600
+        /** How long after sending a message can still be unsent (15 minutes). */
+        const val UNSEND_WINDOW = 15L * 60
     }
 }

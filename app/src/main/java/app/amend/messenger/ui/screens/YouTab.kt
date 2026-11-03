@@ -321,7 +321,7 @@ internal fun BackupCard(nsec: String) {
 
 /**
  * "made with 💚 by Ahmed Bhuiyan Faisal" — a tappable credit that opens the maker's
- * page (fahmed.me). The heart beats (lub-dub) and the pill gently glows to invite a tap.
+ * website (getamend.app). The heart beats (lub-dub) and the pill gently glows to invite a tap.
  */
 @Composable
 internal fun MadeWithLove(modifier: Modifier = Modifier) {
@@ -361,7 +361,7 @@ internal fun MadeWithLove(modifier: Modifier = Modifier) {
                 .background(primary.copy(alpha = 0.05f + 0.06f * glow))
                 .clickable {
                     runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://fahmed.me/#about")))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://getamend.app")))
                     }
                 }
                 .padding(horizontal = 16.dp, vertical = 9.dp),
