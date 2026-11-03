@@ -119,6 +119,8 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
 
         WeeklyCarbonCard(eco)
 
+        AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.IMPACT)
+
         // Walking: every km on foot is a km not driven
         StepsCard(onOpenReports = openReports)
 

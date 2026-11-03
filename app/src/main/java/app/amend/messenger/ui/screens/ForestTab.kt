@@ -104,6 +104,8 @@ fun ForestTab(repo: AmendRepository, openChat: (String) -> Unit) {
         }
         item { ChallengeDeck(repo, openChat) }
         item { Spacer(Modifier.height(12.dp)) }
+        item { Box(Modifier.padding(horizontal = 16.dp)) { AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.FOREST) } }
+        item { Spacer(Modifier.height(12.dp)) }
         item { FriendsLeaderboardCard(repo, openChat) }
         item { Spacer(Modifier.height(12.dp)) }
         item { WeatherCard(repo) }
