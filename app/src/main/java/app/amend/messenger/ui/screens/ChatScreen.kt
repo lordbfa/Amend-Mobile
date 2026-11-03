@@ -726,8 +726,9 @@ private fun GardenHeader(
     val hour = rememberHourOfDay()
     val sway by rememberSway()
     val efficiency = LocalEfficiency.current
-    val grow = remember { Animatable(garden.progress) }
-    LaunchedEffect(garden.progress) { grow.animateTo(garden.progress, spring(Spring.DampingRatioLowBouncy, 60f)) }
+    // a new generation starts from a seed, so the animation restarts with it
+    val grow = remember(garden.generation) { Animatable(if (garden.generation > 0) 0f else garden.progress) }
+    LaunchedEffect(garden.progress, garden.generation) { grow.animateTo(garden.progress, spring(Spring.DampingRatioLowBouncy, 60f)) }
     var menu by remember { mutableStateOf(false) }
     val conv = repo.conversations.collectAsStateWithLifecycle().value[peer]
 
@@ -746,7 +747,14 @@ private fun GardenHeader(
                 lineTo(size.width, size.height); close()
             }
             drawPath(hill, if (night) Color(0xFF0F2E21) else Color(0xFF66C47A))
-            drawTree(garden.species, grow.value, garden.seed[2].toInt(), Offset(size.width * 0.82f, ground - 6f), size.height * 0.9f, sway, night = night)
+            // trees this chat already grew, smaller, behind the one growing now
+            val grown = garden.grown.takeLast(5)
+            grown.forEachIndexed { i, sp ->
+                val gen = garden.generation - grown.size + i
+                val x = size.width * (0.58f + 0.045f * i)
+                drawTree(sp, 1f, garden.drawSeed(gen), Offset(x, ground + 2f), size.height * (0.5f + 0.04f * i), sway * 0.8f, night = night)
+            }
+            drawTree(garden.species, grow.value, garden.drawSeed(garden.generation), Offset(size.width * 0.84f, ground - 6f), size.height * 0.9f, sway, night = night)
         }
         Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
@@ -755,6 +763,7 @@ private fun GardenHeader(
                 Text(profileName, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     (if (isGroup) "🌳 Shared garden · $memberCount · " else "") +
+                        (if (garden.generation > 0) "🌳×${garden.generation} · " else "") +
                         "${garden.stage.emoji} ${if (isGroup) "" else "Shared "}${garden.species.name.lowercase()} · ${(garden.progress * 100).toInt()}%" +
                         (if (disappearSecs > 0) " · ⏳" else ""),
                     color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelMedium,

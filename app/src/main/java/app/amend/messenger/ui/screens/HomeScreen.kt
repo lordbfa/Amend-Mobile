@@ -454,6 +454,7 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int, onScan: () -> Unit, onGrove: () -> Unit = {}, onInstant: () -> Unit = {}) {
+    val growing = remember(trees) { repo.growingSpecies() }
     val hour = rememberHourOfDay()
     val sway by rememberSway()
     val efficiency = LocalEfficiency.current
@@ -506,7 +507,7 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
                 )
             }
             treeCenter = Offset(size.width * 0.78f, ground - 40f)
-            drawTree(app.amend.messenger.eco.Species.all[(trees) % app.amend.messenger.eco.Species.all.size], progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night, autumn = mood.autumn, snow = mood.snow)
+            drawTree(growing, progress.coerceAtLeast(0.12f), 7 + trees, Offset(size.width * 0.78f, ground - 34f), size.height * 0.95f, sway, night = night, autumn = mood.autumn, snow = mood.snow)
             if (mood.hasPrecip) drawPrecip(mood.rain, mood.snow, precipPhase, efficiency)
         }
         // SOS (tap 4×) and QR scanner, top-right
