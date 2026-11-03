@@ -180,9 +180,6 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
                         )
-                        androidx.compose.material3.TextButton(onClick = { scanning = true }) {
-                            Text("📱 Scan from my other phone", color = Color.White)
-                        }
                         Spacer(Modifier.weight(1f))
                         Button(
                             onClick = {
@@ -235,6 +232,9 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
                         )
+                        androidx.compose.material3.TextButton(onClick = { scanning = true }) {
+                            Text("📱 Scan from my other phone", color = Color.White)
+                        }
                         Spacer(Modifier.weight(1f))
                         Button(
                             onClick = {
