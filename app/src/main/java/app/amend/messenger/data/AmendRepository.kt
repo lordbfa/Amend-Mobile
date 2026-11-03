@@ -1295,10 +1295,12 @@ class AmendRepository(
         if (e.createdAt <= settings.modListAt) return
         val added = keys - settings.modBlocked
         val removed = settings.modBlocked - keys
+        // lifting a moderator block only undoes the block the list made, never one you made yourself
+        val madeByList = (settings.modAdded + (added - settings.blocked)) - removed
+        val unblock = removed.filter { it in settings.modAdded }
         settings = settings.copy(
-            modBlocked = keys, modListAt = e.createdAt,
-            // lifting a moderator block only undoes the block the list made, never one you made yourself
-            blocked = settings.blocked + added - removed.filter { it !in userBlocked() },
+            modBlocked = keys, modListAt = e.createdAt, modAdded = madeByList,
+            blocked = settings.blocked + added - unblock.toSet(),
             accepted = settings.accepted - added,
         )
         added.forEach { if (it != me) deleteConversation(it) }
@@ -1306,9 +1308,6 @@ class AmendRepository(
         _feed.update { list -> list.filterNot { it.pubkey in keys } }
         persistSettings()
     }
-
-    /** Blocks you made yourself (as opposed to ones from the moderator list). */
-    private fun userBlocked(): Set<String> = settings.blocked - settings.modBlocked
 
     /** Moderator only: publishes a new shared blocklist signed with the moderator key. */
     suspend fun publishModerationList(moderator: KeyPair, keys: Collection<String>): Int {
