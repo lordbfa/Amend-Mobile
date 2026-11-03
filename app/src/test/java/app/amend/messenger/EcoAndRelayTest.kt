@@ -69,7 +69,25 @@ class EcoTest {
         val b = KeyPair.generate().publicKeyHex
         assertEquals(Garden.forPair(a, b, 12), Garden.forPair(b, a, 12))
         assertEquals(GrowthStage.SEED, Garden.forPair(a, b, 0).stage)
-        assertEquals(GrowthStage.MATURE, Garden.forPair(a, b, Garden.MESSAGES_TO_BLOOM).stage)
+        assertEquals(GrowthStage.MATURE, Garden.forPair(a, b, Garden.MESSAGES_TO_BLOOM - 1).stage)
+        // at 100 % a new tree of another species is planted and grows again
+        val g = Garden.forPair(a, b, Garden.MESSAGES_TO_BLOOM * 3 + 10)
+        assertEquals(3, g.generation)
+        assertEquals(3, g.grown.size)
+        assertEquals(Garden.forPair(a, b, 5).species, g.grown.first())
+        (1..3).forEach { i -> assertTrue(g.speciesFor(i).name != g.speciesFor(i - 1).name) }
+        assertEquals(g.species, Garden.forPair(b, a, Garden.MESSAGES_TO_BLOOM * 3 + 10).species)
+    }
+
+    @Test
+    fun oldTreesKeepTheirSpeciesAndNewOnesCanFlower() {
+        val old = ByteArray(32) { (it * 7 + 3).toByte() }
+        assertTrue(app.amend.messenger.eco.Species.fromSeed(old) in app.amend.messenger.eco.Species.classic)
+        val flowers = (0 until 300).map { i ->
+            app.amend.messenger.eco.Species.fromSeed(app.amend.messenger.eco.Species.markSeed(app.amend.messenger.core.crypto.Hashes.sha256("t$i".toByteArray())))
+        }
+        assertTrue(flowers.count { it.flowering } > 150)
+        assertTrue(flowers.map { it.name }.toSet().size > 15)
     }
 
     @Test

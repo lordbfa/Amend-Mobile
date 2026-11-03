@@ -218,7 +218,7 @@ private fun ForestScene(repo: AmendRepository) {
                 val ix = eco.trees.size
                 val x = treeSpacing * 0.5f + ix * treeSpacing
                 val shake = (shakes[ix] ?: 0f) * kotlin.math.sin((shakes[ix] ?: 0f) * 30f) * 0.25f
-                val species = Species.all[(ix * 3 + 1) % Species.all.size]
+                val species = repo.growingSpecies()
                 drawTree(species, growth, 1000 + ix, Offset(x, ground + 14f), size.height * 0.62f, sway, shake, night, autumn = mood.autumn, snow = mood.snow)
                 // progress ring under the growing tree
                 drawArc(

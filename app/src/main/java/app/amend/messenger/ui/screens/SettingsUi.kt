@@ -342,6 +342,7 @@ private fun PolicyPage() {
         "Messages, calls and media" to "Encrypted on your phone before they leave it (NIP-17/44 for messages, DTLS-SRTP for calls, AES-256-GCM for voice and video). Relays and file servers only see unreadable data, plus the recipient's public key and an approximate time.",
         "What is public" to "Your profile (name, about, photo) and anything you post on the community eco map (photo, place, note). Photos are stripped of hidden camera data before upload.",
         "Location" to "Used only when you ask: SOS (sent only to the people you chose), weather (rounded to about 1 km and sent to Open-Meteo), the eco map and the icon's sunrise time (on the phone).",
+        "Photos, videos, stories & Instants" to "Encrypted on your phone before upload; photos lose their hidden location data. Stories go only to your contacts (or close friends) and disappear after 24 hours. Instants disappear once opened and can't be screenshotted; your own copies stay only on this phone for a year.",
         "Shared gardens (groups)" to "Each message is encrypted separately for every member. Relays can't tell it's a group.",
         "Live location" to "Only when you start it, only to that chat, and it stops by itself at the time you choose.",
         "Nearby SOS (optional, off by default)" to "Sends an approximate location (about 100 m) to amend phones close by over Bluetooth/Wi-Fi, signed with a one-time key that isn't linked to you.",
