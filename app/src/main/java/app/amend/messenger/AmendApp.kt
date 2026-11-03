@@ -58,6 +58,10 @@ class AmendApp : Application() {
             osmdroidTileCache = java.io.File(cacheDir, "osmdroid/tiles")
         }
         keyStore.load()?.let { openRepository(it) }
+        checkBurnerExpiry()
+        appScope.launch {
+            while (true) { kotlinx.coroutines.delay(60_000); runCatching { checkBurnerExpiry() } }
+        }
     }
 
     private fun dataDir() = File(filesDir, "amend")
@@ -151,8 +155,39 @@ class AmendApp : Application() {
         return openRepository(keys)
     }
 
+    // ---------------------------------------------------------------- burner identity
+
+    private val burnerPrefs get() = getSharedPreferences("amend_burner", MODE_PRIVATE)
+
+    /** When the current burner identity self-destructs (epoch seconds), or 0 if it isn't one. */
+    fun burnerExpiresAt(): Long = burnerPrefs.getLong("expires", 0L)
+
+    /**
+     * Throws away this identity and all its data, and starts a fresh random one that
+     * deletes itself after [lifetimeSecs] (0 = keep until removed). Nothing links the two.
+     */
+    fun startBurner(lifetimeSecs: Long): AmendRepository {
+        signOut()
+        val expires = if (lifetimeSecs > 0) System.currentTimeMillis() / 1000 + lifetimeSecs else 0L
+        burnerPrefs.edit().putLong("expires", expires).putBoolean("burner", true).apply()
+        val repo = createIdentity(KeyPair.generate())
+        repo.goOnline()
+        return repo
+    }
+
+    fun isBurner(): Boolean = burnerPrefs.getBoolean("burner", false)
+
+    /** Wipes an expired burner identity (checked at start and every minute). */
+    fun checkBurnerExpiry() {
+        val exp = burnerExpiresAt()
+        if (exp > 0 && System.currentTimeMillis() / 1000 >= exp && _repository.value != null) {
+            signOut()
+        }
+    }
+
     /** Removes the identity and all local data from this device. */
     fun signOut() {
+        burnerPrefs.edit().clear().apply()
         LiveService.stop(this)
         eventsJob?.cancel()
         _repository.value?.goOffline()

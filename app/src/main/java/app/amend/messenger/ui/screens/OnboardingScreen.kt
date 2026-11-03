@@ -180,6 +180,9 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
                         )
+                        androidx.compose.material3.TextButton(onClick = { scanning = true }) {
+                            Text("📱 Scan from my other phone", color = Color.White)
+                        }
                         Spacer(Modifier.weight(1f))
                         Button(
                             onClick = {
@@ -204,6 +207,15 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                     Step.RESTORE -> {
                         var input by remember { mutableStateOf("") }
                         var error by remember { mutableStateOf<String?>(null) }
+                        var scanning by remember { mutableStateOf(false) }
+                        if (scanning) {
+                            androidx.compose.ui.window.Dialog(
+                                onDismissRequest = { scanning = false },
+                                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                            ) {
+                                QrScannerScreen(myKey = "", linkMode = true, onFound = { input = it; error = null; scanning = false }, onClose = { scanning = false })
+                            }
+                        }
                         Spacer(Modifier.height(40.dp))
                         Text("Restore your key", style = MaterialTheme.typography.headlineMedium, color = Color.White)
                         Spacer(Modifier.height(8.dp))

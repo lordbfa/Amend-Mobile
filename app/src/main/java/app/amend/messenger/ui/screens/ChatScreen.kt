@@ -722,6 +722,36 @@ private fun MessageBubble(
     // horizontal drag to reply
     val drag = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // on-device translation / voice transcription shown under the bubble
+    var langNote by remember(message.id) { mutableStateOf<String?>(null) }
+    var langBusy by remember(message.id) { mutableStateOf(false) }
+    val canTranslate = !mine && message.type == MessageType.TEXT && message.text.isNotBlank()
+    val canTranscribe = message.type == MessageType.VOICE && app.amend.messenger.util.VoiceTranscriber.supported
+    fun translate() {
+        langBusy = true; langNote = null
+        scope.launch {
+            val r = app.amend.messenger.util.MessageTranslator.translate(message.text, app.amend.messenger.ui.I18n.current)
+            langBusy = false
+            langNote = when (r) {
+                is app.amend.messenger.util.MessageTranslator.Result.Done -> "🌐 ${r.from}: ${r.text}"
+                app.amend.messenger.util.MessageTranslator.Result.SameLanguage -> "🌐 Already in your language"
+                app.amend.messenger.util.MessageTranslator.Result.Unknown -> "🌐 Couldn't tell which language this is"
+                is app.amend.messenger.util.MessageTranslator.Result.Failed -> "🌐 ${r.reason}"
+            }
+        }
+    }
+    fun transcribe() {
+        val media = app.amend.messenger.data.MediaInfo.fromJson(message.extra) ?: return
+        langBusy = true; langNote = null
+        scope.launch {
+            val file = runCatching { repo.fetchMedia(media) }.getOrNull()
+            val r = if (file == null) Result.failure(IllegalStateException("Couldn't download the voice note"))
+                else app.amend.messenger.util.VoiceTranscriber.transcribe(context, file, java.util.Locale.getDefault().toLanguageTag())
+            langBusy = false
+            langNote = r.fold({ "📝 $it" }, { "📝 ${it.message}" })
+        }
+    }
 
     Column(
         modifier.fillMaxWidth(),
@@ -818,6 +848,15 @@ private fun MessageBubble(
                 }
             }
         }
+        if (langBusy || langNote != null) {
+            Text(
+                androidx.compose.ui.text.AnnotatedString(if (langBusy) "…" else langNote!!),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                modifier = Modifier.widthIn(max = 300.dp).padding(horizontal = 10.dp, vertical = 2.dp)
+                    .clickable(enabled = !langBusy) { langNote = null },
+            )
+        }
         // reactions under the bubble
         if (message.reactions.isNotEmpty()) {
             Row(
@@ -861,6 +900,8 @@ private fun MessageBubble(
                 )
             }
             if (!scheduled) DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
+            if (canTranslate) DropdownMenuItem(text = { Text("Translate") }, onClick = { showReactions = false; translate() })
+            if (canTranscribe) DropdownMenuItem(text = { Text("Transcribe") }, onClick = { showReactions = false; transcribe() })
             DropdownMenuItem(text = { Text("Copy") }, onClick = {
                 showReactions = false
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(message.text))
@@ -900,7 +941,7 @@ private fun SosMessageContent(message: ChatMessage, live: app.amend.messenger.da
 /** Turns http(s) and www links in a message into tappable links. */
 private val URL_REGEX = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"]+)""")
 
-private fun linkify(text: String, color: Color): androidx.compose.ui.text.AnnotatedString =
+internal fun linkify(text: String, color: Color): androidx.compose.ui.text.AnnotatedString =
     androidx.compose.ui.text.buildAnnotatedString {
         var last = 0
         for (m in URL_REGEX.findAll(text)) {

@@ -1,0 +1,5 @@
+# Serve nostr.json as JSON and let Nostr apps on any origin read it (NIP-05)
+<Files "nostr.json">
+  ForceType application/json
+  Header set Access-Control-Allow-Origin "*"
+</Files>
