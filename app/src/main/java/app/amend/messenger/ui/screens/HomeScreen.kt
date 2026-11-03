@@ -91,6 +91,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.amend.messenger.AmendApp
 import app.amend.messenger.MainActivity
@@ -420,7 +422,7 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: 
     val (accepted, requests) = sorted.partition { repo.isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-        item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan) }
+        item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan, onGrove = { openChat(GROVE_ROUTE) }) }
         // Friends who need help right now — always on top
         val activeSos = incomingSos.values.filter { it.active }.sortedByDescending { it.updatedAt }
         items(activeSos, key = { "sos" + it.peer }) { sos ->
@@ -448,7 +450,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int, onScan: () -> Unit) {
+private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int, onScan: () -> Unit, onGrove: () -> Unit = {}) {
     val hour = rememberHourOfDay()
     val sway by rememberSway()
     val efficiency = LocalEfficiency.current
@@ -510,6 +512,13 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SosButton()
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { haptics.tap(); onGrove() },
+                modifier = Modifier.clip(CircleShape).background(Color(0x33FFFFFF)),
+            ) {
+                Text("🌿", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "The Grove: public notes" })
+            }
             Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = onScan,

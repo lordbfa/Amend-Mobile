@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>amend — Privacy Policy</title>
+<meta name="description" content="How amend, the decentralised encrypted messenger, handles your data.">
+<style>
+  :root { --bg:#f6faf7; --fg:#14231b; --muted:#4d6157; --accent:#1f8f5a; --card:#ffffff; --line:#dbe7df; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0d1612; --fg:#e7f2ec; --muted:#a3b8ad; --accent:#5be39b; --card:#14211b; --line:#22342b; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:40px 16px 64px; }
+  h1 { font-size:2rem; margin:0 0 4px; }
+  h2 { font-size:1.15rem; margin:32px 0 8px; color:var(--accent); }
+  p, li { color:var(--fg); }
+  .muted { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; margin-top:20px; }
+  a { color:var(--accent); }
+  ul { padding-left:1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🌱 amend — Privacy Policy</h1>
+  <p class="muted">Last updated: 3 November 2026 · Applies to the amend app for Android and Wear OS.</p>
+
+  <div class="card">
+    <strong>In short:</strong> amend has no accounts, no ads, no analytics and no trackers. Your messages are end-to-end encrypted on your phone.
+    We (the developer) run no message servers and cannot read, sell or hand over your messages.
+  </div>
+
+  <h2>1. Who we are</h2>
+  <p>amend is developed by Ahmed Bhuiyan Faisal, 40700 Jyväskylä, Finland. Contact: <a href="mailto:pabblesart@protonmail.com">pabblesart@protonmail.com</a>.</p>
+
+  <h2>2. Your identity</h2>
+  <p>Your identity is a cryptographic key pair created on your phone and stored in Android's secure storage. There is no sign-up, phone number or email address.
+  We never receive your private key. If you lose it without a backup, nobody — including us — can recover it.</p>
+
+  <h2>3. Messages, groups, calls and media</h2>
+  <ul>
+    <li>Messages are encrypted on your device (Nostr NIP-17 / NIP-44 / NIP-59) and delivered through independent Nostr relays. Relays see only encrypted data, the recipient's public key and an approximate time.</li>
+    <li>Shared gardens (group chats) are encrypted separately for each member; relays cannot tell a message belongs to a group.</li>
+    <li>Photos, voice notes and videos are encrypted with AES-256-GCM before upload to Blossom file servers, which store only unreadable data. Hidden camera data (EXIF/location) is removed first.</li>
+    <li>Voice and video calls are encrypted with DTLS-SRTP. When a direct path isn't possible, encrypted call traffic may be relayed by Cloudflare TURN.</li>
+    <li>Unsent messages are deleted on your phone and a deletion request is sent to the recipients' apps. Disappearing messages are deleted on all phones after the time you choose, and relays that support it are asked to delete them too.</li>
+  </ul>
+
+  <h2>4. What is public</h2>
+  <p>Your profile (name, about, photo and an optional name@domain address) and anything you choose to post on the community eco map (photo, place and note) are public on Nostr.</p>
+
+  <h2>5. Location</h2>
+  <ul>
+    <li><strong>SOS:</strong> your location is sent, encrypted, only to the emergency contacts you chose, and only while SOS is active.</li>
+    <li><strong>Live location:</strong> only when you start it, only to that chat, and it stops automatically at the time you choose.</li>
+    <li><strong>Nearby SOS</strong> (optional, off by default): an approximate location (about 100 m) is sent to amend phones close by over Bluetooth/Wi-Fi, signed with a one-time key that is not linked to your identity.</li>
+    <li><strong>Weather:</strong> your location is rounded to about 1 km and sent to Open-Meteo.</li>
+    <li><strong>Eco map:</strong> a location is published only for spots you choose to post.</li>
+  </ul>
+  <p>amend uses a foreground service for location only while SOS or live location is active, and shows a notification while it runs.</p>
+
+  <h2>6. Data that stays on your phone</h2>
+  <p>Steps and walking reports, check-ins, fake calls, scheduled messages, your forest, points, streaks and settings never leave your device.
+  If you turn on <em>Friends' forests</em>, only your tree count, points and streak are sent — encrypted — to your contacts.</p>
+
+  <h2>7. Translation and transcription</h2>
+  <p>Translating a message and transcribing a voice note happen entirely on your phone (Google ML Kit and Android's on-device speech recogniser). The first time you translate a language, its model is downloaded once from Google. Your messages and voice notes are never uploaded.</p>
+
+  <h2>8. Services amend connects to</h2>
+  <p>Nostr relays (messages), Blossom servers (encrypted files), Cloudflare TURN (call relay), Google STUN (finding a call path), Open-Meteo (weather), OpenStreetMap (map tiles), Google Nearby Connections (offline mesh, on-device), Google ML Kit model downloads (translation), and the website behind a name@domain address when you look one up.
+  Like any website, these services can see your IP address. If you enable Tor in amend (with the Orbot app running), all traffic except calls is routed through Tor instead.</p>
+
+  <h2>9. Permissions</h2>
+  <p>Camera, microphone, photos, location, nearby devices, notifications and activity recognition are requested only when you use the feature that needs them, and can be revoked at any time in Android settings.</p>
+
+  <h2>10. Children</h2>
+  <p>amend is not directed at children under 13 and does not knowingly collect data from them.</p>
+
+  <h2>11. Deleting your data</h2>
+  <p>In the app, go to <em>Settings → Privacy &amp; security → Remove identity</em>. This deletes your key and all messages from your phone. Because we hold no account or messages, there is nothing for us to delete on our side.
+  Encrypted copies held by independent relays are unreadable without your key and may expire according to each relay's policy.</p>
+
+  <h2>12. Changes</h2>
+  <p>If this policy changes, the new version will be published on this page with an updated date.</p>
+
+  <h2>13. Contact</h2>
+  <p>Ahmed Bhuiyan Faisal · <a href="mailto:pabblesart@protonmail.com">pabblesart@protonmail.com</a> · 40700 Jyväskylä, Finland</p>
+</main>
+</body>
+</html>

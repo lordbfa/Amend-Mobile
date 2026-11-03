@@ -39,6 +39,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import app.amend.messenger.ui.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
+import app.amend.messenger.net.Nip05
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,6 +108,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                 LeafAvatar(repo.me, me, 96.dp, modifier = Modifier.clickable { editing = true })
                 Spacer(Modifier.height(12.dp))
                 Text(me?.name?.ifBlank { null } ?: "Set your name", style = MaterialTheme.typography.headlineSmall)
+                if (!me?.nip05.isNullOrBlank()) Nip05Badge(me!!.nip05, repo.me)
                 if (!me?.about.isNullOrBlank()) {
                     Text(
                         me!!.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -173,6 +176,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
         var about by remember { mutableStateOf(me?.about ?: "") }
         var avatar by remember { mutableStateOf(me?.avatar ?: "") }
         var picture by remember { mutableStateOf(me?.picture ?: "") }
+        var nip05 by remember { mutableStateOf(me?.nip05 ?: "") }
         AlertDialog(
             onDismissRequest = { editing = false },
             title = { Text("Your profile") },
@@ -187,6 +191,16 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                     )
                     OutlinedTextField(name, { name = it.take(40) }, label = { Text("Name") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                     OutlinedTextField(about, { about = it.take(140) }, label = { Text("About") }, shape = RoundedCornerShape(14.dp))
+                    OutlinedTextField(
+                        nip05, { nip05 = it.trim().lowercase().take(100) }, label = { Text("Name address (optional)") },
+                        placeholder = { Text("you@getamend.app") }, singleLine = true, shape = RoundedCornerShape(14.dp),
+                        isError = nip05.isNotEmpty() && Nip05.parse(nip05) == null,
+                    )
+                    Text(
+                        "A name@domain address friends can type instead of your ID. The domain must list your public key in /.well-known/nostr.json — amend shows ✓ only when it does.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(repo.me)); haptics.success() }) { Text("Copy public key (hex)") }
                     Text(if (picture.isEmpty()) "Avatar" else "Avatar (shown when there's no photo)", style = MaterialTheme.typography.labelLarge)
                     AVATAR_CHOICES.chunked(8).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -206,7 +220,8 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                 TextButton(onClick = {
                     editing = false
                     haptics.success()
-                    scope.launch { repo.updateProfile(name, about, avatar, me?.hue ?: -1f, picture) }
+                    val addr = nip05.takeIf { it.isEmpty() || Nip05.parse(it) != null } ?: (me?.nip05 ?: "")
+                    scope.launch { repo.updateProfile(name, about, avatar, me?.hue ?: -1f, picture, addr) }
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } },
@@ -283,6 +298,7 @@ internal fun BackupCard(nsec: String) {
     val clipboard = LocalClipboardManager.current
     val haptics = rememberHaptics()
     var copied by remember { mutableStateOf(false) }
+    var linking by remember { mutableStateOf(false) }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Backup key 🔑", style = MaterialTheme.typography.titleMedium)
@@ -315,7 +331,38 @@ internal fun BackupCard(nsec: String) {
                     haptics.success()
                 }) { Text(if (copied) "Copied — store it somewhere safe and clear your clipboard" else "Copy backup key") }
             }
+            TextButton(onClick = { haptics.tap(); linking = true }) { Text("📱 Link another phone") }
         }
+    }
+    if (linking) {
+        var show by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { linking = false },
+            confirmButton = { TextButton(onClick = { linking = false }) { Text("Done") } },
+            title = { Text("Link another phone") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "On the other phone install amend, choose \"I already have a key\" → \"Scan from my other phone\", then hold the box below. " +
+                            "Both phones will share your identity and messages. Only do this with your own phones.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        Modifier.size(240.dp).clip(RoundedCornerShape(14.dp))
+                            .background(if (show) Color.White else MaterialTheme.colorScheme.surfaceVariant)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onPress = { haptics.heavy(); show = true; tryAwaitRelease(); show = false })
+                            }
+                            .padding(10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (show) LeafQr(LINK_PREFIX + nsec, Modifier.fillMaxSize())
+                        else Text("Hold to show the link code", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -566,3 +613,18 @@ internal fun ReadReceiptsCard(repo: AmendRepository) {
     }
 }
 
+
+
+/** "✓ name@domain" when the domain vouches for [pubkey], otherwise the address greyed out. */
+@Composable
+fun Nip05Badge(address: String, pubkey: String, modifier: Modifier = Modifier) {
+    var verified by remember(address, pubkey) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(address, pubkey) { verified = Nip05.verify(address, pubkey) }
+    val shown = Nip05.display(address)
+    Text(
+        when (verified) { true -> "✓ $shown"; false -> "$shown · not verified"; null -> shown },
+        style = MaterialTheme.typography.labelLarge,
+        color = if (verified == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(top = 2.dp),
+    )
+}
