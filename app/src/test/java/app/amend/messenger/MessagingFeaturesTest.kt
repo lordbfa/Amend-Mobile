@@ -257,9 +257,12 @@ class MessagingFeaturesTest {
         // a first chat message makes alice a conversation; accepting her lets her stats in
         bob.injectMeshEvent(wrap(alice, bob.me, Kinds.CHAT_MESSAGE, "hi", listOf(listOf("p", bob.me)), t - 5).second)
         bob.accept(alice.publicKeyHex)
-        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.ECO_STATS, """{"trees":3,"points":420,"streak":7}""", listOf(listOf("p", bob.me)), t).second)
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.ECO_STATS, """{"trees":3,"points":420,"streak":7,"forest":["a1b2c3","0f0f0f","nothex","DEADBE"],"growing":20}""", listOf(listOf("p", bob.me)), t).second)
         assertEquals(3, bob.friendStats.value[alice.publicKeyHex]?.trees)
         assertEquals(7, bob.friendStats.value[alice.publicKeyHex]?.streak)
+        // their forest comes along as short seeds; anything malformed is dropped
+        assertEquals(listOf("a1b2c3", "0f0f0f", "deadbe"), bob.friendStats.value[alice.publicKeyHex]?.forest)
+        assertEquals(20, bob.friendStats.value[alice.publicKeyHex]?.growing)
         bob.injectMeshEvent(wrap(alice, bob.me, Kinds.ECO_STATS, """{"off":true}""", listOf(listOf("p", bob.me)), t + 1).second)
         assertNull(bob.friendStats.value[alice.publicKeyHex])
         // stats never show up as a chat message
