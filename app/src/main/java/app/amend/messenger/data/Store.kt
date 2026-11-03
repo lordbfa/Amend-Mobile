@@ -55,6 +55,8 @@ class Store(private val dir: File) {
         val modAdded: Set<String> = emptySet(),
         /** Close friends: who gets your Instants and close-friends stories by default. */
         val closeFriends: Set<String> = emptySet(),
+        /** Who sees my Instants: everyone in my chat list (default), or only [closeFriends]. */
+        val instantsToAll: Boolean = true,
     )
 
     @Suppress("UNCHECKED_CAST")
@@ -78,6 +80,7 @@ class Store(private val dir: File) {
             modListAt = m.long("modListAt") ?: 0,
             modAdded = strList("modAdded").toSet(),
             closeFriends = strList("closeFriends").toSet(),
+            instantsToAll = m["instantsToAll"] != false,
         )
     }
 
@@ -92,7 +95,7 @@ class Store(private val dir: File) {
                 "disappear" to s.disappear,
                 "disappearAt" to s.disappearAt,
                 "unsent" to s.unsent.entries.toList().takeLast(2000).associate { it.key to it.value },
-                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt, "modAdded" to s.modAdded.toList(), "closeFriends" to s.closeFriends.toList(),
+                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt, "modAdded" to s.modAdded.toList(), "closeFriends" to s.closeFriends.toList(), "instantsToAll" to s.instantsToAll,
             )
         )
     )
