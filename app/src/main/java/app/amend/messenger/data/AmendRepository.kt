@@ -1270,7 +1270,7 @@ class AmendRepository(
     }
 
     fun block(peer: String) {
-        settings = settings.copy(blocked = settings.blocked + peer, accepted = settings.accepted - peer)
+        settings = settings.copy(blocked = settings.blocked + peer, accepted = settings.accepted - peer, modAdded = settings.modAdded - peer)
         deleteConversation(peer)
         persistSettings()
     }
