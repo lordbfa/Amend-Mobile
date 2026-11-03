@@ -27,6 +27,8 @@ enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE, CALL, ECO_PROO
     UNSENT,
     /** A small centred note inside a chat ("⏳ Disappearing messages: 1 day", "Faisal named the garden …"). */
     NOTICE,
+    /** Live location being shared for a while (see LiveProtocol). [ChatMessage.scheduledAt] holds "until". */
+    LIVE,
 }
 
 data class ChatMessage(

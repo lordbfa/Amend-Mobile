@@ -89,6 +89,7 @@ object WearSync {
         MessageType.ECO_PROOF -> "🌳 A tree they planted"
         MessageType.UNSENT -> "🚫 Message unsent"
         MessageType.NOTICE -> m.text
+        MessageType.LIVE -> "📍 Live location"
         MessageType.TEXT -> m.text
     }.take(300)
 
