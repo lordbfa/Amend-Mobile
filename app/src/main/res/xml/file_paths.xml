@@ -2,4 +2,8 @@
 <paths>
     <!-- photos for eco reports, taken with the camera app -->
     <cache-path name="eco" path="eco/" />
+    <!-- photos taken with the camera to send in a chat or story -->
+    <cache-path name="camera" path="camera/" />
+    <!-- achievement cards shared to other apps -->
+    <cache-path name="share" path="share/" />
 </paths>

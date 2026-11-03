@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -155,6 +156,25 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
         if (result.values.all { it }) showVideoRecorder = true
     }
     DisposableEffect(Unit) { onDispose { voiceRecorder.cancel(); AudioPlayback.stop() } }
+    // photos & videos from the gallery or camera
+    var pickedMedia by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+    var attachMenu by remember { mutableStateOf(false) }
+    var showInstantCamera by remember { mutableStateOf(false) }
+    val galleryPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
+        if (uris.isNotEmpty()) pickedMedia = uris
+    }
+    var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val cameraShot = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val u = cameraUri
+        if (ok && u != null) pickedMedia = listOf(u)
+    }
+    fun openCamera() {
+        val dir = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
+        val f = java.io.File(dir, "shot-${System.currentTimeMillis()}.jpg")
+        val u = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", f)
+        cameraUri = u
+        runCatching { cameraShot.launch(u) }
+    }
     var sendButtonPos by remember { mutableStateOf(Offset.Zero) }
     var gardenPos by remember { mutableStateOf(Offset.Zero) }
     var accepted by remember { mutableStateOf(repo.isAccepted(peer) || messages.any { it.fromMe }) }
@@ -327,6 +347,35 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
+            if (!recordingVoice) {
+                Box {
+                    Box(
+                        Modifier.size(54.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { haptics.tap(); attachMenu = true },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Rounded.Add, contentDescription = "Send a photo, video or Instant", tint = MaterialTheme.colorScheme.primary) }
+                    DropdownMenu(expanded = attachMenu, onDismissRequest = { attachMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Photo or video") },
+                            onClick = {
+                                attachMenu = false
+                                galleryPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                            },
+                        )
+                        DropdownMenuItem(text = { Text("Camera") }, onClick = { attachMenu = false; openCamera() })
+                        DropdownMenuItem(
+                            text = { Text("Round video message") },
+                            leadingIcon = { Icon(Icons.Rounded.Videocam, contentDescription = null) },
+                            onClick = {
+                                attachMenu = false
+                                if (hasPermission(context, Manifest.permission.CAMERA) && hasPermission(context, Manifest.permission.RECORD_AUDIO)) showVideoRecorder = true
+                                else mediaPermissions.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                            },
+                        )
+                        DropdownMenuItem(text = { Text("📸 Instant (disappears after viewing)") }, onClick = { attachMenu = false; showInstantCamera = true })
+                    }
+                }
+                Spacer(Modifier.size(8.dp))
+            }
             if (recordingVoice) {
                 RecordingBar(voiceRecorder, cancellingVoice, Modifier.weight(1f))
             } else TextField(
@@ -346,18 +395,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             Spacer(Modifier.size(8.dp))
             val canSend = input.isNotBlank()
             if (!canSend) {
-                if (!recordingVoice) {
-                    // short round video message
-                    Box(
-                        Modifier.size(54.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable {
-                            haptics.tap()
-                            if (hasPermission(context, Manifest.permission.CAMERA) && hasPermission(context, Manifest.permission.RECORD_AUDIO)) showVideoRecorder = true
-                            else mediaPermissions.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-                        },
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Rounded.Videocam, contentDescription = "Record video message", tint = MaterialTheme.colorScheme.primary) }
-                    Spacer(Modifier.size(8.dp))
-                }
+
                 // hold to record a voice message, slide left to cancel
                 val micScale by animateFloatAsState(if (recordingVoice) 1.35f else 1f, spring(Spring.DampingRatioMediumBouncy), label = "mic")
                 val density = androidx.compose.ui.platform.LocalDensity.current
@@ -505,6 +543,28 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
                 scope.launch { repo.scheduleText(peer, text, at, reply) }
             },
             onDismiss = { showSchedule = false },
+        )
+    }
+    if (pickedMedia.isNotEmpty()) {
+        val uris = pickedMedia
+        MediaSendDialog(uris, repo.displayName(peer), onDismiss = { pickedMedia = emptyList() }) { caption ->
+            pickedMedia = emptyList()
+            val reply = replyTo?.id
+            replyTo = null
+            haptics.success()
+            repo.launchInBackground {
+                sendPickedMedia(context, repo, peer, uris, caption, reply)?.let { err ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+    if (showInstantCamera) {
+        InstantCameraScreen(
+            repo = repo, presetRecipients = listOf(peer).filter { !isGroup }, groupPeer = peer.takeIf { isGroup },
+            onClose = { showInstantCamera = false },
         )
     }
     reporting?.let { key ->
@@ -792,6 +852,9 @@ private fun MessageBubble(
     var langNote by remember(message.id) { mutableStateOf<String?>(null) }
     var langBusy by remember(message.id) { mutableStateOf(false) }
     var strangerRevealed by remember(message.id) { mutableStateOf(false) }
+    val mediaKind = remember(message.extra, message.type) {
+        if (message.type == MessageType.VIDEO || message.type == MessageType.FILE) app.amend.messenger.data.MediaInfo.fromJson(message.extra)?.kind else null
+    }
     val canTranslate = !mine && message.type == MessageType.TEXT && message.text.isNotBlank()
     val canTranscribe = message.type == MessageType.VOICE && app.amend.messenger.util.VoiceTranscriber.supported
     fun translate() {
@@ -855,7 +918,7 @@ private fun MessageBubble(
                         if (message.cardId == "stop") Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673)))
                         else Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFF7F0000)))
                     }
-                    else if (message.type == MessageType.VIDEO) Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+                    else if (message.type == MessageType.VIDEO && mediaKind != app.amend.messenger.data.MediaKind.CLIP) Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
                     else if (message.type == MessageType.ECO_CARD) Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673), Color(0xFF4FC3F7)))
                     else if (mine) Brush.linearGradient(listOf(Color(0xFF2BB673), Color(0xFF1C9A62)))
                     else Brush.linearGradient(listOf(if (dark) Color(0xFF1B3A2D) else Color.White, if (dark) Color(0xFF16352A) else Color(0xFFF1F8F3)))
@@ -898,8 +961,14 @@ private fun MessageBubble(
                     EcoCardContent(repo, message)
                 } else if (message.type == MessageType.VOICE) {
                     VoiceBubble(repo, message, textColor)
+                } else if (message.type == MessageType.VIDEO && mediaKind == app.amend.messenger.data.MediaKind.CLIP) {
+                    ClipBubble(repo, message, textColor)
                 } else if (message.type == MessageType.VIDEO) {
                     VideoBubble(repo, message)
+                } else if (message.type == MessageType.FILE && mediaKind == app.amend.messenger.data.MediaKind.PHOTO) {
+                    PhotoBubble(repo, message, textColor)
+                } else if (message.type == MessageType.FILE && mediaKind == app.amend.messenger.data.MediaKind.INSTANT) {
+                    InstantBubble(repo, message, textColor)
                 } else if (message.type == MessageType.CALL) {
                     CallLogContent(message, textColor, onCall)
                 } else if (message.type == MessageType.ECO_PROOF) {

@@ -302,6 +302,63 @@ data class EcoState(
     }
 }
 
+/**
+ * A 24-hour story. It is encrypted for each contact separately (gift-wrapped), so relays
+ * never see who can watch it. [media] is a [MediaInfo] JSON for a photo/video story, or
+ * null for a text story drawn on the [bg] gradient.
+ */
+data class Story(
+    val id: String,
+    val author: String,
+    val createdAt: Long,
+    val expiresAt: Long,
+    val media: String? = null,
+    val text: String = "",
+    val bg: Int = 0,
+    val closeFriends: Boolean = false,
+    /** For my stories: who it went to, and who watched it (key → time). */
+    val audience: List<String> = emptyList(),
+    val viewers: Map<String, Long> = emptyMap(),
+    /** For others' stories: have I watched it? */
+    val seen: Boolean = false,
+) {
+    fun toMap(): Map<String, Any?> = linkedMapOf(
+        "id" to id, "author" to author, "createdAt" to createdAt, "expiresAt" to expiresAt, "media" to media,
+        "text" to text, "bg" to bg, "close" to closeFriends, "audience" to audience, "viewers" to viewers, "seen" to seen,
+    )
+
+    companion object {
+        const val MAX_TEXT = 700
+
+        @Suppress("UNCHECKED_CAST")
+        fun fromMap(m: Map<String, Any?>): Story? = Story(
+            id = m.str("id") ?: return null,
+            author = m.str("author") ?: return null,
+            createdAt = m.long("createdAt") ?: 0,
+            expiresAt = m.long("expiresAt") ?: 0,
+            media = m.str("media"),
+            text = m.str("text") ?: "",
+            bg = (m.long("bg") ?: 0).toInt(),
+            closeFriends = m["close"] == true,
+            audience = (m["audience"] as? List<Any?>).orEmpty().mapNotNull { it as? String },
+            viewers = (m["viewers"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
+            seen = m["seen"] == true,
+        )
+    }
+}
+
+/** An Instant you sent, kept only on this phone (for a year) so you can look back or share it as a story. */
+data class ArchivedInstant(val id: String, val createdAt: Long, val caption: String, val recipients: Int) {
+    fun toMap(): Map<String, Any?> = linkedMapOf("id" to id, "createdAt" to createdAt, "caption" to caption, "recipients" to recipients)
+
+    companion object {
+        fun fromMap(m: Map<String, Any?>): ArchivedInstant? {
+            val id = m.str("id")?.takeIf { it.matches(Regex("^[0-9a-f]{8,64}$")) } ?: return null
+            return ArchivedInstant(id, m.long("createdAt") ?: 0, m.str("caption") ?: "", (m.long("recipients") ?: 0).toInt())
+        }
+    }
+}
+
 /** A friend's forest, as they chose to share it (encrypted, contacts only). */
 data class FriendStats(
     val trees: Int, val points: Int, val streak: Int, val updatedAt: Long,

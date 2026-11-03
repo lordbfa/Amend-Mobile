@@ -149,6 +149,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                 }
             }
         }
+        InstantArchiveCard(repo)
         Text(
             "Friends scan your code or paste your ID to start a private chat.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

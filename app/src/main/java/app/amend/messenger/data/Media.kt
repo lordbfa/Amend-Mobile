@@ -8,13 +8,41 @@ import app.amend.messenger.core.nostr.Event
 import java.util.Base64
 
 enum class MediaKind(val tag: String) {
-    VOICE("voice"), VIDEO("video"), FILE("file");
+    /** Hold-to-record voice note. */
+    VOICE("voice"),
+    /** Round video note recorded in amend. */
+    VIDEO("video"),
+    FILE("file"),
+    /** A photo from the gallery or camera. */
+    PHOTO("photo"),
+    /** A normal (rectangular) video from the gallery. */
+    CLIP("clip"),
+    /** An Instant: a camera-only photo that disappears once it's opened (or after 24 h). */
+    INSTANT("instant");
+
+    /** How a message carrying this media is stored and drawn. */
+    val messageType: MessageType get() = when (this) {
+        VOICE -> MessageType.VOICE
+        VIDEO, CLIP -> MessageType.VIDEO
+        FILE, PHOTO, INSTANT -> MessageType.FILE
+    }
+
+    /** Preview text in the chat list and notifications. */
+    val label: String get() = when (this) {
+        VOICE -> "🎤 Voice message"
+        VIDEO -> "🎥 Video message"
+        FILE -> "📎 File"
+        PHOTO -> "📷 Photo"
+        CLIP -> "🎬 Video"
+        INSTANT -> "📸 Instant"
+    }
 
     companion object {
         fun of(tag: String?, mime: String): MediaKind = entries.firstOrNull { it.tag == tag }
             ?: when {
                 mime.startsWith("audio/") -> VOICE
-                mime.startsWith("video/") -> VIDEO
+                mime.startsWith("video/") -> CLIP
+                mime.startsWith("image/") -> PHOTO
                 else -> FILE
             }
     }
