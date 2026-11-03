@@ -365,6 +365,12 @@ private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> 
     val eco by repo.eco.collectAsStateWithLifecycle()
     val friends by repo.friendStats.collectAsStateWithLifecycle()
     val profiles by repo.profiles.collectAsStateWithLifecycle()
+    var viewing by remember { mutableStateOf<String?>(null) }
+    viewing?.let { key ->
+        val f = friends[key]
+        if (f == null) androidx.compose.runtime.LaunchedEffect(key) { viewing = null }
+        else FriendForestDialog(repo.displayName(key), f, onDismiss = { viewing = null }, onMessage = { viewing = null; openChat(key) })
+    }
     val rows = remember(eco, friends, profiles) {
         (friends.map { (k, f) -> Triple(k, repo.displayName(k), f) } +
             Triple(repo.me, "You", app.amend.messenger.data.FriendStats(eco.trees.size, eco.totalPoints, eco.streak, 0)))
@@ -376,7 +382,7 @@ private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> 
                 Column(Modifier.weight(1f)) {
                     Text("🏆 Friends' forests", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (eco.shareStats) "Sharing your forest with your contacts (encrypted)."
+                        if (eco.shareStats) "Sharing your forest with your contacts (encrypted). Tap a friend to visit their forest."
                         else "Share your trees, points and streak with your contacts — encrypted, never public.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -390,18 +396,97 @@ private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> 
                     Row(
                         Modifier.fillMaxWidth()
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                            .then(if (key != repo.me) Modifier.clickable { openChat(key) } else Modifier)
+                            .then(if (key != repo.me) Modifier.clickable { viewing = key } else Modifier)
                             .padding(vertical = 6.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(medal, modifier = Modifier.width(32.dp))
                         Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1)
                         Text("🌳 ${f.trees}  🌱 ${f.points}  🔥 ${f.streak}", style = MaterialTheme.typography.labelMedium)
+                        if (key != repo.me) Text("  ›", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             } else if (eco.shareStats) {
                 Spacer(Modifier.height(8.dp))
                 Text("No friends are sharing yet — invite them to turn this on.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+
+/**
+ * A friend's forest, drawn from the tree seeds they shared. It's their profile, so it
+ * can't be screenshotted while screenshot protection is on.
+ */
+@Composable
+private fun FriendForestDialog(name: String, f: app.amend.messenger.data.FriendStats, onDismiss: () -> Unit, onMessage: () -> Unit) {
+    val secure = app.amend.messenger.util.ScreenProtection.enabled
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            securePolicy = if (secure) androidx.compose.ui.window.SecureFlagPolicy.SecureOn else androidx.compose.ui.window.SecureFlagPolicy.SecureOff,
+        ),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(32.dp)).background(MaterialTheme.colorScheme.surface),
+        ) {
+            FriendForestScene(f)
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("$name's forest", style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatChip("🌳", "${f.trees}", "trees", Modifier.weight(1f))
+                    StatChip("🌱", "${f.points}", "points", Modifier.weight(1f))
+                    StatChip("🔥", "${f.streak}", "day streak", Modifier.weight(1f))
+                }
+                if (f.forest.isEmpty() && f.trees > 0) {
+                    Text(
+                        "$name needs the latest amend to show their trees here.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = onMessage, shape = RoundedCornerShape(16.dp)) { Text("Message") }
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendForestScene(f: app.amend.messenger.data.FriendStats) {
+    val hour = rememberHourOfDay()
+    val sway by rememberSway()
+    val night = isNight(hour)
+    val efficiency = LocalEfficiency.current
+    val density = LocalDensity.current
+    val spacing = with(density) { 70.dp.toPx() }
+    val trees = remember(f.forest) {
+        f.forest.map { seed -> Species.fromSeed(seed.chunked(2).map { it.toInt(16).toByte() }.toByteArray()) to seed.toInt(16) }
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))) {
+        val widthDp = maxOf(with(density) { ((trees.size + 2) * spacing).toDp() }, maxWidth)
+        LivingSky(Modifier.fillMaxSize(), hour = hour, animate = !efficiency)
+        Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
+            Canvas(Modifier.width(widthDp).height(260.dp)) {
+                val ground = size.height * 0.8f
+                drawRect(
+                    Brush.verticalGradient(
+                        if (night) listOf(Color(0xFF123526), Color(0xFF06140E)) else listOf(Color(0xFF5DBB6F), Color(0xFF2E8B57)),
+                        startY = ground, endY = size.height,
+                    ),
+                    topLeft = Offset(0f, ground), size = androidx.compose.ui.geometry.Size(size.width, size.height - ground),
+                )
+                trees.forEachIndexed { i, (species, seed) ->
+                    drawTree(species, 1f, seed, Offset(spacing * 0.6f + i * spacing, ground + 6f), size.height * 0.5f, sway * (1f + (i % 3) * 0.2f), night = night)
+                }
+                val ix = trees.size
+                drawTree(
+                    Species.all[(ix * 3 + 1) % Species.all.size], (f.growing / 100f).coerceAtLeast(0.04f), 1000 + ix,
+                    Offset(spacing * 0.6f + ix * spacing, ground + 12f), size.height * 0.58f, sway, night = night,
+                )
             }
         }
     }

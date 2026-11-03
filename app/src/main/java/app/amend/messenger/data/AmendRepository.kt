@@ -1365,8 +1365,10 @@ class AmendRepository(
     /** Once a day (while online): my trees/points/streak to each accepted contact, gift-wrapped. */
     private suspend fun sendEcoStatsIfDue() {
         val e = _eco.value
-        if (!e.shareStats || e.statsSentDay == today() || !isOnline()) return
-        _eco.update { it.copy(statsSentDay = today()) }
+        // once a day, and again whenever a new tree has grown
+        val mark = "${today()}:${e.trees.size}"
+        if (!e.shareStats || e.statsSentDay == mark || !isOnline()) return
+        _eco.update { it.copy(statsSentDay = mark) }
         store.saveEco(_eco.value)
         broadcastEcoStats(off = false)
     }
@@ -1374,7 +1376,11 @@ class AmendRepository(
     private suspend fun broadcastEcoStats(off: Boolean) {
         val e = _eco.value
         val content = app.amend.messenger.core.json.Json.write(
-            if (off) linkedMapOf("off" to true) else linkedMapOf("trees" to e.trees.size, "points" to e.totalPoints, "streak" to e.streak)
+            if (off) linkedMapOf("off" to true) else linkedMapOf(
+                "trees" to e.trees.size, "points" to e.totalPoints, "streak" to e.streak,
+                "forest" to e.trees.takeLast(FriendStats.MAX_FOREST).map { it.seedHex.take(6).padEnd(6, '0') },
+                "growing" to e.forest.pointsInCurrent.coerceIn(0, 99),
+            )
         )
         val contacts = _conversations.value.values
             .filter { !it.isGroup && it.peer != me && it.peer in settings.accepted && it.peer !in settings.blocked }
@@ -1395,7 +1401,12 @@ class AmendRepository(
             _friendStats.update { it - peer }
         } else {
             fun n(k: String) = ((m[k] as? Number)?.toInt() ?: 0).coerceIn(0, 10_000_000)
-            _friendStats.update { it + (peer to FriendStats(n("trees"), n("points"), n("streak"), rumor.createdAt)) }
+            _friendStats.update {
+                it + (peer to FriendStats(
+                    n("trees"), n("points"), n("streak"), rumor.createdAt,
+                    FriendStats.cleanForest(m["forest"]), n("growing").coerceIn(0, 99),
+                ))
+            }
         }
         store.saveFriendStats(_friendStats.value)
     }

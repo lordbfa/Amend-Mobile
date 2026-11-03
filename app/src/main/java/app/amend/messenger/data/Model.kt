@@ -299,12 +299,28 @@ data class EcoState(
 }
 
 /** A friend's forest, as they chose to share it (encrypted, contacts only). */
-data class FriendStats(val trees: Int, val points: Int, val streak: Int, val updatedAt: Long) {
-    fun toMap(): Map<String, Any?> = linkedMapOf("trees" to trees, "points" to points, "streak" to streak, "updatedAt" to updatedAt)
+data class FriendStats(
+    val trees: Int, val points: Int, val streak: Int, val updatedAt: Long,
+    /** Their trees as short seeds (6 hex chars each: species + shape), so their forest can be drawn here. */
+    val forest: List<String> = emptyList(),
+    /** Growth of the tree they're growing now, 0..99 points. */
+    val growing: Int = 0,
+) {
+    fun toMap(): Map<String, Any?> = linkedMapOf(
+        "trees" to trees, "points" to points, "streak" to streak, "updatedAt" to updatedAt, "forest" to forest, "growing" to growing,
+    )
 
     companion object {
+        /** Most trees anyone's shared forest shows (keeps the message small). */
+        const val MAX_FOREST = 150
+        private val SEED = Regex("^[0-9a-f]{6}$")
+
+        fun cleanForest(raw: Any?): List<String> =
+            (raw as? List<*>).orEmpty().mapNotNull { (it as? String)?.lowercase()?.takeIf { s -> SEED.matches(s) } }.take(MAX_FOREST)
+
         fun fromMap(m: Map<String, Any?>) = FriendStats(
             (m.long("trees") ?: 0).toInt(), (m.long("points") ?: 0).toInt(), (m.long("streak") ?: 0).toInt(), m.long("updatedAt") ?: 0,
+            cleanForest(m["forest"]), ((m.long("growing") ?: 0).toInt()).coerceIn(0, 99),
         )
     }
 }
