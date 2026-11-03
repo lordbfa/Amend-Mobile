@@ -84,7 +84,7 @@ import app.amend.messenger.util.Mesh
 const val SETTINGS_ROUTE = "amend:settings"
 
 /** Where people can reach the team. Empty until an address is chosen; the Contact page adapts. */
-const val SUPPORT_EMAIL = "pabblesart@protonmail.com"
+const val SUPPORT_EMAIL = "lordbfa@getamend.app"
 const val SUPPORT_NAME = "Ahmed Bhuiyan Faisal"
 const val SUPPORT_ADDRESS = "40700, Jyväskylä, Finland"
 
