@@ -167,6 +167,7 @@ class AmendRepository(
         scope.launch {
             while (true) {
                 runCatching { purgeExpired() }
+                runCatching { purgeStories() }
                 runCatching { sendDueScheduled() }
                 runCatching { sendEcoStatsIfDue() }
                 delay(20_000)
@@ -294,6 +295,10 @@ class AmendRepository(
             rumor.firstTag("e")?.let { if (text.isNotBlank()) applyEdit(peer, it, rumor.pubkey, rumor.createdAt, text) }
             return
         }
+        if (rumor.kind == Kinds.DELETION && rumor.firstTag("k") == Kinds.STORY.toString()) {
+            rumor.tagValues("e").forEach { removeStory(it, rumor.pubkey) }
+            return
+        }
         if (rumor.kind == Kinds.DELETION) {
             rumor.tagValues("e").forEach { applyUnsend(peer, it, rumor.pubkey, rumor.createdAt) }
             persistSettingsSoon()
@@ -318,9 +323,9 @@ class AmendRepository(
                 val media = MediaInfo.fromRumor(rumor) ?: return
                 val message = ChatMessage(
                     id = rumor.id, peer = peer, fromMe = fromMe,
-                    text = when (media.kind) { MediaKind.VOICE -> "🎤 Voice message"; MediaKind.VIDEO -> "🎥 Video message"; MediaKind.FILE -> "📎 File" },
+                    text = rumor.firstTag("amend-caption")?.take(MAX_CAPTION)?.ifBlank { null } ?: media.kind.label,
                     createdAt = rumor.createdAt,
-                    type = when (media.kind) { MediaKind.VOICE -> MessageType.VOICE; MediaKind.VIDEO -> MessageType.VIDEO; MediaKind.FILE -> MessageType.FILE },
+                    type = media.kind.messageType,
                     replyTo = rumor.firstTag("e"),
                     status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
                     extra = media.toJson(),
@@ -381,6 +386,9 @@ class AmendRepository(
                 applyReaction(peer, target, rumor.pubkey, rumor.content.take(8))
             }
             Kinds.RECEIPT -> if (!fromMe) applyReceipt(peer, rumor)
+            Kinds.INSTANT_OPENED -> rumor.firstTag("e")?.let { id -> if (fromMe) consumeInstantLocally(id) else markInstantOpened(id, rumor.pubkey) }
+            Kinds.STORY -> if (fromMe || (!inGroup && peer in settings.accepted)) handleStory(rumor, fromMe)
+            Kinds.STORY_VIEW -> if (!fromMe) rumor.firstTag("e")?.let { applyStoryView(it, rumor.pubkey, rumor.createdAt) }
             Kinds.ECO_STATS -> if (!fromMe && !inGroup && peer in settings.accepted) applyFriendStats(peer, rumor)
             Kinds.CALL_SIGNAL -> if (!fromMe && !inGroup) {
                 CallSignal.parse(peer, rumor, ephemeral = wrap.kind == Kinds.EPHEMERAL_GIFT_WRAP)?.let { _callSignals.tryEmit(it) }
@@ -886,7 +894,9 @@ class AmendRepository(
         peer: String, plain: ByteArray, kind: MediaKind, mime: String,
         durationMs: Long = 0, waveform: ByteArray = ByteArray(0), width: Int = 0, height: Int = 0,
         replyTo: String? = null,
+        caption: String = "",
     ): ChatMessage {
+        val cap = caption.trim().take(MAX_CAPTION)
         val enc = app.amend.messenger.core.crypto.FileCrypto.encrypt(plain)
         val draft = MediaInfo(
             kind, emptyList(), mime, enc.key.toHex(), enc.nonce.toHex(), enc.sha256Hex, enc.data.size.toLong(),
@@ -894,8 +904,8 @@ class AmendRepository(
         )
         // keep our own plain copy so it plays instantly without downloading
         localMediaFile(draft).writeBytes(plain)
-        val type = when (kind) { MediaKind.VOICE -> MessageType.VOICE; MediaKind.VIDEO -> MessageType.VIDEO; MediaKind.FILE -> MessageType.FILE }
-        val label = when (kind) { MediaKind.VOICE -> "🎤 Voice message"; MediaKind.VIDEO -> "🎥 Video message"; MediaKind.FILE -> "📎 File" }
+        val type = kind.messageType
+        val label = cap.ifEmpty { kind.label }
         val tempId = "local-" + enc.sha256Hex
         upsertMessage(ChatMessage(tempId, peer, true, label, Event.nowSeconds(), type, replyTo = replyTo, status = MessageStatus.SENDING, extra = draft.toJson()), countUnread = false)
         accept(peer)
@@ -910,6 +920,7 @@ class AmendRepository(
         val media = draft.copy(urls = blobs.map { it.url })
         val tags = (pTags(peer) + media.tags(peer).filter { it.firstOrNull() != "p" }).toMutableList()
         replyTo?.let { tags.add(listOf("e", it)) }
+        if (cap.isNotEmpty()) tags.add(listOf("amend-caption", cap))
         val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags)
         // swap the temporary bubble for the real message id
         mutex.withLock {
@@ -953,13 +964,15 @@ class AmendRepository(
                 }
             }
             runCatching {
-                sendMedia(peer, plain, media.kind, media.mime, media.durationMs, media.waveform, media.width, media.height, msg.replyTo)
+                sendMedia(peer, plain, media.kind, media.mime, media.durationMs, media.waveform, media.width, media.height, msg.replyTo,
+                    caption = msg.text.takeIf { it != media.kind.label }.orEmpty())
             }
             return
         }
         setMessageStatus(peer, msg.id, MessageStatus.SENDING, 0)
         val tags = (pTags(peer) + media.tags(peer).filter { it.firstOrNull() != "p" }).toMutableList()
         msg.replyTo?.let { tags.add(listOf("e", it)) }
+        msg.text.takeIf { it != media.kind.label && it.isNotBlank() }?.let { tags.add(listOf("amend-caption", it)) }
         val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags, msg.createdAt)
         val accepted = runCatching { publishRumor(peer, rumor) }.getOrDefault(0)
         setMessageStatus(peer, msg.id, if (accepted > 0) MessageStatus.SENT else MessageStatus.FAILED, accepted)
@@ -1015,7 +1028,8 @@ class AmendRepository(
     /** A sent message can be taken back for this long. */
     fun canUnsend(m: ChatMessage): Boolean =
         m.fromMe && m.type != MessageType.UNSENT && m.type != MessageType.CALL && m.type != MessageType.NOTICE &&
-            m.status != MessageStatus.SCHEDULED && Event.nowSeconds() - m.createdAt <= UNSEND_WINDOW
+            m.status != MessageStatus.SCHEDULED &&
+            (Event.nowSeconds() - m.createdAt <= UNSEND_WINDOW || (isInstant(m) && m.cardId != INSTANT_OPENED_MARK && Event.nowSeconds() - m.createdAt <= INSTANT_TTL))
 
     /**
      * Takes back one of my messages (within [UNSEND_WINDOW]): it becomes "message unsent" here
@@ -1226,6 +1240,241 @@ class AmendRepository(
     }
 
     /** Leave without waiting: keeps going after the chat screen closes. */
+    // ---------------------------------------------------------------- stories
+
+    private val _stories = MutableStateFlow(store.loadStories().filter { it.expiresAt > Event.nowSeconds() })
+    /** Live stories (mine and my contacts'), oldest first. */
+    val stories: StateFlow<List<Story>> = _stories.asStateFlow()
+
+    private fun saveStories() = store.saveStories(_stories.value)
+
+    private fun purgeStories() {
+        val now = Event.nowSeconds()
+        val gone = _stories.value.filter { it.expiresAt <= now }
+        if (gone.isEmpty()) return
+        gone.forEach { s -> s.media?.let { MediaInfo.fromJson(it) }?.let { runCatching { localMediaFile(it).delete() } } }
+        _stories.update { list -> list.filter { it.expiresAt > now } }
+        saveStories()
+    }
+
+    /**
+     * Posts a story for 24 hours to all your contacts, or only your close friends. A photo or
+     * video is encrypted and uploaded once; the story itself is gift-wrapped to each person.
+     */
+    suspend fun postStory(
+        media: ByteArray?, kind: MediaKind = MediaKind.PHOTO, mime: String = "image/jpeg",
+        width: Int = 0, height: Int = 0, durationMs: Long = 0,
+        text: String = "", bg: Int = 0, closeFriendsOnly: Boolean = false,
+    ): Int {
+        val audience = (if (closeFriendsOnly) contactKeys().filter { it in settings.closeFriends } else contactKeys()).take(300)
+        val now = Event.nowSeconds()
+        val expires = now + STORY_TTL
+        var mediaJson: String? = null
+        if (media != null) {
+            val enc = app.amend.messenger.core.crypto.FileCrypto.encrypt(media)
+            val draft = MediaInfo(kind, emptyList(), mime, enc.key.toHex(), enc.nonce.toHex(), enc.sha256Hex, enc.data.size.toLong(),
+                durationMs = durationMs, width = width, height = height)
+            localMediaFile(draft).writeBytes(media)
+            val blobs = blossom.uploadAny(mediaServers, enc.data, keys, copies = 2, mime = mime)
+            pendingBytesSent.addAndGet(enc.data.size.toLong() * blobs.size)
+            mediaJson = draft.copy(urls = blobs.map { it.url }).toJson()
+        }
+        val body = linkedMapOf<String, Any?>("text" to text.trim().take(Story.MAX_TEXT), "bg" to bg, "close" to closeFriendsOnly)
+        if (mediaJson != null) body["media"] = mediaJson
+        val rumor = GiftWrap.rumor(
+            me, Kinds.STORY, app.amend.messenger.core.json.Json.write(body),
+            listOf(listOf("expiration", expires.toString()), listOf("amend", "story")), now,
+        )
+        val mine = Story(rumor.id, me, now, expires, mediaJson, text.trim().take(Story.MAX_TEXT), bg, closeFriendsOnly, audience)
+        _stories.update { it + mine }
+        saveStories()
+        var sent = 0
+        (audience + me).forEach { peer ->
+            val wrap = GiftWrap.wrap(rumor, keys, peer, expiration = expires)
+            mutex.withLock { seenWraps.add(wrap.id) }
+            meshOutbox?.invoke(wrap)
+            val ok = runCatching { pool.publish(wrap, inboxFor(peer)).any { it.accepted } }.getOrDefault(false)
+            if (ok && peer != me) sent++
+        }
+        return sent
+    }
+
+    private fun handleStory(rumor: Event, fromMe: Boolean) {
+        val expires = rumor.firstTag("expiration")?.toLongOrNull() ?: (rumor.createdAt + STORY_TTL)
+        val now = Event.nowSeconds()
+        if (expires <= now || expires > rumor.createdAt + STORY_TTL + 600) return
+        if (_stories.value.any { it.id == rumor.id }) return
+        val m = runCatching { app.amend.messenger.core.json.Json.parseObject(rumor.content) }.getOrNull() ?: return
+        val media = (m["media"] as? String)?.takeIf { MediaInfo.fromJson(it) != null }
+        val text = (m["text"] as? String).orEmpty().take(Story.MAX_TEXT)
+        if (media == null && text.isBlank()) return
+        val story = Story(
+            rumor.id, rumor.pubkey, rumor.createdAt, expires, media, text, ((m["bg"] as? Number)?.toInt() ?: 0).coerceIn(0, 15),
+            m["close"] == true, seen = fromMe,
+        )
+        _stories.update { (it + story).sortedBy { s -> s.createdAt } }
+        saveStories()
+    }
+
+    /** I watched [storyId]: remember it, and tell its author if read receipts are on. */
+    suspend fun markStorySeen(storyId: String) {
+        val s = _stories.value.firstOrNull { it.id == storyId } ?: return
+        if (s.author == me || s.seen) return
+        _stories.update { list -> list.map { if (it.id == storyId) it.copy(seen = true) else it } }
+        saveStories()
+        if (!_eco.value.readReceipts) return
+        val rumor = GiftWrap.rumor(me, Kinds.STORY_VIEW, "", listOf(listOf("p", s.author), listOf("e", storyId)))
+        runCatching { publishRumor(s.author, rumor, s.expiresAt) }
+    }
+
+    private fun applyStoryView(storyId: String, by: String, at: Long) {
+        val s = _stories.value.firstOrNull { it.id == storyId && it.author == me } ?: return
+        if (by !in s.audience || by in s.viewers) return
+        _stories.update { list -> list.map { if (it.id == storyId) it.copy(viewers = it.viewers + (by to at)) else it } }
+        saveStories()
+    }
+
+    /** Deletes one of my stories here and for everyone it went to. */
+    suspend fun deleteStory(storyId: String) {
+        val s = _stories.value.firstOrNull { it.id == storyId && it.author == me } ?: return
+        removeStory(storyId, me)
+        val rumor = GiftWrap.rumor(me, Kinds.DELETION, "", listOf(listOf("e", storyId), listOf("k", Kinds.STORY.toString())))
+        (s.audience + me).forEach { peer ->
+            val wrap = GiftWrap.wrap(rumor, keys, peer, expiration = s.expiresAt)
+            mutex.withLock { seenWraps.add(wrap.id) }
+            runCatching { pool.publish(wrap, inboxFor(peer)) }
+        }
+    }
+
+    private fun removeStory(storyId: String, by: String) {
+        val s = _stories.value.firstOrNull { it.id == storyId && it.author == by } ?: return
+        s.media?.let { MediaInfo.fromJson(it) }?.let { runCatching { localMediaFile(it).delete() } }
+        _stories.update { list -> list.filterNot { it.id == storyId } }
+        saveStories()
+    }
+
+    /** A reply to someone's story arrives in your chat with them. */
+    suspend fun replyToStory(storyId: String, text: String) {
+        val s = _stories.value.firstOrNull { it.id == storyId } ?: return
+        if (s.author == me || text.isBlank()) return
+        sendText(s.author, "↪ Replying to your story: ${text.trim()}")
+    }
+
+    // ---------------------------------------------------------------- instants
+
+    fun isInstant(m: ChatMessage): Boolean = m.type == MessageType.FILE && MediaInfo.fromJson(m.extra)?.kind == MediaKind.INSTANT
+
+    val closeFriends: Set<String> get() = settings.closeFriends
+
+    fun setCloseFriends(keys: Set<String>) {
+        settings = settings.copy(closeFriends = keys.filter { it.length == 64 && it != me }.toSet())
+        persistSettings()
+    }
+
+    /** People you can send Instants and stories to: your accepted 1:1 contacts. */
+    fun contactKeys(): List<String> = _conversations.value.values
+        .filter { !it.isGroup && it.peer != me && it.peer.length == 64 && it.peer in settings.accepted && !isBlocked(it.peer) }
+        .sortedByDescending { it.lastActivity }.map { it.peer }
+
+    private val _instantArchive = MutableStateFlow(store.loadInstantArchive())
+    /** Instants you sent, kept privately on this phone for a year. */
+    val instantArchive: StateFlow<List<ArchivedInstant>> = _instantArchive.asStateFlow()
+
+    fun archivedInstantFile(a: ArchivedInstant): File = store.instantFile(a.id)
+
+    /**
+     * Sends a camera photo as an Instant to each of [peers] (people or shared gardens): it is
+     * encrypted and uploaded once, disappears for each person once they open it, and expires
+     * after 24 hours if nobody does. A private copy goes into your Instants archive.
+     */
+    suspend fun sendInstant(peers: List<String>, jpeg: ByteArray, width: Int, height: Int, caption: String): Int {
+        val targets = peers.distinct().filter { it != me && !isBlocked(it) }
+        if (targets.isEmpty()) return 0
+        val cap = caption.trim().take(MAX_CAPTION)
+        val enc = app.amend.messenger.core.crypto.FileCrypto.encrypt(jpeg)
+        val archived = ArchivedInstant(enc.sha256Hex.take(32), Event.nowSeconds(), cap, targets.size)
+        store.saveInstant(archived, jpeg)
+        _instantArchive.update { (listOf(archived) + it).filter { a -> a.createdAt > Event.nowSeconds() - 365L * 86400 } }
+        store.saveInstantArchive(_instantArchive.value)
+        val blobs = blossom.uploadAny(mediaServers, enc.data, keys, copies = 2, mime = "image/jpeg")
+        pendingBytesSent.addAndGet(enc.data.size.toLong() * blobs.size)
+        val media = MediaInfo(
+            MediaKind.INSTANT, blobs.map { it.url }, "image/jpeg", enc.key.toHex(), enc.nonce.toHex(), enc.sha256Hex,
+            enc.data.size.toLong(), width = width, height = height,
+        )
+        val expires = Event.nowSeconds() + INSTANT_TTL
+        var delivered = 0
+        targets.forEach { peer ->
+            val tags = (pTags(peer) + media.tags(peer).filter { it.firstOrNull() != "p" }).toMutableList()
+            tags.add(listOf("expiration", expires.toString()))
+            if (cap.isNotEmpty()) tags.add(listOf("amend-caption", cap))
+            val rumor = GiftWrap.rumor(me, Kinds.FILE_MESSAGE, media.urls.first(), tags)
+            upsertMessage(
+                ChatMessage(rumor.id, peer, true, cap.ifEmpty { MediaKind.INSTANT.label }, rumor.createdAt, MessageType.FILE,
+                    status = MessageStatus.SENDING, extra = media.toJson(), expiresAt = expires),
+                countUnread = false,
+            )
+            if (!isGroup(peer)) accept(peer)
+            val n = runCatching { publishRumor(peer, rumor, expires) }.getOrDefault(0)
+            setMessageStatus(peer, rumor.id, if (n > 0) MessageStatus.SENT else MessageStatus.FAILED, n)
+            if (n > 0 || meshOutbox != null) delivered++
+        }
+        recordMessageStats(received = false)
+        return delivered
+    }
+
+    /** After viewing an Instant: it's gone from this phone, and the sender is told it was opened. */
+    suspend fun consumeInstant(peer: String, id: String) {
+        val m = _conversations.value[peer]?.messages?.firstOrNull { it.id == id } ?: return
+        if (m.fromMe || !isInstant(m)) return
+        val author = m.author ?: m.peer
+        consumeInstantLocally(id)
+        val rumor = GiftWrap.rumor(me, Kinds.INSTANT_OPENED, "", listOf(listOf("p", author), listOf("e", id)))
+        runCatching { publishRumor(author, rumor, Event.nowSeconds() + INSTANT_TTL) }
+    }
+
+    private suspend fun consumeInstantLocally(id: String) {
+        mutex.withLock {
+            var changed: String? = null
+            _conversations.update { all ->
+                all.mapValues { (peer, c) ->
+                    if (c.messages.none { it.id == id && !it.fromMe }) c
+                    else {
+                        changed = peer
+                        c.copy(messages = c.messages.map { m ->
+                            if (m.id == id && !m.fromMe) {
+                                MediaInfo.fromJson(m.extra)?.let { runCatching { localMediaFile(it).delete() } }
+                                m.copy(type = MessageType.NOTICE, text = "📸 You opened an Instant", extra = null, cardId = null)
+                            } else m
+                        })
+                    }
+                }
+            }
+            changed?.let { p -> _conversations.value[p]?.let { store.saveChat(p, it.messages) } }
+        }
+    }
+
+    private suspend fun markInstantOpened(id: String, by: String) {
+        mutex.withLock {
+            var changed: String? = null
+            _conversations.update { all ->
+                all.mapValues { (peer, c) ->
+                    val hit = c.messages.any { it.id == id && it.fromMe && (peer == by || (isGroup(peer) && by in (groupInfo(peer)?.members ?: emptyList()))) }
+                    if (!hit) c else {
+                        changed = peer
+                        c.copy(messages = c.messages.map { if (it.id == id) it.copy(cardId = INSTANT_OPENED_MARK) else it })
+                    }
+                }
+            }
+            changed?.let { p -> _conversations.value[p]?.let { store.saveChat(p, it.messages) } }
+        }
+    }
+
+    /** Runs work that should finish even if the screen that started it closes (uploads etc.). */
+    fun launchInBackground(block: suspend () -> Unit) {
+        scope.launch { runCatching { block() } }
+    }
+
     fun leaveGroupInBackground(key: String) {
         scope.launch { leaveGroup(key) }
     }
@@ -1608,5 +1857,10 @@ class AmendRepository(
         /** How long after sending a message can still be unsent (15 minutes). */
         const val UNSEND_WINDOW = 15L * 60
         const val MAX_EDIT_CHARS = 8000
+        const val MAX_CAPTION = 1000
+        /** Instants and stories last a day. */
+        const val INSTANT_TTL = 24L * 3600
+        const val STORY_TTL = 24L * 3600
+        const val INSTANT_OPENED_MARK = "opened"
     }
 }

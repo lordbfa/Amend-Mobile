@@ -109,6 +109,12 @@ object Kinds {
     const val ECO_STATS = 1406
     /** amend edit: new text for one of my messages ("e" tag), within the 15-minute window. */
     const val EDIT = 1407
+    /** amend story: a photo/video/text shared with my contacts for 24 hours (gift-wrapped to each). */
+    const val STORY = 1408
+    /** amend: "I watched your story" (only sent when read receipts are on). */
+    const val STORY_VIEW = 1409
+    /** amend: "I opened your Instant" ("e" tag), so it shows as opened and can't be unsent any more. */
+    const val INSTANT_OPENED = 1410
     const val GIFT_WRAP = 1059
     /**
      * Same as a gift wrap, but in the ephemeral range: relays forward it to whoever

@@ -406,7 +406,7 @@ fun RecordingBar(recorder: VoiceRecorder, cancelling: Boolean, modifier: Modifie
 // ======================================================================= video bubble
 
 /** First frame of a video file, for the bubble before playback. */
-private suspend fun thumbnail(file: File): ImageBitmap? = withContext(Dispatchers.IO) {
+internal suspend fun thumbnail(file: File): ImageBitmap? = withContext(Dispatchers.IO) {
     val r = MediaMetadataRetriever()
     try {
         r.setDataSource(file.path)
