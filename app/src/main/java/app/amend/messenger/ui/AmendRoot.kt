@@ -117,6 +117,7 @@ private fun MainNavigation(app: AmendApp, repo: AmendRepository, pendingPeer: Mu
                 repo = repo,
                 peer = route.peer,
                 onBack = { nav.pop() },
+                onOpenChat = { key -> nav.push(Route.Chat(key)) },
             )
         }
     }

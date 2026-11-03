@@ -24,7 +24,11 @@ object GiftWrap {
         Event.unsigned(senderPub, kind, content, tags, createdAt)
 
     /** Seal + wrap one rumor for one recipient. */
-    fun wrap(rumor: Event, sender: KeyPair, recipientPub: String, now: Long = Event.nowSeconds(), ephemeral: Boolean = false): Event {
+    fun wrap(
+        rumor: Event, sender: KeyPair, recipientPub: String, now: Long = Event.nowSeconds(), ephemeral: Boolean = false,
+        /** NIP-40: relays that honour it delete the wrap after this time (disappearing messages). */
+        expiration: Long? = null,
+    ): Event {
         require(rumor.pubkey == sender.publicKeyHex) { "rumor author must be the sender" }
         val sealKey = Nip44.conversationKey(sender.secretKey, recipientPub.hexToBytes())
         val seal = Event.sign(
@@ -41,7 +45,7 @@ object GiftWrap {
             secretKey = oneTime.secretKey,
             kind = if (ephemeral) Kinds.EPHEMERAL_GIFT_WRAP else Kinds.GIFT_WRAP,
             content = Nip44.encrypt(seal.toJson(), wrapKey),
-            tags = listOf(listOf("p", recipientPub)),
+            tags = listOfNotNull(listOf("p", recipientPub), expiration?.let { listOf("expiration", it.toString()) }),
             createdAt = if (ephemeral) now else randomPast(now),
         )
     }

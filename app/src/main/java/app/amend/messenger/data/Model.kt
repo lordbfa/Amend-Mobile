@@ -1,5 +1,6 @@
 package app.amend.messenger.data
 
+import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.json.Json
 import app.amend.messenger.core.json.long
 import app.amend.messenger.core.json.str
@@ -10,6 +11,8 @@ import app.amend.messenger.eco.PlantedTree
 
 enum class MessageStatus(val rank: Int) {
     SENDING(0), SENT(1), FAILED(0), RECEIVED(0),
+    /** Waiting on this phone to be sent at [ChatMessage.scheduledAt]. */
+    SCHEDULED(0),
     /** The friend's phone got it. */
     DELIVERED(2),
     /** The friend opened the chat and saw it. */
@@ -19,7 +22,12 @@ enum class MessageStatus(val rank: Int) {
     fun advance(to: MessageStatus): MessageStatus = if (to.rank > rank || (this == FAILED || this == SENDING)) to else this
 }
 
-enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE, CALL, ECO_PROOF }
+enum class MessageType { TEXT, ECO_CARD, SOS, VOICE, VIDEO, FILE, CALL, ECO_PROOF,
+    /** A message its sender took back within the unsend window: only a "message unsent" note remains. */
+    UNSENT,
+    /** A small centred note inside a chat ("⏳ Disappearing messages: 1 day", "Faisal named the garden …"). */
+    NOTICE,
+}
 
 data class ChatMessage(
     val id: String,
@@ -37,12 +45,18 @@ data class ChatMessage(
     val extra: String? = null,
     /** For incoming messages: which receipt we already sent back (0 none, 1 delivered, 2 seen). */
     val receipt: Int = 0,
+    /** Who wrote it, for messages in a shared garden (group). Null in one-to-one chats. */
+    val author: String? = null,
+    /** Disappearing messages: unix time after which both phones delete it (0 = keeps). */
+    val expiresAt: Long = 0,
+    /** Scheduled messages: unix time it will be sent at (status [MessageStatus.SCHEDULED]). */
+    val scheduledAt: Long = 0,
 ) {
     fun toMap(): Map<String, Any?> = linkedMapOf(
         "id" to id, "peer" to peer, "fromMe" to fromMe, "text" to text, "createdAt" to createdAt,
         "type" to type.name, "cardId" to cardId, "replyTo" to replyTo, "reactions" to reactions,
         "status" to status.name, "relaysAccepted" to relaysAccepted, "extra" to extra,
-        "receipt" to receipt,
+        "receipt" to receipt, "author" to author, "expiresAt" to expiresAt, "scheduledAt" to scheduledAt,
     )
 
     companion object {
@@ -61,6 +75,36 @@ data class ChatMessage(
             relaysAccepted = (m.long("relaysAccepted") ?: 0).toInt(),
             extra = m.str("extra"),
             receipt = (m.long("receipt") ?: 0).toInt(),
+            author = m.str("author"),
+            expiresAt = m.long("expiresAt") ?: 0,
+            scheduledAt = m.long("scheduledAt") ?: 0,
+        )
+    }
+}
+
+/**
+ * A shared garden: an end-to-end encrypted group chat (NIP-17 — every message is
+ * gift-wrapped to each member separately, so relays never see who's in it). The room
+ * is defined by its members, exactly as in NIP-17; [name] travels as the "subject" tag.
+ */
+data class GroupInfo(val key: String, val members: List<String>, val name: String = "", val createdBy: String = "") {
+    fun toMap(): Map<String, Any?> = linkedMapOf("key" to key, "members" to members, "name" to name, "createdBy" to createdBy)
+
+    companion object {
+        /** Room id from its members (order-free), so every member derives the same one. */
+        fun keyFor(members: Collection<String>): String {
+            val sorted = members.filter { it.length == 64 }.distinct().sorted().joinToString(",")
+            return "g" + app.amend.messenger.core.crypto.Hashes.sha256("amend-group:$sorted".toByteArray()).toHex().take(31)
+        }
+
+        fun isKey(s: String) = s.length == 32 && s.startsWith("g")
+
+        @Suppress("UNCHECKED_CAST")
+        fun fromMap(m: Map<String, Any?>) = GroupInfo(
+            key = m.str("key") ?: "",
+            members = (m["members"] as? List<Any?>).orEmpty().mapNotNull { it as? String },
+            name = m.str("name") ?: "",
+            createdBy = m.str("createdBy") ?: "",
         )
     }
 }
@@ -78,12 +122,14 @@ data class Profile(
     val hue: Float = -1f,
     val updatedAt: Long = 0,
     val picture: String = "",
+    /** NIP-05 address, e.g. faisal@getamend.app (verified against its domain before showing ✓). */
+    val nip05: String = "",
 ) {
     fun displayName(fallback: String): String = name.ifBlank { fallback }
 
     fun toMap(): Map<String, Any?> = linkedMapOf(
         "pubkey" to pubkey, "name" to name, "about" to about, "avatar" to avatar, "hue" to hue.toDouble(),
-        "updatedAt" to updatedAt, "picture" to picture,
+        "updatedAt" to updatedAt, "picture" to picture, "nip05" to nip05,
     )
 
     /** Content of the kind-0 metadata event. */
@@ -92,6 +138,7 @@ data class Profile(
             "name" to name, "display_name" to name, "about" to about,
             "amend_avatar" to avatar, "amend_hue" to hue.toDouble(),
         )
+        if (nip05.isNotBlank()) m["nip05"] = nip05
         when {
             // Inline photos live in amend's own field so other apps never choke on a data URI.
             picture.startsWith(DATA_PREFIX) -> m["amend_picture"] = picture
@@ -117,6 +164,7 @@ data class Profile(
             hue = (m["hue"] as? Number)?.toFloat() ?: -1f,
             updatedAt = m.long("updatedAt") ?: 0,
             picture = (m.str("picture") ?: "").takeIf { isValidPicture(it) } ?: "",
+            nip05 = m.str("nip05") ?: "",
         )
 
         fun fromMetadata(pubkey: String, content: String, createdAt: Long): Profile? = try {
@@ -131,6 +179,7 @@ data class Profile(
                 hue = (m["amend_hue"] as? Number)?.toFloat() ?: -1f,
                 updatedAt = createdAt,
                 picture = inline ?: url ?: "",
+                nip05 = (m.str("nip05") ?: "").trim().take(100),
             )
         } catch (e: Exception) {
             null
@@ -144,9 +193,29 @@ data class Conversation(
     val unread: Int = 0,
     val pinned: Boolean = false,
     val nickname: String = "",
+    /** Disappearing-message timer for this chat, in seconds (0 = off). */
+    val disappearSecs: Long = 0,
 ) {
-    val lastMessage: ChatMessage? get() = messages.lastOrNull()
+    val isGroup: Boolean get() = GroupInfo.isKey(peer)
+    /** The latest real message (a scheduled one only if nothing else is there yet). */
+    val lastMessage: ChatMessage? get() = messages.lastOrNull { it.status != MessageStatus.SCHEDULED } ?: messages.lastOrNull()
     val lastActivity: Long get() = lastMessage?.createdAt ?: 0
+}
+
+/** Disappearing-message timer choices. */
+object Disappear {
+    val options: List<Long> = listOf(0L, 3600L, 8 * 3600L, 24 * 3600L, 7 * 24 * 3600L, 30 * 24 * 3600L)
+
+    fun label(secs: Long): String = when {
+        secs <= 0 -> "Off"
+        secs < 3600 -> "${secs / 60} minutes"
+        secs == 3600L -> "1 hour"
+        secs < 24 * 3600 -> "${secs / 3600} hours"
+        secs == 24 * 3600L -> "1 day"
+        secs == 7 * 24 * 3600L -> "1 week"
+        secs == 30 * 24 * 3600L -> "30 days"
+        else -> "${secs / (24 * 3600)} days"
+    }
 }
 
 /** Persistent eco progress. */
@@ -242,6 +311,8 @@ object EcoRules {
         return s to GrowthEvent(allowed, newTree)
     }
 
-    fun gardenFor(me: String, conversation: Conversation): Garden =
-        Garden.forPair(me, conversation.peer, conversation.messages.size)
+    fun gardenFor(me: String, conversation: Conversation): Garden {
+        val count = conversation.messages.count { it.type != MessageType.NOTICE && it.type != MessageType.UNSENT && it.status != MessageStatus.SCHEDULED }
+        return if (conversation.isGroup) Garden.forGroup(conversation.peer, count) else Garden.forPair(me, conversation.peer, count)
+    }
 }

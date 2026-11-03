@@ -87,6 +87,8 @@ object WearSync {
         MessageType.SOS -> if (m.cardId == "stop") "✅ SOS ended" else "🆘 SOS"
         MessageType.CALL -> "📞 Call"
         MessageType.ECO_PROOF -> "🌳 A tree they planted"
+        MessageType.UNSENT -> "🚫 Message unsent"
+        MessageType.NOTICE -> m.text
         MessageType.TEXT -> m.text
     }.take(300)
 
