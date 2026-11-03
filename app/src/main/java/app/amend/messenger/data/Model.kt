@@ -53,12 +53,15 @@ data class ChatMessage(
     val expiresAt: Long = 0,
     /** Scheduled messages: unix time it will be sent at (status [MessageStatus.SCHEDULED]). */
     val scheduledAt: Long = 0,
+    /** When its author last edited it (0 = never). */
+    val editedAt: Long = 0,
 ) {
     fun toMap(): Map<String, Any?> = linkedMapOf(
         "id" to id, "peer" to peer, "fromMe" to fromMe, "text" to text, "createdAt" to createdAt,
         "type" to type.name, "cardId" to cardId, "replyTo" to replyTo, "reactions" to reactions,
         "status" to status.name, "relaysAccepted" to relaysAccepted, "extra" to extra,
         "receipt" to receipt, "author" to author, "expiresAt" to expiresAt, "scheduledAt" to scheduledAt,
+        "editedAt" to editedAt,
     )
 
     companion object {
@@ -80,6 +83,7 @@ data class ChatMessage(
             author = m.str("author"),
             expiresAt = m.long("expiresAt") ?: 0,
             scheduledAt = m.long("scheduledAt") ?: 0,
+            editedAt = m.long("editedAt") ?: 0,
         )
     }
 }

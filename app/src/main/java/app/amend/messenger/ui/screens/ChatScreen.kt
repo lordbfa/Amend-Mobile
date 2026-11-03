@@ -170,6 +170,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     var showRename by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var unsendTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var editTarget by remember { mutableStateOf<ChatMessage?>(null) }
     var showLive by remember { mutableStateOf(false) }
     val myShares by app.amend.messenger.util.LiveShareManager.shares.collectAsStateWithLifecycle()
     val liveShares by repo.liveShares.collectAsStateWithLifecycle()
@@ -271,6 +272,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
                     onStopLive = { app.amend.messenger.util.LiveShareManager.stop(context, peer) },
                     canUnsend = repo.canUnsend(m),
                     onUnsend = { unsendTarget = m },
+                    canEdit = repo.canEdit(m),
+                    onEdit = { editTarget = m },
                     onSendNow = { scope.launch { repo.sendDueScheduled(forceId = m.id) } },
                     onCancelScheduled = { scope.launch { repo.cancelScheduled(peer, m.id) } },
                 )
@@ -499,6 +502,37 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             onDismiss = { showSchedule = false },
         )
     }
+    editTarget?.let { target ->
+        var draft by remember(target.id) { mutableStateOf(target.text) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editTarget = null },
+            title = { Text("Edit message") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.OutlinedTextField(
+                        draft, { draft = it.take(app.amend.messenger.data.AmendRepository.MAX_EDIT_CHARS) },
+                        Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), maxLines = 8,
+                    )
+                    Text(
+                        if (isGroup) "Everyone in the garden sees the new text, marked \"edited\"." else "They see the new text, marked \"edited\".",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = draft.isNotBlank() && draft.trim() != target.text,
+                    onClick = {
+                        editTarget = null
+                        haptics.success()
+                        val text = draft
+                        scope.launch { repo.editMessage(peer, target.id, text) }
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editTarget = null }) { Text("Cancel") } },
+        )
+    }
     unsendTarget?.let { target ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { unsendTarget = null },
@@ -706,6 +740,8 @@ private fun MessageBubble(
     onStopLive: () -> Unit = {},
     canUnsend: Boolean = false,
     onUnsend: () -> Unit = {},
+    canEdit: Boolean = false,
+    onEdit: () -> Unit = {},
     onSendNow: () -> Unit = {},
     onCancelScheduled: () -> Unit = {},
 ) {
@@ -836,6 +872,7 @@ private fun MessageBubble(
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (message.expiresAt > 0) Text("⏳ ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
+                    if (message.editedAt > 0 && !unsent) Text("edited · ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
                     Text(
                         (if (scheduled) "Scheduled · " else "") +
                             Instant.ofEpochSecond(if (scheduled) message.scheduledAt else message.createdAt).atZone(ZoneId.systemDefault())
@@ -892,6 +929,10 @@ private fun MessageBubble(
                     onClick = { showReactions = false },
                     leadingIcon = { GrowthTick(message.status, onRetry = {}, onBubble = false) },
                 )
+            }
+            if (canEdit) {
+                val left = ((app.amend.messenger.data.AmendRepository.UNSEND_WINDOW - (System.currentTimeMillis() / 1000 - message.createdAt)) / 60).coerceAtLeast(1)
+                DropdownMenuItem(text = { Text("Edit · ${left} min left") }, onClick = { showReactions = false; onEdit() })
             }
             if (canUnsend) {
                 val left = ((app.amend.messenger.data.AmendRepository.UNSEND_WINDOW - (System.currentTimeMillis() / 1000 - message.createdAt)) / 60).coerceAtLeast(1)

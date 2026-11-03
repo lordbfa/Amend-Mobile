@@ -102,6 +102,9 @@ class AmendRepository(
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
 
     private var inboxRelays = store.loadInboxRelays()
+    /** Edits that arrived before their message: id → (author, time, new text). */
+    private val pendingEdits = java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, String>>()
+
     private val seenWraps = LinkedHashSet(settings.seenWraps)
 
     private val pendingBytesSent = AtomicLong()
@@ -261,7 +264,16 @@ class AmendRepository(
             var x = m.copy(author = author, expiresAt = expiresAt)
             // this message was unsent before its copy reached us
             if (settings.unsent[x.id] == rumor.pubkey) x = tombstone(x)
+            // an edit that arrived before the message itself
+            pendingEdits.remove(x.id)?.let { (by, at, text) ->
+                if (by == rumor.pubkey && x.type == MessageType.TEXT && at - x.createdAt <= UNSEND_WINDOW + 300) x = x.copy(text = text, editedAt = at)
+            }
             return x
+        }
+        if (rumor.kind == Kinds.EDIT) {
+            val text = rumor.content.take(MAX_EDIT_CHARS)
+            rumor.firstTag("e")?.let { if (text.isNotBlank()) applyEdit(peer, it, rumor.pubkey, rumor.createdAt, text) }
+            return
         }
         if (rumor.kind == Kinds.DELETION) {
             rumor.tagValues("e").forEach { applyUnsend(peer, it, rumor.pubkey, rumor.createdAt) }
@@ -999,6 +1011,45 @@ class AmendRepository(
         return runCatching { publishRumor(peer, rumor) }.getOrDefault(0) > 0 || meshOutbox != null
     }
 
+    // ---------------------------------------------------------------- edit
+
+    /** My own text messages can be corrected inside the same window as unsend. */
+    fun canEdit(m: ChatMessage): Boolean =
+        m.fromMe && m.type == MessageType.TEXT && m.status != MessageStatus.SCHEDULED &&
+            Event.nowSeconds() - m.createdAt <= UNSEND_WINDOW
+
+    /** Replaces the text of one of my messages here at once and on the other phones. */
+    suspend fun editMessage(peer: String, messageId: String, newText: String): Boolean {
+        val text = newText.trim().take(MAX_EDIT_CHARS)
+        val m = _conversations.value[peer]?.messages?.firstOrNull { it.id == messageId } ?: return false
+        if (!canEdit(m) || text.isEmpty() || text == m.text) return false
+        val now = Event.nowSeconds()
+        applyEdit(peer, messageId, me, now, text)
+        val rumor = GiftWrap.rumor(me, Kinds.EDIT, text, pTags(peer) + listOf(listOf("e", messageId), listOf("amend", "edit")), now)
+        val expiration = m.expiresAt.takeIf { it > 0 }
+        return runCatching { publishRumor(peer, rumor, expiration) }.getOrDefault(0) > 0 || meshOutbox != null
+    }
+
+    /** Applies an edit from [by] — only the message's own author, only inside the window, newest wins. */
+    private suspend fun applyEdit(peer: String, id: String, by: String, at: Long, text: String) {
+        var found = false
+        mutex.withLock {
+            _conversations.update { all ->
+                val conv = all[peer] ?: return@update all
+                all + (peer to conv.copy(messages = conv.messages.map { m ->
+                    if (m.id != id) return@map m
+                    found = true
+                    val author = m.author ?: if (m.fromMe) me else m.peer
+                    if (author == by && m.type == MessageType.TEXT && at - m.createdAt <= UNSEND_WINDOW + 300 && at >= m.editedAt) {
+                        m.copy(text = text, editedAt = at)
+                    } else m
+                }))
+            }
+            if (found) _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        }
+        if (!found) pendingEdits[id] = Triple(by, at, text)
+    }
+
     private fun tombstone(m: ChatMessage) =
         m.copy(type = MessageType.UNSENT, text = "", extra = null, cardId = null, reactions = emptyMap(), replyTo = null)
 
@@ -1483,5 +1534,6 @@ class AmendRepository(
         const val RECEIPT_MAX_AGE = 7L * 24 * 3600
         /** How long after sending a message can still be unsent (15 minutes). */
         const val UNSEND_WINDOW = 15L * 60
+        const val MAX_EDIT_CHARS = 8000
     }
 }

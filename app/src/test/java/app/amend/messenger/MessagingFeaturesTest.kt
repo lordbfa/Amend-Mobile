@@ -275,4 +275,47 @@ class MessagingFeaturesTest {
         assertEquals(30, m.lastDays(30).size)
         assertEquals(5, mapOf("a" to 1, "b" to 2, "c" to 3, "d" to 4, "e" to 5).lastDays(30).size)
     }
+
+    @Test
+    fun editReplacesTextOnlyFromTheAuthorInsideTheWindow() = runBlocking {
+        val bob = repo("bob-edit")
+        val alice = KeyPair.generate()
+        val mallory = KeyPair.generate()
+        val t = Event.nowSeconds()
+        val (msg, w) = wrap(alice, bob.me, Kinds.CHAT_MESSAGE, "helo", listOf(listOf("p", bob.me)), t - 60)
+        bob.injectMeshEvent(w)
+        // someone else can't rewrite alice's words
+        bob.injectMeshEvent(wrap(mallory, bob.me, Kinds.EDIT, "hacked", listOf(listOf("p", bob.me), listOf("e", msg.id)), t).second)
+        fun text() = bob.conversations.value[alice.publicKeyHex]!!.messages.first { it.id == msg.id }
+        assertEquals("helo", text().text)
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.EDIT, "hello", listOf(listOf("p", bob.me), listOf("e", msg.id)), t).second)
+        assertEquals("hello", text().text)
+        assertTrue(text().editedAt > 0)
+        // an older edit arriving late doesn't undo the newer one
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.EDIT, "hullo", listOf(listOf("p", bob.me), listOf("e", msg.id)), t - 30).second)
+        assertEquals("hello", text().text)
+    }
+
+    @Test
+    fun editArrivingBeforeItsMessageIsAppliedWhenTheMessageLands() = runBlocking {
+        val bob = repo("bob-edit-early")
+        val alice = KeyPair.generate()
+        val t = Event.nowSeconds()
+        val (msg, w) = wrap(alice, bob.me, Kinds.CHAT_MESSAGE, "teh plan", listOf(listOf("p", bob.me)), t - 30)
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.EDIT, "the plan", listOf(listOf("p", bob.me), listOf("e", msg.id)), t).second)
+        bob.injectMeshEvent(w)
+        assertEquals("the plan", bob.conversations.value[alice.publicKeyHex]!!.messages.first { it.id == msg.id }.text)
+    }
+
+    @Test
+    fun editWindowMatchesUnsend() {
+        val bob = repo("bob-can-edit")
+        val now = Event.nowSeconds()
+        val fresh = ChatMessage("a", "p", fromMe = true, text = "x", createdAt = now - 60, status = MessageStatus.SENT)
+        val old = fresh.copy(id = "b", createdAt = now - AmendRepository.UNSEND_WINDOW - 5)
+        assertTrue(bob.canEdit(fresh))
+        assertFalse(bob.canEdit(old))
+        assertFalse(bob.canEdit(fresh.copy(fromMe = false)))
+        assertFalse(bob.canEdit(fresh.copy(type = MessageType.VOICE)))
+    }
 }
