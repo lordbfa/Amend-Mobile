@@ -67,6 +67,8 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
     var posting by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Event?>(null) }
+    var reportingNote by remember { mutableStateOf<Event?>(null) }
+    val teen = app.amend.messenger.util.AgeCheck.shielded
     DisposableEffect(Unit) {
         repo.openFeed()
         onDispose { repo.closeFeed() }
@@ -81,7 +83,12 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
             }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
+            if (teen) item {
+                Text(
+                    "Posting to the Grove is off while the stranger shield (under 18) is on — the Grove is public.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(4.dp),
+                )
+            } else item {
                 GlassCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
@@ -139,6 +146,20 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
                                 )
                             }
                             if (mine) TextButton(onClick = { deleting = note }) { Text("Delete") }
+                            else {
+                                var menu by remember { mutableStateOf(false) }
+                                Box {
+                                    TextButton(onClick = { menu = true }) { Text("⋯") }
+                                    androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Hide this post") }, onClick = { menu = false; repo.hideNote(note, author = false) })
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Hide all from this person") }, onClick = { menu = false; repo.hideNote(note, author = true) })
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text("Report", color = MaterialTheme.colorScheme.error) },
+                                            onClick = { menu = false; reportingNote = note },
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(linkify(note.content.take(4000), MaterialTheme.colorScheme.primary), style = MaterialTheme.typography.bodyLarge)
@@ -148,6 +169,16 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
         }
     }
 
+    reportingNote?.let { note ->
+        ReportDialog(
+            what = "a public post by ${repo.displayName(note.pubkey)}",
+            reportedKey = note.pubkey,
+            evidence = null,
+            extraContext = "Post id: ${note.id}\nPost text:\n${note.content.take(2000)}",
+            onDismiss = { reportingNote = null },
+            onReported = { reportingNote = null; repo.hideNote(note, author = true) },
+        )
+    }
     deleting?.let { note ->
         AlertDialog(
             onDismissRequest = { deleting = null },

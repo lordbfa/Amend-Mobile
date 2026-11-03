@@ -48,6 +48,7 @@ class AmendApp : Application() {
         app.amend.messenger.ui.theme.AppThemes.load(this)
         app.amend.messenger.util.CheckIn.restore(this)
         app.amend.messenger.util.ScreenProtection.load(this)
+        app.amend.messenger.util.AgeCheck.load(this)
         app.amend.messenger.net.TorProxy.enabled = getSharedPreferences("amend_net", MODE_PRIVATE).getBoolean("tor", false)
         Notifications.createChannels(this)
         StepTracker.init(this)
@@ -70,6 +71,7 @@ class AmendApp : Application() {
     fun openRepository(keys: KeyPair): AmendRepository {
         _repository.value?.let { if (it.me == keys.publicKeyHex) return it }
         val repo = AmendRepository(dataDir(), keys)
+        repo.blockStrangers = app.amend.messenger.util.AgeCheck.shielded
         // Listen for events BEFORE the repository starts: messages that were waiting on the
         // relays arrive within moments of connecting, and an event emitted before anyone
         // listens is lost (that is how a first message or a message request went unnotified).

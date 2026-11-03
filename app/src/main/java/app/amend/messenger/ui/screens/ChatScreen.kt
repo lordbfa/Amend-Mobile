@@ -171,6 +171,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     var confirmLeave by remember { mutableStateOf(false) }
     var unsendTarget by remember { mutableStateOf<ChatMessage?>(null) }
     var editTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    /** The account being reported (the person, a garden's creator, or one message's author). */
+    var reporting by remember { mutableStateOf<String?>(null) }
     var showLive by remember { mutableStateOf(false) }
     val myShares by app.amend.messenger.util.LiveShareManager.shares.collectAsStateWithLifecycle()
     val liveShares by repo.liveShares.collectAsStateWithLifecycle()
@@ -218,6 +220,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             onMembers = { showMembers = true },
             onRename = { showRename = true },
             onLeave = { confirmLeave = true },
+            onReport = { reporting = if (isGroup) group?.createdBy?.takeIf { it.length == 64 && it != repo.me } ?: peer else peer },
             sharingLive = peer in myShares,
             onLive = {
                 if (peer in myShares) app.amend.messenger.util.LiveShareManager.stop(context, peer)
@@ -236,7 +239,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             RequestBanner(
                 onAccept = { repo.accept(peer); accepted = true; haptics.success(); repo.markSeen(peer) },
                 onBlock = { repo.block(peer); haptics.heavy(); onBack() },
-                onReport = { repo.report(peer); group?.createdBy?.takeIf { it.length == 64 && it != repo.me }?.let { repo.report(it) }; haptics.heavy(); onBack() },
+                onReport = { reporting = if (isGroup) group?.createdBy?.takeIf { it.length == 64 && it != repo.me } ?: peer else peer },
                 invitedBy = if (isGroup) group?.createdBy?.let { repo.displayName(it) } ?: "Someone" else null,
             )
         }
@@ -273,6 +276,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
                     canUnsend = repo.canUnsend(m),
                     onUnsend = { unsendTarget = m },
                     canEdit = repo.canEdit(m),
+                    fromStranger = !accepted && !m.fromMe,
+                    onReportMessage = { reporting = if (isGroup) m.author ?: peer else peer },
                     onEdit = { editTarget = m },
                     onSendNow = { scope.launch { repo.sendDueScheduled(forceId = m.id) } },
                     onCancelScheduled = { scope.launch { repo.cancelScheduled(peer, m.id) } },
@@ -502,6 +507,26 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             onDismiss = { showSchedule = false },
         )
     }
+    reporting?.let { key ->
+        val groupCreator = group?.createdBy
+        ReportDialog(
+            what = if (isGroup) "\"${repo.displayName(peer)}\"" else repo.displayName(peer),
+            reportedKey = if (key.length == 64) key else peer,
+            evidence = repo.reportEvidence(peer),
+            extraContext = if (isGroup) "Shared garden members: " + group?.members.orEmpty().joinToString { app.amend.messenger.core.crypto.Nip19.npub(it) } else "",
+            onDismiss = { reporting = null },
+            onReported = {
+                reporting = null
+                haptics.heavy()
+                if (isGroup) {
+                    if (key.length == 64 && key != repo.me && key != peer) repo.block(key)
+                    if (groupCreator != null && groupCreator.length == 64 && groupCreator != repo.me && !accepted) repo.block(groupCreator)
+                    repo.leaveGroupInBackground(peer)
+                } else repo.report(peer)
+                onBack()
+            },
+        )
+    }
     editTarget?.let { target ->
         var draft by remember(target.id) { mutableStateOf(target.text) }
         androidx.compose.material3.AlertDialog(
@@ -634,6 +659,7 @@ private fun GardenHeader(
     onMembers: () -> Unit = {},
     onRename: () -> Unit = {},
     onLeave: () -> Unit = {},
+    onReport: () -> Unit = {},
     sharingLive: Boolean = false,
     onLive: () -> Unit = {},
 ) {
@@ -691,7 +717,7 @@ private fun GardenHeader(
                     } else {
                         DropdownMenuItem(text = { Text("Block") }, onClick = { repo.block(peer); menu = false; onBack() })
                     }
-                    DropdownMenuItem(text = { Text("Report") }, onClick = { repo.report(peer); menu = false; onBack() })
+                    DropdownMenuItem(text = { Text("Report", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onReport() })
                 }
             }
             if (!isGroup) {
@@ -742,6 +768,8 @@ private fun MessageBubble(
     onUnsend: () -> Unit = {},
     canEdit: Boolean = false,
     onEdit: () -> Unit = {},
+    onReportMessage: () -> Unit = {},
+    fromStranger: Boolean = false,
     onSendNow: () -> Unit = {},
     onCancelScheduled: () -> Unit = {},
 ) {
@@ -763,6 +791,7 @@ private fun MessageBubble(
     // on-device translation / voice transcription shown under the bubble
     var langNote by remember(message.id) { mutableStateOf<String?>(null) }
     var langBusy by remember(message.id) { mutableStateOf(false) }
+    var strangerRevealed by remember(message.id) { mutableStateOf(false) }
     val canTranslate = !mine && message.type == MessageType.TEXT && message.text.isNotBlank()
     val canTranscribe = message.type == MessageType.VOICE && app.amend.messenger.util.VoiceTranscriber.supported
     fun translate() {
@@ -853,6 +882,14 @@ private fun MessageBubble(
                         color = textColor, style = MaterialTheme.typography.bodyMedium,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                     )
+                } else if (fromStranger && !strangerRevealed && message.type in STRANGER_HIDDEN) {
+                    // Media, files and locations from someone you haven't accepted stay covered until you choose to look
+                    Column(Modifier.clickable { strangerRevealed = true }) {
+                        Text("🙈 Hidden " + when (message.type) {
+                            MessageType.VOICE -> "voice message"; MessageType.VIDEO -> "video"; MessageType.LIVE -> "location"; else -> "photo or file"
+                        }, color = textColor, style = MaterialTheme.typography.bodyMedium)
+                        Text("From someone you haven't accepted · tap to show", color = textColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                    }
                 } else if (message.type == MessageType.LIVE) {
                     LiveMessageContent(message, liveShare, onStopLive)
                 } else if (message.type == MessageType.SOS) {
@@ -868,7 +905,11 @@ private fun MessageBubble(
                 } else if (message.type == MessageType.ECO_PROOF) {
                     EcoProofContent(repo, message, textColor)
                 } else {
-                    Text(linkify(message.text, textColor), color = textColor, style = MaterialTheme.typography.bodyLarge)
+                    // links from strangers aren't tappable (phishing / grooming lures)
+                    Text(
+                        if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor),
+                        color = textColor, style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (message.expiresAt > 0) Text("⏳ ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
@@ -944,6 +985,7 @@ private fun MessageBubble(
             if (!scheduled) DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
             if (canTranslate) DropdownMenuItem(text = { Text("Translate") }, onClick = { showReactions = false; translate() })
             if (canTranscribe) DropdownMenuItem(text = { Text("Transcribe") }, onClick = { showReactions = false; transcribe() })
+            if (!mine && !scheduled) DropdownMenuItem(text = { Text("Report", color = MaterialTheme.colorScheme.error) }, onClick = { showReactions = false; onReportMessage() })
             DropdownMenuItem(text = { Text("Copy") }, onClick = {
                 showReactions = false
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(message.text))
@@ -982,6 +1024,9 @@ private fun SosMessageContent(message: ChatMessage, live: app.amend.messenger.da
 
 /** Turns http(s) and www links in a message into tappable links. */
 private val URL_REGEX = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"]+)""")
+
+/** Message types covered when they come from someone you haven't accepted. */
+private val STRANGER_HIDDEN = setOf(MessageType.VIDEO, MessageType.VOICE, MessageType.FILE, MessageType.ECO_PROOF, MessageType.LIVE)
 
 internal fun linkify(text: String, color: Color): androidx.compose.ui.text.AnnotatedString =
     androidx.compose.ui.text.buildAnnotatedString {

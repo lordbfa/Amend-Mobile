@@ -2,6 +2,7 @@ package app.amend.messenger.data
 
 import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.crypto.hexToBytes
+import app.amend.messenger.core.crypto.Nip19
 import app.amend.messenger.core.crypto.Hashes
 import app.amend.messenger.core.nostr.Event
 import app.amend.messenger.core.nostr.GiftWrap
@@ -105,6 +106,16 @@ class AmendRepository(
     /** Edits that arrived before their message: id → (author, time, new text). */
     private val pendingEdits = java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, String>>()
 
+    /** Under-18 "stranger shield": message requests from people you haven't accepted are dropped. */
+    @Volatile var blockStrangers: Boolean = false
+
+    /** Notes or authors hidden from the Grove on this phone (after "Hide" / "Report"). */
+    private val hiddenNotes = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    private val _modBlocked = MutableStateFlow(settings.modBlocked)
+    /** Accounts blocked for everyone by amend's moderator. */
+    val modBlocked: StateFlow<Set<String>> = _modBlocked.asStateFlow()
+
     private val seenWraps = LinkedHashSet(settings.seenWraps)
 
     private val pendingBytesSent = AtomicLong()
@@ -204,6 +215,7 @@ class AmendRepository(
         // live call signals: only what's sent from now on
         val liveFilter = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.EPHEMERAL_GIFT_WRAP), "#p" to listOf(me), "since" to Event.nowSeconds() - 30)
         pool.subscribe(SUB_DM, listOf(dmFilter, liveFilter))
+        pool.subscribe(Moderation.SUB, listOf(Moderation.filter))
         resubscribeMetadata()
     }
 
@@ -217,7 +229,9 @@ class AmendRepository(
 
     private suspend fun handleIncoming(msg: RelayIncoming) {
         when (msg) {
-            is RelayIncoming.EventMsg -> if (msg.subscription == SUB_FEED) {
+            is RelayIncoming.EventMsg -> if (msg.subscription == Moderation.SUB) {
+                applyModerationList(msg.event)
+            } else if (msg.subscription == SUB_FEED) {
                 if (msg.event.kind == Kinds.TEXT_NOTE && msg.event.isValid()) addNote(msg.event)
             } else if (msg.subscription.startsWith(SUB_ECO_PREFIX)) {
                 // public eco-map reports and their reactions (see EcoMap)
@@ -255,6 +269,11 @@ class AmendRepository(
             else -> rumor.pubkey
         }
         if (peer in settings.blocked || (!fromMe && rumor.pubkey in settings.blocked)) return
+        if (!fromMe && rumor.pubkey in settings.modBlocked) return
+        // Stranger shield (under-18s): only people you've accepted, or chats you started, can reach you
+        if (blockStrangers && !fromMe && peer !in settings.accepted &&
+            (if (inGroup) rumor.pubkey !in settings.accepted else _conversations.value[peer]?.messages?.any { it.fromMe } != true)
+        ) return
         if (inGroup) registerGroup(peer, participants, rumor)
         val author = if (inGroup) rumor.pubkey else null
         // disappearing messages: drop anything already past its time
@@ -1230,6 +1249,8 @@ class AmendRepository(
 
     fun isAccepted(peer: String) = peer in settings.accepted
 
+    fun isBlocked(peer: String) = peer in settings.blocked || peer in settings.modBlocked
+
     fun addContact(peer: String, nickname: String = "") {
         accept(peer)
         if (nickname.isNotBlank()) setNickname(peer, nickname)
@@ -1257,6 +1278,59 @@ class AmendRepository(
     /** Report a person for abuse. With no central server to appeal to, the strongest
      *  action we can take for the user is to block them and remove the conversation. */
     fun report(peer: String) = block(peer)
+
+    // ---------------------------------------------------------------- safety
+
+    fun hideNote(note: Event, author: Boolean) {
+        hiddenNotes += if (author) note.pubkey else note.id
+        _feed.update { list -> list.filterNot { if (author) it.pubkey == note.pubkey else it.id == note.id } }
+    }
+
+    /** The moderator's shared blocklist: block every listed account here, unblock any removed. */
+    /** Whose blocklist this phone follows (tests swap in their own key). */
+    internal var moderatorPubkey: String = Moderation.MODERATOR
+
+    internal suspend fun applyModerationList(e: Event) {
+        val keys = Moderation.parse(e, moderatorPubkey) ?: return
+        if (e.createdAt <= settings.modListAt) return
+        val added = keys - settings.modBlocked
+        val removed = settings.modBlocked - keys
+        settings = settings.copy(
+            modBlocked = keys, modListAt = e.createdAt,
+            // lifting a moderator block only undoes the block the list made, never one you made yourself
+            blocked = settings.blocked + added - removed.filter { it !in userBlocked() },
+            accepted = settings.accepted - added,
+        )
+        added.forEach { if (it != me) deleteConversation(it) }
+        _modBlocked.value = keys
+        _feed.update { list -> list.filterNot { it.pubkey in keys } }
+        persistSettings()
+    }
+
+    /** Blocks you made yourself (as opposed to ones from the moderator list). */
+    private fun userBlocked(): Set<String> = settings.blocked - settings.modBlocked
+
+    /** Moderator only: publishes a new shared blocklist signed with the moderator key. */
+    suspend fun publishModerationList(moderator: KeyPair, keys: Collection<String>): Int {
+        val ev = Moderation.build(moderator, keys, moderatorPubkey)
+        applyModerationList(ev)
+        return runCatching { pool.publish(ev).count { it.accepted } }.getOrDefault(0)
+    }
+
+    /** The last N messages of a chat, as plain text, for a report the user chooses to send. */
+    fun reportEvidence(peer: String, count: Int = 10): String {
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(java.time.ZoneOffset.UTC)
+        val msgs = _conversations.value[peer]?.messages.orEmpty().filter { it.status != MessageStatus.SCHEDULED }.takeLast(count)
+        return msgs.joinToString("\n") { m ->
+            val who = if (m.fromMe) "me" else Nip19.npub(m.author ?: m.peer)
+            val body = when (m.type) {
+                MessageType.TEXT -> m.text
+                MessageType.UNSENT -> "[unsent]"
+                else -> "[${m.type.name.lowercase()}] ${m.text}".trim()
+            }
+            "${fmt.format(java.time.Instant.ofEpochSecond(m.createdAt))} UTC · $who: $body"
+        }
+    }
 
     fun deleteConversation(peer: String) {
         _conversations.update { it - peer }
@@ -1381,7 +1455,7 @@ class AmendRepository(
     fun closeFeed() = pool.unsubscribe(SUB_FEED)
 
     private fun addNote(e: Event) {
-        if (e.pubkey in settings.blocked || e.content.isBlank()) return
+        if (e.pubkey in settings.blocked || e.pubkey in settings.modBlocked || e.pubkey in hiddenNotes || e.id in hiddenNotes || e.content.isBlank()) return
         if (e.pubkey != me && e.pubkey !in settings.accepted) return
         // replies and reposts make little sense without their thread; keep top-level notes
         if (e.tags.any { it.firstOrNull() == "e" }) return
