@@ -222,4 +222,26 @@ class MessagingFeaturesTest {
         assertNull(Nip05.parse("x@evil.com/../etc"))
         assertEquals("getamend.app", Nip05.display("_@getamend.app"))
     }
+
+    @Test
+    fun liveLocationStartsMovesAndStops() = runBlocking {
+        val bob = repo("bob")
+        val alice = KeyPair.generate()
+        val until = Event.nowSeconds() + 3600
+        val p = listOf(listOf("p", bob.me))
+        fun live(phase: app.amend.messenger.data.LivePhase, lat: Double?, at: Long) = wrap(
+            alice, bob.me, Kinds.CHAT_MESSAGE, app.amend.messenger.data.LiveProtocol.content(phase, until),
+            app.amend.messenger.data.LiveProtocol.tags(p, phase, lat?.let { app.amend.messenger.data.SosLocation(it, 25.7, 20f, at) }, until), createdAt = at,
+        ).second
+        val t = Event.nowSeconds()
+        bob.injectMeshEvent(live(app.amend.messenger.data.LivePhase.START, 62.24, t - 20))
+        bob.injectMeshEvent(live(app.amend.messenger.data.LivePhase.UPDATE, 62.25, t - 10))
+        val key = "${alice.publicKeyHex}|${alice.publicKeyHex}"
+        assertEquals(62.25, bob.liveShares.value[key]!!.location!!.lat, 1e-6)
+        val msgs = bob.conversations.value[alice.publicKeyHex]!!.messages
+        assertEquals(listOf(MessageType.LIVE), msgs.map { it.type }) // updates don't add messages
+        bob.injectMeshEvent(live(app.amend.messenger.data.LivePhase.STOP, null, t))
+        assertNull(bob.liveShares.value[key])
+        assertEquals(MessageType.NOTICE, bob.conversations.value[alice.publicKeyHex]!!.messages.last().type)
+    }
 }

@@ -293,6 +293,10 @@ object Mesh {
             "ev" -> {
                 val json = m.str("e") ?: return
                 val ev = runCatching { Event.fromJson(json) }.getOrNull() ?: return
+                if (ev.kind == Kinds.NEARBY_SOS) {
+                    onNearbySos(from, ev, json)
+                    return
+                }
                 if (ev.kind != Kinds.GIFT_WRAP || !ev.isValid()) return
                 if (!s.add(ev.id, json, needsRelay = true)) return
                 _ui.update { it.copy(holding = s.size()) }
@@ -308,6 +312,55 @@ object Mesh {
                 bridge()
             }
         }
+    }
+
+    // ------------------------------------------------------------------ nearby SOS beacon
+
+    private val ownBeacons = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private const val BEACON_MAX_AGE_S = 30 * 60L
+
+    /**
+     * Tells every amend phone in Bluetooth / Wi-Fi Direct range that someone here needs help,
+     * with a rough location (~100 m). Anonymous (one-time key) and mesh-only. Returns true once
+     * a beacon with a location has gone out (false if the mesh isn't running).
+     */
+    fun broadcastNearbySos(context: Context, location: app.amend.messenger.data.SosLocation?): Boolean {
+        init(context)
+        val s = store ?: return false
+        if (!_ui.value.running) return false
+        val now = Event.nowSeconds()
+        val content = Json.write(linkedMapOf(
+            "loc" to location?.let { String.format(java.util.Locale.US, "%.3f,%.3f", it.lat, it.lon) },
+            "acc" to location?.accuracyM?.toInt()?.coerceAtLeast(110),
+        ))
+        val ev = Event.sign(
+            app.amend.messenger.core.nostr.KeyPair.generate().secretKey, Kinds.NEARBY_SOS, content,
+            listOf(listOf("amend", "nearby-sos"), listOf("expiration", (now + BEACON_MAX_AGE_S).toString())),
+        )
+        ownBeacons.add(ev.id)
+        s.add(ev.id, ev.toJson(), needsRelay = false)
+        connected.forEach { send(it, linkedMapOf("t" to "have", "ids" to listOf(ev.id))) }
+        scheduleSave()
+        return location != null
+    }
+
+    private fun onNearbySos(from: String, ev: Event, json: String) {
+        val s = store ?: return
+        val now = Event.nowSeconds()
+        if (!ev.isValid() || ev.createdAt < now - BEACON_MAX_AGE_S || ev.createdAt > now + 300) return
+        if (!s.add(ev.id, json, needsRelay = false)) return // seen already
+        // pass it on so it reaches phones further away
+        connected.filter { it != from }.forEach { peer -> send(peer, linkedMapOf("t" to "have", "ids" to listOf(ev.id))) }
+        if (ev.id in ownBeacons || !SosPrefs(context).nearbyAlerts) return
+        val loc = runCatching { Json.parseObject(ev.content).str("loc") }.getOrNull()
+            ?.let { app.amend.messenger.data.SosLocation.decode(it, ev.createdAt) }
+        val mine = SosManager.lastKnownLocation(context)
+        val distanceM = if (loc != null && mine != null) {
+            val out = FloatArray(1)
+            android.location.Location.distanceBetween(mine.lat, mine.lon, loc.lat, loc.lon, out)
+            out[0].toInt()
+        } else null
+        Notifications.nearbySos(context, ev.id, loc, distanceM)
     }
 
     /** Our own outgoing gift wrap: keep it, offer it to neighbours, upload it later if the relays missed it. */

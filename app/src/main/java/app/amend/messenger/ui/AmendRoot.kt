@@ -80,6 +80,7 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
             // calls above the app, SOS countdown / active screen above everything
             CallOverlay(repository)
             SosOverlay(repository)
+            app.amend.messenger.ui.screens.FakeCallOverlay()
         }
     }
 }

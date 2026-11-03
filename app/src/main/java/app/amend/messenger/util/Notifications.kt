@@ -34,6 +34,10 @@ object Notifications {
     const val MESH_ID = 5_200
     const val CHANNEL_CALL_ONGOING = "calls_ongoing"
     const val CALL_INCOMING_ID = 5_100
+    const val LIVE_SHARE_ID = 9_120
+    private const val CHECKIN_ID = 9_130
+    private const val CHECKIN_ALERT_ID = 9_131
+    private const val FAKE_CALL_ID = 9_140
     const val CALL_ONGOING_ID = 5_101
     /** MainActivity extra: "show" (incoming call screen) or "answer". */
     const val EXTRA_CALL = "amend_call"
@@ -445,4 +449,130 @@ object Notifications {
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setContentIntent(openIntent(context, null))
             .build()
+
+    // ------------------------------------------------------------ safety extras
+
+    private fun post(context: Context, id: Int, n: Notification) {
+        try {
+            NotificationManagerCompat.from(context).notify(id, n)
+        } catch (e: SecurityException) {
+            // notifications not allowed: the in-app screens still show everything
+        }
+    }
+
+    private fun clock(ms: Long): String =
+        java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+
+    /** Ongoing while live location is shared in a chat (keeps the location service allowed). */
+    fun liveShareNotification(context: Context): Notification =
+        NotificationCompat.Builder(context, CHANNEL_SOS_ACTIVE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tr("📍 Sharing your live location"))
+            .setContentText(tr("Only with the chats you chose. Open amend to stop."))
+            .setColor(0xFF2BB673.toInt())
+            .setOngoing(true)
+            .setContentIntent(openIntent(context, null))
+            .build()
+
+    private fun safeAction(context: Context): PendingIntent = PendingIntent.getBroadcast(
+        context, 7_150, Intent(context, SafetyAlarmReceiver::class.java).setAction(CheckIn.ACTION_SAFE),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    fun checkInOngoing(context: Context, deadlineMs: Long) {
+        val n = NotificationCompat.Builder(context, CHANNEL_SOS_ACTIVE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tr("🛡️ Safety check-in until ") + clock(deadlineMs))
+            .setContentText(tr("Tap “I'm safe” before then, or your SOS contacts get your live location."))
+            .setColor(0xFF2BB673.toInt())
+            .setOngoing(true)
+            .setContentIntent(openIntent(context, null))
+            .addAction(0, tr("I'm safe"), safeAction(context))
+            .build()
+        post(context, CHECKIN_ID, n)
+    }
+
+    fun checkInReminder(context: Context, deadlineMs: Long) {
+        val n = NotificationCompat.Builder(context, CHANNEL_SOS_ALERTS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tr("🛡️ Are you safe?"))
+            .setContentText(tr("Your check-in ends at ") + clock(deadlineMs) + tr(". Tap “I'm safe” or amend will start your SOS."))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setColor(0xFFE53935.toInt())
+            .setContentIntent(openIntent(context, null))
+            .addAction(0, tr("I'm safe"), safeAction(context))
+            .setAutoCancel(true)
+            .build()
+        post(context, CHECKIN_ALERT_ID, n)
+    }
+
+    fun checkInMissed(context: Context) {
+        val n = NotificationCompat.Builder(context, CHANNEL_SOS_ALERTS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tr("🆘 Check-in missed — starting your SOS"))
+            .setContentText(tr("Open amend to cancel within 5 seconds, or to stop it once you're safe."))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setColor(0xFFE53935.toInt())
+            .setContentIntent(openIntent(context, null))
+            .setAutoCancel(true)
+            .build()
+        post(context, CHECKIN_ALERT_ID, n)
+    }
+
+    fun cancelCheckIn(context: Context) {
+        NotificationManagerCompat.from(context).cancel(CHECKIN_ID)
+        NotificationManagerCompat.from(context).cancel(CHECKIN_ALERT_ID)
+    }
+
+    /** Rings like a normal incoming call, over the lock screen. */
+    fun fakeCall(context: Context, name: String) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(FakeCall.EXTRA, true)
+        }
+        val pi = PendingIntent.getActivity(context, 7_201, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(context, CHANNEL_CALLS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(name)
+            .setContentText(tr("Incoming call"))
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setContentIntent(pi)
+            .setFullScreenIntent(pi, true)
+            .setTimeoutAfter(60_000)
+            .build()
+        post(context, FAKE_CALL_ID, n)
+    }
+
+    fun cancelFakeCall(context: Context) = NotificationManagerCompat.from(context).cancel(FAKE_CALL_ID)
+
+    /** An anonymous "someone nearby needs help" beacon arrived over the offline mesh. */
+    fun nearbySos(context: Context, id: String, location: app.amend.messenger.data.SosLocation?, distanceM: Int?) {
+        if (!areEnabled(context)) return
+        val where = when {
+            distanceM == null -> tr("close to you")
+            distanceM < 1000 -> tr("about ") + ((distanceM / 50) * 50).coerceAtLeast(50) + " m " + tr("away")
+            else -> tr("about ") + String.format(java.util.Locale.US, "%.1f", distanceM / 1000f) + " km " + tr("away")
+        }
+        val open = location?.let {
+            PendingIntent.getActivity(
+                context, 7_300 + (id.hashCode() and 0xff),
+                Intent(Intent.ACTION_VIEW, android.net.Uri.parse(it.mapLink())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } ?: openIntent(context, null)
+        val n = NotificationCompat.Builder(context, CHANNEL_SOS_ALERTS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tr("🆘 Someone nearby needs help"))
+            .setContentText(tr("An amend user ") + where + tr(" sent an SOS over the offline mesh. If it's safe, check on them — or call emergency services."))
+            .setStyle(NotificationCompat.BigTextStyle())
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setColor(0xFFE53935.toInt())
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        post(context, 30_000 + (id.hashCode() and 0xffff), n)
+    }
 }

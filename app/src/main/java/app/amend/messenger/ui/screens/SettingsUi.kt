@@ -178,7 +178,12 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
     when (section) {
         Section.NOTIFICATIONS -> NotificationsCard(app, repo)
         Section.PRIVACY -> PrivacyPage(app, repo)
-        Section.SAFETY -> SafetyCard(repo)
+        Section.SAFETY -> Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SafetyCard(repo)
+            CheckInCard()
+            NearbySosCard()
+            FakeCallCard()
+        }
         Section.CALLS -> CallsCard()
         Section.MESH -> MeshCard()
         Section.NETWORK -> {
