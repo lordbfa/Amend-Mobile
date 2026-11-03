@@ -43,6 +43,8 @@ import app.amend.messenger.ui.screens.EcoMapScreen
 import app.amend.messenger.ui.screens.SettingsScreen
 import app.amend.messenger.ui.screens.SETTINGS_ROUTE
 import app.amend.messenger.ui.screens.ECO_MAP_ROUTE
+import app.amend.messenger.ui.screens.GROVE_ROUTE
+import app.amend.messenger.ui.screens.GroveScreen
 import app.amend.messenger.ui.screens.ECO_MAP_PLANT_ROUTE
 import app.amend.messenger.ui.theme.LocalEfficiency
 import app.amend.messenger.util.AppVisibility
@@ -111,6 +113,8 @@ private fun MainNavigation(app: AmendApp, repo: AmendRepository, pendingPeer: Mu
             )
             is Route.Chat -> if (route.peer.startsWith(SETTINGS_ROUTE)) {
                 SettingsScreen(app, repo, route.peer, open = { nav.push(Route.Chat(it)) }, onBack = { nav.pop() })
+            } else if (route.peer == GROVE_ROUTE) {
+                GroveScreen(repo, onBack = { nav.pop() }, openChat = { key -> nav.push(Route.Chat(key)) })
             } else if (route.peer == StepTracker.REPORTS_PEER) {
                 WalkingReportsScreen(onBack = { nav.pop() })
             } else if (route.peer == ECO_MAP_ROUTE || route.peer == ECO_MAP_PLANT_ROUTE) {

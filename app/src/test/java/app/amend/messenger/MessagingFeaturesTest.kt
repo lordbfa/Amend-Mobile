@@ -10,6 +10,7 @@ import app.amend.messenger.data.Disappear
 import app.amend.messenger.data.GroupInfo
 import app.amend.messenger.data.MessageStatus
 import app.amend.messenger.data.MessageType
+import app.amend.messenger.data.lastDays
 import app.amend.messenger.net.Nip05
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -243,5 +244,32 @@ class MessagingFeaturesTest {
         bob.injectMeshEvent(live(app.amend.messenger.data.LivePhase.STOP, null, t))
         assertNull(bob.liveShares.value[key])
         assertEquals(MessageType.NOTICE, bob.conversations.value[alice.publicKeyHex]!!.messages.last().type)
+    }
+
+    @Test
+    fun friendStatsAreKeptOnlyFromAcceptedContactsAndCanBeWithdrawn() = runBlocking {
+        val bob = repo("bob-stats")
+        val alice = KeyPair.generate()
+        val stranger = KeyPair.generate()
+        val t = Event.nowSeconds()
+        bob.injectMeshEvent(wrap(stranger, bob.me, Kinds.ECO_STATS, """{"trees":99,"points":1,"streak":1}""", listOf(listOf("p", bob.me)), t).second)
+        assertNull(bob.friendStats.value[stranger.publicKeyHex])
+        // a first chat message makes alice a conversation; accepting her lets her stats in
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.CHAT_MESSAGE, "hi", listOf(listOf("p", bob.me)), t - 5).second)
+        bob.accept(alice.publicKeyHex)
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.ECO_STATS, """{"trees":3,"points":420,"streak":7}""", listOf(listOf("p", bob.me)), t).second)
+        assertEquals(3, bob.friendStats.value[alice.publicKeyHex]?.trees)
+        assertEquals(7, bob.friendStats.value[alice.publicKeyHex]?.streak)
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.ECO_STATS, """{"off":true}""", listOf(listOf("p", bob.me)), t + 1).second)
+        assertNull(bob.friendStats.value[alice.publicKeyHex])
+        // stats never show up as a chat message
+        assertTrue(bob.conversations.value[alice.publicKeyHex]!!.messages.none { it.text.contains("trees") })
+    }
+
+    @Test
+    fun dailyHistoryKeepsOnlyTheLastDays() {
+        val m = (1..40).associate { "2026-10-%02d".format(it % 28 + 1) + "-$it" to it.toLong() }
+        assertEquals(30, m.lastDays(30).size)
+        assertEquals(5, mapOf("a" to 1, "b" to 2, "c" to 3, "d" to 4, "e" to 5).lastDays(30).size)
     }
 }

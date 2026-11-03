@@ -125,12 +125,15 @@ private object QrDecoder {
     }
 }
 
+/** QR payload for "Link another phone": the secret key, marked so it's never mistaken for an ID. */
+const val LINK_PREFIX = "amend-link:"
+
 /**
  * Full-screen QR scanner for amend IDs. Calls [onFound] with the hex public key
  * once a valid npub is seen. [myKey] is used to say "that's you".
  */
 @Composable
-fun QrScannerScreen(myKey: String, onFound: (String) -> Unit, onClose: () -> Unit) {
+fun QrScannerScreen(myKey: String, onFound: (String) -> Unit, onClose: () -> Unit, linkMode: Boolean = false) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = rememberHaptics()
@@ -154,6 +157,14 @@ fun QrScannerScreen(myKey: String, onFound: (String) -> Unit, onClose: () -> Uni
     /** Handles any decoded text; returns true when it was a usable amend ID. */
     fun handle(text: String): Boolean {
         if (done) return true
+        if (linkMode) {
+            val nsec = text.trim().removePrefix(LINK_PREFIX)
+            if (Nip19.parseSecretKey(nsec) == null) { hint = "That isn't an amend link code"; return false }
+            done = true
+            haptics.success()
+            onFound(nsec)
+            return true
+        }
         val key = Nip19.parsePublicKey(text)
         return when {
             key == null -> { hint = "That QR code isn't an amend ID"; false }

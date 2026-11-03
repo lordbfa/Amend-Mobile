@@ -206,11 +206,51 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
     }
 }
 
+/** Burner identity: a fresh, unlinked key that can delete itself after a while. */
+@Composable
+private fun BurnerCard(app: AmendApp) {
+    var ask by remember { mutableStateOf(false) }
+    val expires = remember { app.burnerExpiresAt() }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("🔥 Burner identity", style = MaterialTheme.typography.titleMedium)
+            Text(
+                when {
+                    expires > 0 -> "You're using a burner. It deletes itself " +
+                        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(expires * 1000)) + "."
+                    app.isBurner() -> "You're using a burner identity."
+                    else -> "Start over with a brand-new identity nobody can link to this one — for a trip, a sale or a one-off chat."
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = { ask = true }, shape = RoundedCornerShape(16.dp)) { Text("Start a burner identity") }
+        }
+    }
+    if (ask) {
+        AlertDialog(
+            onDismissRequest = { ask = false },
+            title = { Text("Start a burner identity?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Your current identity and all its messages will be deleted from this phone. Copy your backup key first if you want it back later.")
+                    Text("The burner deletes itself after:", style = MaterialTheme.typography.labelLarge)
+                    listOf(24 * 3600L to "24 hours", 7 * 24 * 3600L to "7 days", 30 * 24 * 3600L to "30 days", 0L to "Never (keep it)").forEach { (secs, label) ->
+                        TextButton(onClick = { ask = false; app.startBurner(secs) }) { Text(label) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { ask = false }) { Text("Cancel") } },
+        )
+    }
+}
+
 @Composable
 private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     var confirm by remember { mutableStateOf(false) }
     ReadReceiptsCard(repo)
     BackupCard(repo.keys.nsec)
+    BurnerCard(app)
     OutlinedButton(
         onClick = { confirm = true },
         modifier = Modifier.fillMaxWidth(),
@@ -260,8 +300,14 @@ private fun PolicyPage() {
         "Messages, calls and media" to "Encrypted on your phone before they leave it (NIP-17/44 for messages, DTLS-SRTP for calls, AES-256-GCM for voice and video). Relays and file servers only see unreadable data, plus the recipient's public key and an approximate time.",
         "What is public" to "Your profile (name, about, photo) and anything you post on the community eco map (photo, place, note). Photos are stripped of hidden camera data before upload.",
         "Location" to "Used only when you ask: SOS (sent only to the people you chose), weather (rounded to about 1 km and sent to Open-Meteo), the eco map and the icon's sunrise time (on the phone).",
-        "On your phone only" to "Steps, walking reports, your forest, points and settings never leave the device.",
-        "Services amend talks to" to "Nostr relays (messages), Blossom file servers (encrypted media), Cloudflare TURN (relaying encrypted calls on strict networks), Open-Meteo (weather), OpenStreetMap (map tiles), Google STUN (finding a call path). Each sees your IP address, like any website.",
+        "Shared gardens (groups)" to "Each message is encrypted separately for every member. Relays can't tell it's a group.",
+        "Live location" to "Only when you start it, only to that chat, and it stops by itself at the time you choose.",
+        "Nearby SOS (optional, off by default)" to "Sends an approximate location (about 100 m) to amend phones close by over Bluetooth/Wi-Fi, signed with a one-time key that isn't linked to you.",
+        "Friends' forests (optional)" to "If you turn it on, your tree count, points and streak are sent encrypted to your contacts — never publicly.",
+        "On your phone only" to "Steps, walking reports, check-ins, fake calls, scheduled messages, your forest, points and settings never leave the device.",
+        "Services amend talks to" to "Nostr relays (messages), Blossom file servers (encrypted media), Cloudflare TURN (relaying encrypted calls on strict networks), Open-Meteo (weather), OpenStreetMap (map tiles), Google STUN (finding a call path), and the website behind a name@domain address when you look one up. Each sees your IP address, like any website, unless you use Tor.",
+        "Tor (optional)" to "With Orbot running, amend can route everything except calls through Tor.",
+        "Translate & transcribe" to "Done on your phone. The first time you translate a language, its model is downloaded once from Google; your messages and voice notes are never sent.",
         "Deleting everything" to "Settings → Privacy & security → Remove identity deletes your key and all messages from this phone.",
     )
 }

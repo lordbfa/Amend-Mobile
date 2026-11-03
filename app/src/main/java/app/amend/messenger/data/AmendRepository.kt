@@ -214,7 +214,9 @@ class AmendRepository(
 
     private suspend fun handleIncoming(msg: RelayIncoming) {
         when (msg) {
-            is RelayIncoming.EventMsg -> if (msg.subscription.startsWith(SUB_ECO_PREFIX)) {
+            is RelayIncoming.EventMsg -> if (msg.subscription == SUB_FEED) {
+                if (msg.event.kind == Kinds.TEXT_NOTE && msg.event.isValid()) addNote(msg.event)
+            } else if (msg.subscription.startsWith(SUB_ECO_PREFIX)) {
                 // public eco-map reports and their reactions (see EcoMap)
                 if (msg.event.isValid()) _ecoEvents.tryEmit(msg.event)
             } else when (msg.event.kind) {
@@ -1310,6 +1312,47 @@ class AmendRepository(
         return true
     }
 
+    // ---------------------------------------------------------------- the Grove (public notes)
+
+    private val _feed = MutableStateFlow<List<Event>>(emptyList())
+    /** Public Nostr notes (kind 1) from me and my contacts, newest first. Fetched only while the Grove is open. */
+    val feed: StateFlow<List<Event>> = _feed.asStateFlow()
+
+    private fun feedAuthors(): List<String> =
+        (listOf(me) + _conversations.value.values
+            .filter { !it.isGroup && it.peer in settings.accepted && it.peer !in settings.blocked && it.peer.length == 64 }
+            .sortedByDescending { it.lastActivity }.map { it.peer }).distinct().take(250)
+
+    fun openFeed() {
+        pool.subscribe(SUB_FEED, listOf(mapOf("kinds" to listOf(Kinds.TEXT_NOTE), "authors" to feedAuthors(), "limit" to 150)))
+    }
+
+    fun closeFeed() = pool.unsubscribe(SUB_FEED)
+
+    private fun addNote(e: Event) {
+        if (e.pubkey in settings.blocked || e.content.isBlank()) return
+        if (e.pubkey != me && e.pubkey !in settings.accepted) return
+        // replies and reposts make little sense without their thread; keep top-level notes
+        if (e.tags.any { it.firstOrNull() == "e" }) return
+        _feed.update { list -> if (list.any { it.id == e.id }) list else (list + e).sortedByDescending { it.createdAt }.take(300) }
+    }
+
+    /** Publishes a PUBLIC note (anyone on Nostr can read it). Returns how many relays took it. */
+    suspend fun postNote(text: String): Int {
+        val body = text.trim().take(2000)
+        if (body.isEmpty()) return 0
+        val ev = Event.sign(keys.secretKey, Kinds.TEXT_NOTE, body, listOf(listOf("client", "amend")))
+        _feed.update { (listOf(ev) + it).take(300) }
+        return runCatching { pool.publish(ev).count { it.accepted } }.getOrDefault(0)
+    }
+
+    /** NIP-09: asks relays to delete one of my notes. */
+    suspend fun deleteNote(id: String) {
+        _feed.update { list -> list.filterNot { it.id == id && it.pubkey == me } }
+        val ev = Event.sign(keys.secretKey, Kinds.DELETION, "", listOf(listOf("e", id), listOf("k", "${Kinds.TEXT_NOTE}")))
+        runCatching { pool.publish(ev) }
+    }
+
     // ---------------------------------------------------------------- friends' leaderboard
 
     /** Opt in/out of sharing my forest with my contacts. Turning it off tells them to forget it. */
@@ -1424,6 +1467,7 @@ class AmendRepository(
         const val SUB_DM = "amend-dm"
         const val SUB_META = "amend-meta"
         const val SUB_ECO_PREFIX = "eco-"
+        const val SUB_FEED = "amend-feed"
         /** Receipts are only sent for messages from the last week. */
         const val RECEIPT_MAX_AGE = 7L * 24 * 3600
         /** How long after sending a message can still be unsent (15 minutes). */
