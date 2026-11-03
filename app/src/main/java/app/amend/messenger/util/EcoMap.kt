@@ -81,6 +81,8 @@ object EcoMap {
             EcoReports.KIND -> {
                 val parsed = EcoReports.parse(ev) ?: return
                 if (parsed.address in hidden) return // a post the user reported/hid
+                // accounts blocked by amend's moderator, or by you
+                repo?.let { r -> if (parsed.author in r.modBlocked.value || r.isBlocked(parsed.author)) return }
                 var isNew = false
                 _reports.update { all ->
                     val old = all[parsed.address]

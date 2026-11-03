@@ -203,7 +203,32 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
         Section.ABOUT -> AboutPage()
         Section.POLICY -> PolicyPage()
         Section.CONTACT -> ContactPage()
-        Section.INFO -> AppInfoPage(app)
+        Section.INFO -> AppInfoPage(app, repo)
+    }
+}
+
+/** The age setting: 13–17 turns the stranger shield on. Changing to 18+ asks first. */
+@Composable
+private fun AgeCard() {
+    val context = LocalContext.current
+    var confirmAdult by remember { mutableStateOf(false) }
+    val teen = app.amend.messenger.util.AgeCheck.group == app.amend.messenger.util.AgeCheck.Group.TEEN
+    SettingSwitch(
+        "Stranger shield (under 18)",
+        if (teen) "On: only people you've accepted, or chats you started, can message you. Photos, links and locations from requests stay covered."
+        else "Off. Turn on for anyone under 18 using this phone.",
+        teen,
+    ) { on ->
+        if (on) app.amend.messenger.util.AgeCheck.set(context, app.amend.messenger.util.AgeCheck.Group.TEEN) else confirmAdult = true
+    }
+    if (confirmAdult) {
+        AlertDialog(
+            onDismissRequest = { confirmAdult = false },
+            title = { Text("Are you 18 or older?") },
+            text = { Text("The stranger shield protects people under 18. Only turn it off if you're an adult.") },
+            confirmButton = { TextButton(onClick = { confirmAdult = false; app.amend.messenger.util.AgeCheck.set(context, app.amend.messenger.util.AgeCheck.Group.ADULT) }) { Text("I'm 18 or older") } },
+            dismissButton = { TextButton(onClick = { confirmAdult = false }) { Text("Keep it on") } },
+        )
     }
 }
 
@@ -264,6 +289,7 @@ private fun BurnerCard(app: AmendApp) {
 private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     var confirm by remember { mutableStateOf(false) }
     ReadReceiptsCard(repo)
+    AgeCard()
     ScreenshotCard()
     BackupCard(repo.keys.nsec)
     BurnerCard(app)
@@ -325,7 +351,19 @@ private fun PolicyPage() {
         "Tor (optional)" to "With Orbot running, amend can route everything except calls through Tor.",
         "Translate & transcribe" to "Done on your phone. The first time you translate a language, its model is downloaded once from Google; your messages and voice notes are never sent.",
         "Deleting everything" to "Settings → Privacy & security → Remove identity deletes your key and all messages from this phone.",
+        "Reports" to "When you report someone, your email app opens with the report and, only if you tick it, the last 10 messages of that chat as text. You decide whether to send it.",
+        "Age" to "Your answer to the age question stays on this phone and is never sent.",
     )
+    LinkButtons()
+}
+
+@Composable
+private fun LinkButtons() {
+    val context = LocalContext.current
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TERMS_URL))) } }, shape = RoundedCornerShape(16.dp)) { Text("Terms of Use") }
+        OutlinedButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CHILD_SAFETY_URL))) } }, shape = RoundedCornerShape(16.dp)) { Text("Child safety") }
+    }
 }
 
 @Composable
@@ -366,8 +404,17 @@ private fun ContactPage() {
 }
 
 @Composable
-private fun AppInfoPage(app: AmendApp) {
+private fun AppInfoPage(app: AmendApp, repo: AmendRepository) {
     val context = LocalContext.current
+    var taps by remember { mutableStateOf(0) }
+    var moderator by remember { mutableStateOf(false) }
+    if (moderator) ModeratorDialog(repo, onDismiss = { moderator = false; taps = 0 })
+    // hidden moderator tools: tap the version 7 times
+    Text(
+        "amend ${BuildConfig.VERSION_NAME}",
+        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.clickable { taps++; if (taps >= 7) moderator = true },
+    )
     TextCard(
         "Version" to "${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
         "Encryption" to if (app.nativeCrypto) "Native secp256k1 (fast)" else "Portable Kotlin crypto",

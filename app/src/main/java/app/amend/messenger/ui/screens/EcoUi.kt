@@ -526,7 +526,12 @@ fun EcoMapScreen(repo: AmendRepository, startPlanting: Boolean, onBack: () -> Un
             ) { Icon(Icons.Rounded.MyLocation, contentDescription = "My location") }
             Row(
                 Modifier.clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF1C9A62), Color(0xFF2BB673))))
-                    .clickable { reporting = EcoCategory.TRASH }.padding(horizontal = 18.dp, vertical = 14.dp),
+                    .clickable {
+                        // eco map posts are public (photo + place): not for under-18s
+                        if (app.amend.messenger.util.AgeCheck.shielded) {
+                            android.widget.Toast.makeText(context, "Posting on the public map is off while the stranger shield (under 18) is on", android.widget.Toast.LENGTH_LONG).show()
+                        } else reporting = EcoCategory.TRASH
+                    }.padding(horizontal = 18.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.Add, contentDescription = null, tint = Color.White)
@@ -603,8 +608,19 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
             }) { Text("Directions") }
             if (!mine) {
-                TextButton(onClick = { EcoMap.hide(r); haptics.heavy(); onClose() }) {
+                var reportingPost by remember { mutableStateOf(false) }
+                TextButton(onClick = { reportingPost = true }) {
                     Text("Report", color = MaterialTheme.colorScheme.error)
+                }
+                if (reportingPost) {
+                    ReportDialog(
+                        what = "a public eco map post",
+                        reportedKey = r.author,
+                        evidence = null,
+                        extraContext = "Post: ${r.address}\nNote: ${r.note.take(1000)}" + (r.imageUrl?.let { "\nPhoto: $it" } ?: ""),
+                        onDismiss = { reportingPost = false },
+                        onReported = { reportingPost = false; EcoMap.hide(r); haptics.heavy(); onClose() },
+                    )
                 }
             }
         }
