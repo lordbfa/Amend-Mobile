@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import app.amend.messenger.net.TorProxy
+import app.amend.messenger.util.ScreenProtection
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -206,6 +207,20 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
     }
 }
 
+/** Screenshot protection on/off: chats and other people's profiles vs. your own screens. */
+@Composable
+private fun ScreenshotCard() {
+    val context = LocalContext.current
+    run {
+        SettingSwitch(
+            "Screenshot protection",
+            if (ScreenProtection.enabled) "On: nobody can screenshot or record a chat or someone's profile or forest — yours included. Your own screens (chat list, forest, you, settings) can still be captured."
+            else "Off: screenshots and screen recordings are allowed everywhere in amend.",
+            ScreenProtection.enabled,
+        ) { ScreenProtection.set(context, it) }
+    }
+}
+
 /** Burner identity: a fresh, unlinked key that can delete itself after a while. */
 @Composable
 private fun BurnerCard(app: AmendApp) {
@@ -249,6 +264,7 @@ private fun BurnerCard(app: AmendApp) {
 private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     var confirm by remember { mutableStateOf(false) }
     ReadReceiptsCard(repo)
+    ScreenshotCard()
     BackupCard(repo.keys.nsec)
     BurnerCard(app)
     OutlinedButton(

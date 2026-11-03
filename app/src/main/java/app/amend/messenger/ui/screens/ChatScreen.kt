@@ -127,6 +127,7 @@ private val REACTIONS = listOf("💚", "🌱", "🌳", "😂", "😮", "🙏")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}) {
+    app.amend.messenger.util.SecureScreen()
     val conversations by repo.conversations.collectAsStateWithLifecycle()
     val profiles by repo.profiles.collectAsStateWithLifecycle()
     val groups by repo.groups.collectAsStateWithLifecycle()
