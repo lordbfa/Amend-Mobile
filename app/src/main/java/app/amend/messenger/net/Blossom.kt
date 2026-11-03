@@ -122,6 +122,7 @@ class Blossom(private val client: OkHttpClient = defaultClient) {
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(120, TimeUnit.SECONDS)
                 .readTimeout(120, TimeUnit.SECONDS)
+                .proxySelector(TorProxy)
                 .build()
         }
 

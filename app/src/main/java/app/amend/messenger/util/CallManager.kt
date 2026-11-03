@@ -161,7 +161,7 @@ class CallPrefs(context: Context) {
 
         private val http by lazy {
             okhttp3.OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
+                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS).proxySelector(app.amend.messenger.net.TorProxy).build()
         }
 
         /** Reads the usual `iceServers` JSON (an array, or an object holding one). */

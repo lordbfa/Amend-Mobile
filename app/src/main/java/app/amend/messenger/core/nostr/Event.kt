@@ -105,6 +105,8 @@ object Kinds {
     const val FILE_MESSAGE = 15
     /** amend delivery / read receipt (only ever sent gift-wrapped; other apps ignore it). */
     const val RECEIPT = 1405
+    /** amend friends' leaderboard: my trees/points/streak, gift-wrapped to my contacts (opt-in). */
+    const val ECO_STATS = 1406
     const val GIFT_WRAP = 1059
     /**
      * Same as a gift wrap, but in the ephemeral range: relays forward it to whoever

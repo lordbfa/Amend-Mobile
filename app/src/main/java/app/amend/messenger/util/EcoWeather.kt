@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 object EcoWeather {
     private const val PREFS = "amend_weather"
     private const val WORK = "amend-weather"
-    private val http by lazy { OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build() }
+    private val http by lazy { OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).proxySelector(app.amend.messenger.net.TorProxy).build() }
 
     private val _state = MutableStateFlow<WeatherSnapshot?>(null)
     val state: StateFlow<WeatherSnapshot?> = _state.asStateFlow()
