@@ -107,6 +107,8 @@ object Kinds {
     const val RECEIPT = 1405
     /** amend friends' leaderboard: my trees/points/streak, gift-wrapped to my contacts (opt-in). */
     const val ECO_STATS = 1406
+    /** amend edit: new text for one of my messages ("e" tag), within the 15-minute window. */
+    const val EDIT = 1407
     const val GIFT_WRAP = 1059
     /**
      * Same as a gift wrap, but in the ephemeral range: relays forward it to whoever
