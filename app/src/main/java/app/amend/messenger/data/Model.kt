@@ -331,9 +331,16 @@ data class Story(
         const val MAX_TEXT = 700
 
         @Suppress("UNCHECKED_CAST")
-        fun fromMap(m: Map<String, Any?>): Story? = Story(
-            id = m.str("id") ?: return null,
-            author = m.str("author") ?: return null,
+        fun fromMap(m: Map<String, Any?>): Story? {
+            val id = m.str("id") ?: return null
+            val author = m.str("author") ?: return null
+            return fromMapChecked(m, id, author)
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        private fun fromMapChecked(m: Map<String, Any?>, id: String, author: String) = Story(
+            id = id,
+            author = author,
             createdAt = m.long("createdAt") ?: 0,
             expiresAt = m.long("expiresAt") ?: 0,
             media = m.str("media"),
