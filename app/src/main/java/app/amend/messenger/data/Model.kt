@@ -252,6 +252,10 @@ data class EcoState(
     /** Share trees/points/streak with my contacts (encrypted) for the friends' leaderboard. */
     val shareStats: Boolean = false,
     val statsSentDay: String = "",
+    /** Unlocked achievements: "id:TIER" → unix time. */
+    val achievements: Map<String, Long> = emptyMap(),
+    /** Set once existing progress has been counted without celebrating every old unlock. */
+    val achievementsInit: Boolean = false,
 ) {
     val forest: ForestState get() = ForestState(totalPoints, trees)
     val totalBytes: Long get() = bytesSent + bytesReceived
@@ -270,6 +274,7 @@ data class EcoState(
         "readReceipts" to readReceipts,
         "dailyBytes" to dailyBytes, "dailyAvoided" to dailyAvoided,
         "shareStats" to shareStats, "statsSentDay" to statsSentDay,
+        "achievements" to achievements, "achievementsInit" to achievementsInit,
     )
 
     companion object {
@@ -298,6 +303,8 @@ data class EcoState(
             dailyAvoided = (m["dailyAvoided"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
             shareStats = m["shareStats"] == true,
             statsSentDay = m.str("statsSentDay") ?: "",
+            achievements = (m["achievements"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
+            achievementsInit = m["achievementsInit"] == true,
         )
     }
 }

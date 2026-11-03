@@ -957,6 +957,8 @@ private fun MessageBubble(
                     LiveMessageContent(message, liveShare, onStopLive)
                 } else if (message.type == MessageType.SOS) {
                     SosMessageContent(message, liveSos)
+                } else if (message.type == MessageType.ECO_CARD && message.cardId?.startsWith("ach:") == true) {
+                    AchievementCardContent(message, Color.White)
                 } else if (message.type == MessageType.ECO_CARD) {
                     EcoCardContent(repo, message)
                 } else if (message.type == MessageType.VOICE) {

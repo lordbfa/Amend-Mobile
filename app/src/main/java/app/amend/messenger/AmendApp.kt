@@ -72,6 +72,10 @@ class AmendApp : Application() {
         _repository.value?.let { if (it.me == keys.publicKeyHex) return it }
         val repo = AmendRepository(dataDir(), keys)
         repo.blockStrangers = app.amend.messenger.util.AgeCheck.shielded
+        repo.externalStats = {
+            val mine = app.amend.messenger.util.EcoMap.reports.value.values.count { it.author == repo.me }.toLong()
+            mine to app.amend.messenger.util.StepTracker.ui.value.monthKm.toLong()
+        }
         // Listen for events BEFORE the repository starts: messages that were waiting on the
         // relays arrive within moments of connecting, and an event emitted before anyone
         // listens is lost (that is how a first message or a message request went unnotified).
@@ -120,6 +124,11 @@ class AmendApp : Application() {
             is AmendEvent.SosReceived -> {
                 // Always alert for a friend's SOS, even if their chat is open.
                 Notifications.sosAlert(this, e.peer, repo.displayName(e.peer), e.sos, e.phase)
+            }
+            is AmendEvent.AchievementUnlocked -> if (!AppVisibility.isForeground) {
+                app.amend.messenger.eco.Achievements.parse(e.key)?.let { (a, t) ->
+                    Notifications.achievement(this, "${a.emoji} ${a.title} · ${t.label}", "Achievement unlocked — ${a.describe(t)}", e.key.hashCode())
+                }
             }
             is AmendEvent.TreeGrown -> if (!AppVisibility.isForeground) {
                 Notifications.treeGrown(this, e.tree.species.name, e.tree.index + 1)

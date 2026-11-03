@@ -378,4 +378,87 @@ class MessagingFeaturesTest {
         assertTrue(ev.contains("msg 12") && !ev.contains("msg 2\n"))
         assertTrue(ev.contains(app.amend.messenger.core.crypto.Nip19.npub(alice.publicKeyHex)))
     }
+
+    @Test
+    fun achievementsReachTiersInOrder() {
+        val a = app.amend.messenger.eco.Achievements.byId("trees")!!
+        val s5 = app.amend.messenger.eco.AchievementStats(trees = 5)
+        assertEquals(app.amend.messenger.eco.Tier.SILVER, a.reached(s5))
+        val earned = app.amend.messenger.eco.Achievements.earned(s5)
+        assertTrue("trees:BRONZE" in earned && "trees:SILVER" in earned && "trees:GOLD" !in earned)
+        assertNotNull(app.amend.messenger.eco.Achievements.parse("trees:GOLD"))
+        assertNull(app.amend.messenger.eco.Achievements.parse("trees:PLATINUM"))
+        assertNull(app.amend.messenger.eco.Achievements.parse("gardens:EMERALD")) // gardens has 3 tiers
+        assertEquals(0.25f, a.progress(app.amend.messenger.eco.AchievementStats(trees = 10)), 0.01f)
+    }
+
+    @Test
+    fun firstAchievementCheckIsQuietThenNewTiersAreCelebrated() = runBlocking {
+        val bob = repo("bob-ach")
+        bob.checkAchievements()
+        assertTrue(bob.celebrate.value.isEmpty())
+        // 100 messages → Green messenger bronze
+        val alice = KeyPair.generate()
+        val t = Event.nowSeconds()
+        (1..100).forEach { i -> bob.injectMeshEvent(wrap(alice, bob.me, Kinds.CHAT_MESSAGE, "m$i", listOf(listOf("p", bob.me)), t - 500 + i).second) }
+        bob.checkAchievements()
+        assertTrue("messages:BRONZE" in bob.celebrate.value)
+        assertTrue("messages:BRONZE" in bob.eco.value.achievements)
+    }
+
+    @Test
+    fun storiesComeOnlyFromContactsAndCanBeDeleted() = runBlocking {
+        val bob = repo("bob-story")
+        val alice = KeyPair.generate()
+        val stranger = KeyPair.generate()
+        bob.accept(alice.publicKeyHex)
+        val t = Event.nowSeconds()
+        val exp = (t + 3600).toString()
+        val body = """{"text":"planted a tree today","bg":2}"""
+        bob.injectMeshEvent(wrap(stranger, bob.me, Kinds.STORY, body, listOf(listOf("expiration", exp)), t).second)
+        assertTrue(bob.stories.value.isEmpty())
+        val (story, w) = wrap(alice, bob.me, Kinds.STORY, body, listOf(listOf("expiration", exp)), t)
+        bob.injectMeshEvent(w)
+        assertEquals(1, bob.stories.value.size)
+        assertEquals("planted a tree today", bob.stories.value.first().text)
+        // only the author can delete it
+        bob.injectMeshEvent(wrap(stranger, bob.me, Kinds.DELETION, "", listOf(listOf("e", story.id), listOf("k", "${Kinds.STORY}"))).second)
+        assertEquals(1, bob.stories.value.size)
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.DELETION, "", listOf(listOf("e", story.id), listOf("k", "${Kinds.STORY}"))).second)
+        assertTrue(bob.stories.value.isEmpty())
+        // a "story" claiming to last longer than a day is refused
+        bob.injectMeshEvent(wrap(alice, bob.me, Kinds.STORY, body, listOf(listOf("expiration", (t + 3 * 86400).toString())), t + 1).second)
+        assertTrue(bob.stories.value.isEmpty())
+    }
+
+    @Test
+    fun anInstantDisappearsOnceOpened() = runBlocking {
+        val bob = repo("bob-instant")
+        val alice = KeyPair.generate()
+        bob.accept(alice.publicKeyHex)
+        val t = Event.nowSeconds()
+        val tags = listOf(
+            listOf("p", bob.me), listOf("file-type", "image/jpeg"), listOf("encryption-algorithm", "aes-gcm"),
+            listOf("decryption-key", "11".repeat(32)), listOf("decryption-nonce", "22".repeat(12)), listOf("x", "33".repeat(32)),
+            listOf("amend", "media", "instant"), listOf("expiration", (t + 86400).toString()),
+        )
+        val (msg, w) = wrap(alice, bob.me, Kinds.FILE_MESSAGE, "https://example.com/blob", tags, t)
+        bob.injectMeshEvent(w)
+        val m = bob.conversations.value[alice.publicKeyHex]!!.messages.first { it.id == msg.id }
+        assertTrue(bob.isInstant(m))
+        assertTrue(m.expiresAt > 0)
+        bob.consumeInstant(alice.publicKeyHex, msg.id)
+        val after = bob.conversations.value[alice.publicKeyHex]!!.messages.first { it.id == msg.id }
+        assertEquals(MessageType.NOTICE, after.type)
+        assertNull(after.extra)
+    }
+
+    @Test
+    fun mediaKindsMapToTheRightBubbles() {
+        assertEquals(MessageType.FILE, app.amend.messenger.data.MediaKind.PHOTO.messageType)
+        assertEquals(MessageType.VIDEO, app.amend.messenger.data.MediaKind.CLIP.messageType)
+        assertEquals(app.amend.messenger.data.MediaKind.PHOTO, app.amend.messenger.data.MediaKind.of(null, "image/png"))
+        assertEquals(app.amend.messenger.data.MediaKind.CLIP, app.amend.messenger.data.MediaKind.of(null, "video/mp4"))
+        assertEquals(app.amend.messenger.data.MediaKind.VIDEO, app.amend.messenger.data.MediaKind.of("video", "video/mp4"))
+    }
 }

@@ -156,6 +156,23 @@ object Notifications {
         NotificationManagerCompat.from(context).cancel(idFor(peer))
     }
 
+    fun achievement(context: Context, title: String, text: String, id: Int) {
+        if (!areEnabled(context)) return
+        val n = NotificationCompat.Builder(context, CHANNEL_FOREST)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tr(title))
+            .setContentText(tr(text))
+            .setColor(0xFFFFC857.toInt())
+            .setAutoCancel(true)
+            .setContentIntent(openIntent(context, null))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(7_500 + (id and 0x3ff), n)
+        } catch (e: SecurityException) {
+            // ignore
+        }
+    }
+
     fun treeGrown(context: Context, speciesName: String, count: Int) {
         if (!areEnabled(context)) return
         val n = NotificationCompat.Builder(context, CHANNEL_FOREST)
