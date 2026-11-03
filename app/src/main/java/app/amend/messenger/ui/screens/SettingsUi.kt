@@ -207,6 +207,33 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
     }
 }
 
+/** Who sees your Instants: everyone in your chat list, or only people you pick. */
+@Composable
+private fun InstantsAudienceCard(repo: AmendRepository) {
+    var all by remember { mutableStateOf(repo.instantsToAll) }
+    var edit by remember { mutableStateOf(false) }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("📸 Who sees your Instants", style = MaterialTheme.typography.titleMedium)
+            listOf(true to "Everyone in my chats", false to "Only people I choose (${repo.closeFriends.size})").forEach { (v, label) ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { all = v; repo.setInstantsToAll(v) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.RadioButton(selected = all == v, onClick = { all = v; repo.setInstantsToAll(v) })
+                    Text(label)
+                }
+            }
+            if (!all) TextButton(onClick = { edit = true }) { Text("Choose people") }
+            Text(
+                "Instants show at the top of their chat list. You can still change who gets one before you send it.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    if (edit) CloseFriendsDialog(repo, onDismiss = { edit = false })
+}
+
 /** The age setting: 13–17 turns the stranger shield on. Changing to 18+ asks first. */
 @Composable
 private fun AgeCard() {
@@ -290,6 +317,7 @@ private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     var confirm by remember { mutableStateOf(false) }
     ReadReceiptsCard(repo)
     AgeCard()
+    InstantsAudienceCard(repo)
     ScreenshotCard()
     BackupCard(repo.keys.nsec)
     BurnerCard(app)

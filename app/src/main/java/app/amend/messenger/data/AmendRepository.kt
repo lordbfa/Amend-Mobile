@@ -1424,6 +1424,22 @@ class AmendRepository(
 
     val closeFriends: Set<String> get() = settings.closeFriends
 
+    /** Instants go to everyone in my chat list unless I chose "only selected people" in Settings. */
+    val instantsToAll: Boolean get() = settings.instantsToAll
+
+    fun setInstantsToAll(all: Boolean) {
+        settings = settings.copy(instantsToAll = all)
+        persistSettings()
+    }
+
+    /** Who a new Instant goes to by default. */
+    fun instantAudience(): List<String> = if (settings.instantsToAll) contactKeys() else contactKeys().filter { it in settings.closeFriends }
+
+    /** Instants sent to me that I haven't opened yet, newest first. */
+    fun unopenedInstants(): List<ChatMessage> = _conversations.value.values
+        .flatMap { c -> c.messages.filter { !it.fromMe && isInstant(it) } }
+        .sortedByDescending { it.createdAt }
+
     fun setCloseFriends(keys: Set<String>) {
         settings = settings.copy(closeFriends = keys.filter { it.length == 64 && it != me }.toSet())
         persistSettings()

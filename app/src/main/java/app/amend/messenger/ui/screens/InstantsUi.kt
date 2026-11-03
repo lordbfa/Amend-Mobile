@@ -97,7 +97,8 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
     var sending by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     val preset = presetRecipients.isNotEmpty() || groupPeer != null
-    var audience by remember { mutableStateOf(if (preset) "chat" else if (repo.closeFriends.isNotEmpty()) "close" else "all") }
+    // default comes from Settings → Privacy & security → Who sees your Instants
+    var audience by remember { mutableStateOf(if (preset) "chat" else if (repo.instantsToAll) "all" else "close") }
     var editFriends by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onClose, properties = mediaDialogProperties()) {
@@ -165,8 +166,8 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (preset) InstantChip("This chat", true) {}
                         else {
-                            InstantChip("⭐ Close friends (${repo.closeFriends.size})", audience == "close") { audience = "close" }
-                            InstantChip("All contacts", audience == "all") { audience = "all" }
+                            InstantChip("Everyone in my chats", audience == "all") { audience = "all" }
+                            InstantChip("Chosen people (${repo.closeFriends.size})", audience == "close") { audience = "close" }
                             if (audience == "close") InstantChip("Edit", false) { editFriends = true }
                         }
                     }
@@ -271,30 +272,54 @@ fun InstantBubble(repo: AmendRepository, message: ChatMessage, textColor: Color)
         }
     }
     if (viewing && file != null) {
-        Dialog(onDismissRequest = {
+        InstantViewerDialog(file, message, onClose = {
             viewing = false
             scope.launch { repo.consumeInstant(message.peer, message.id) }
-        }, properties = mediaDialogProperties(alwaysSecure = true)) {
-            var image by remember { mutableStateOf<ImageBitmap?>(null) }
-            LaunchedEffect(file) { image = decodeImage(file, 2400) }
-            Box(Modifier.fillMaxSize().background(Color.Black).clickable {
-                viewing = false
-                scope.launch { repo.consumeInstant(message.peer, message.id) }
-            }) {
-                image?.let { Image(it, contentDescription = "Instant", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
-                    ?: CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-                if (message.text != media.kind.label && message.text.isNotBlank()) {
-                    Text(
-                        message.text, color = Color.White,
-                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp)
-                            .clip(RoundedCornerShape(12.dp)).background(Color(0x88000000)).padding(10.dp),
-                    )
-                }
+        })
+    }
+}
+
+/** Shows an Instant once, full screen and screenshot-proof. Closing it is the end of it. */
+@Composable
+fun InstantViewerDialog(file: File, message: ChatMessage, onClose: () -> Unit) {
+    val label = remember(message.extra) { MediaInfo.fromJson(message.extra)?.kind?.label }
+    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties(alwaysSecure = true)) {
+        var image by remember { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(file) { image = decodeImage(file, 2400) }
+        Box(Modifier.fillMaxSize().background(Color.Black).clickable { onClose() }) {
+            image?.let { Image(it, contentDescription = "Instant", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+                ?: CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+            if (message.text != label && message.text.isNotBlank()) {
                 Text(
-                    "Tap to close — it disappears", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp,
-                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 16.dp),
+                    message.text, color = Color.White,
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp)
+                        .clip(RoundedCornerShape(12.dp)).background(Color(0x88000000)).padding(10.dp),
                 )
             }
+            Text(
+                "Tap to close — it disappears", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 16.dp),
+            )
+        }
+    }
+}
+
+/** Opens an unopened Instant from the tray: downloads it, shows it once, then it's gone. */
+@Composable
+fun OpenInstantFromTray(repo: AmendRepository, message: ChatMessage, onDone: () -> Unit) {
+    val media = remember(message.extra) { MediaInfo.fromJson(message.extra) } ?: run { onDone(); return }
+    val scope = rememberCoroutineScope()
+    val (file, loading, _) = rememberMediaFile(repo, media, autoLoad = true)
+    if (file != null) {
+        InstantViewerDialog(file, message, onClose = {
+            scope.launch { repo.consumeInstant(message.peer, message.id) }
+            onDone()
+        })
+    } else if (!loading) {
+        LaunchedEffect(Unit) { onDone() }
+    } else {
+        Dialog(onDismissRequest = onDone, properties = mediaDialogProperties(alwaysSecure = true)) {
+            Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
         }
     }
 }

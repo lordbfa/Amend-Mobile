@@ -111,6 +111,9 @@ fun StoriesTray(repo: AmendRepository) {
     var composing by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<List<String>?>(null) }
     var viewIndex by remember { mutableIntStateOf(0) }
+    val conversations by repo.conversations.collectAsStateWithLifecycle()
+    val instants = remember(conversations) { repo.unopenedInstants().groupBy { it.author ?: it.peer } }
+    var openingInstant by remember { mutableStateOf<app.amend.messenger.data.ChatMessage?>(null) }
     val mine = stories.filter { it.author == repo.me }
     val others = stories.filter { it.author != repo.me }.groupBy { it.author }
         .entries.sortedWith(compareBy<Map.Entry<String, List<Story>>> { e -> e.value.all { it.seen } }.thenByDescending { e -> e.value.maxOf { it.createdAt } })
@@ -131,6 +134,24 @@ fun StoriesTray(repo: AmendRepository) {
                 Text("Your story", fontSize = 11.sp, maxLines = 1)
             }
         }
+        // Instants waiting for me, like Instagram's inbox: sunny ring + 📸, open once
+        items(instants.entries.toList(), key = { "i" + it.key }) { (author, list) ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(68.dp).clickable {
+                haptics.tap(); openingInstant = list.last()
+            }) {
+                Box {
+                    Box(Modifier.size(64.dp).clip(CircleShape).background(Brush.sweepGradient(listOf(Color(0xFFFFC857), Color(0xFFFF8A80), Color(0xFFFFC857)))), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+                            LeafAvatar(author, profiles[author], 52.dp)
+                        }
+                    }
+                    Box(Modifier.align(Alignment.BottomEnd).size(24.dp).clip(CircleShape).background(Color(0xFFFFC857)), contentAlignment = Alignment.Center) {
+                        Text(if (list.size > 1) "${list.size}" else "📸", fontSize = 12.sp)
+                    }
+                }
+                Text(repo.displayName(author), fontSize = 11.sp, maxLines = 1)
+            }
+        }
         items(others, key = { it.key }) { (author, list) ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(68.dp).clickable {
                 haptics.tap()
@@ -142,6 +163,7 @@ fun StoriesTray(repo: AmendRepository) {
             }
         }
     }
+    openingInstant?.let { m -> OpenInstantFromTray(repo, m, onDone = { openingInstant = null }) }
     if (composing) StoryComposer(repo, onClose = { composing = false })
     viewing?.let { authors ->
         StoryViewer(repo, authors, viewIndex, onClose = { viewing = null })
@@ -280,7 +302,7 @@ fun CloseFriendsDialog(repo: AmendRepository, onDismiss: () -> Unit) {
     var chosen by remember { mutableStateOf(repo.closeFriends) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("⭐ Close friends") },
+        title = { Text("⭐ Chosen people") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (contacts.isEmpty()) Text("Accept a chat first — close friends are picked from your contacts.")
