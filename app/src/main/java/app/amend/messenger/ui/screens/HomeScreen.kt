@@ -19,6 +19,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
+import app.amend.messenger.net.Nip05
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
@@ -98,6 +99,7 @@ import app.amend.messenger.data.AmendEvent
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.data.Conversation
 import app.amend.messenger.data.EcoRules
+import app.amend.messenger.data.MessageStatus
 import app.amend.messenger.data.MessageType
 import app.amend.messenger.data.Profile
 import app.amend.messenger.ui.LocalParticles
@@ -277,7 +279,7 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
                 if (pubOrName.contains("@")) {
                     // a name like faisal@getamend.app: look up its key first
                     scope.launch {
-                        val pub = app.amend.messenger.net.Nip05.resolve(pubOrName)
+                        val pub = Nip05.resolve(pubOrName)
                         if (pub == null) {
                             haptics.reject()
                             toast = "Couldn't find $pubOrName"
@@ -597,7 +599,7 @@ private fun ConversationRow(repo: AmendRepository, c: Conversation, profile: Pro
                         isRequest -> tr("Wants to chat · tap to review")
                         last == null -> tr("${garden.species.emoji} Say hello to grow your garden")
                         last.type == MessageType.UNSENT -> tr("🚫 Message unsent")
-                        last.status == app.amend.messenger.data.MessageStatus.SCHEDULED -> tr("🕒 Scheduled: ") + last.text
+                        last.status == MessageStatus.SCHEDULED -> tr("🕒 Scheduled: ") + last.text
                         last.type == MessageType.NOTICE -> last.text
                         last.type == MessageType.ECO_CARD -> tr("🌱 Eco challenge")
                         last.type == MessageType.SOS -> tr(if (last.cardId == "stop") "✅ SOS ended" else "🆘 SOS")
