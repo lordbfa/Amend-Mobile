@@ -71,6 +71,16 @@ class SosPrefs(context: Context) {
     var activeRecipients: Set<String>
         get() = p.getStringSet("recipients", emptySet()) ?: emptySet()
         set(v) = p.edit().putStringSet("recipients", v).apply()
+
+    /** Also alert amend users physically nearby over the offline mesh (anonymous, no internet needed). Off by default. */
+    var nearbyBeacon: Boolean
+        get() = p.getBoolean("nearbyBeacon", false)
+        set(v) = p.edit().putBoolean("nearbyBeacon", v).apply()
+
+    /** Show "someone nearby needs help" alerts that arrive over the mesh. */
+    var nearbyAlerts: Boolean
+        get() = p.getBoolean("nearbyAlerts", true)
+        set(v) = p.edit().putBoolean("nearbyAlerts", v).apply()
 }
 
 /** Detects N presses within a time window (e.g. 4 presses in 3 seconds). */
@@ -155,8 +165,9 @@ object SosManager {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     /** Called by any trigger (volume, power, on-screen button). */
-    fun trigger(context: Context, practice: Boolean = false) {
-        if (!practice && !SosPrefs(context).enabled) return
+    fun trigger(context: Context, practice: Boolean = false, force: Boolean = false) {
+        // [force]: a missed safety check-in starts the SOS even if the SOS triggers are switched off
+        if (!practice && !force && !SosPrefs(context).enabled) return
         if (_state.value !is SosState.Idle) return
         val repo = app(context).repository.value ?: return
         recipients = repo.sosRecipients(SosPrefs(context).excluded)
@@ -195,8 +206,13 @@ object SosManager {
         startTracking(context)
         send(context, SosPhase.START)
         startHeartbeat(context)
+        beaconSent = false
+        if (prefs.nearbyBeacon) beaconSent = Mesh.broadcastNearbySos(context, latest)
         if (prefs.autoDial) openDialer(context)
     }
+
+    /** Whether the "someone nearby needs help" mesh beacon has gone out with a location. */
+    private var beaconSent = false
 
     /**
      * Starts live tracking if location is allowed. Call again after the user grants
@@ -288,6 +304,7 @@ object SosManager {
         latest = loc
         _state.value = s.copy(location = loc)
         if (s.practice) return
+        if (!beaconSent && SosPrefs(context).nearbyBeacon) beaconSent = Mesh.broadcastNearbySos(context, loc)
         if (!locationSent || System.currentTimeMillis() - lastSentAt >= MIN_UPDATE_INTERVAL_MS) {
             if (sending) pendingUpdate = true else send(context, SosPhase.UPDATE)
         }
