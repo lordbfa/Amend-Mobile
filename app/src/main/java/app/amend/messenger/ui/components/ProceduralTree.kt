@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.components
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -43,6 +44,14 @@ fun DrawScope.drawTree(
     }
     val model = TreeModels.get(species, seed, g)
     val trunk = if (night) model.trunkNight else model.trunkDay
+    val bark = if (night) model.barkNight else model.barkDay
+    val barkLight = if (night) model.barkLightNight else model.barkLightDay
+    val detailed = height > 140f
+    // soft shadow on the ground
+    if (detailed) {
+        val w = height * (0.18f + 0.32f * g) * species.crown
+        drawOval(Color.Black.copy(alpha = if (night) 0.22f else 0.14f), Offset(base.x - w / 2, base.y - height * 0.012f), Size(w, height * 0.035f))
+    }
     // Positions are recomputed each frame (cheap trig); the shape itself is cached.
     val n = model.count
     val ex = model.scratchX
@@ -60,19 +69,56 @@ fun DrawScope.drawTree(
         ang[i] = a
         ex[i] = sx + cos(a) * len
         ey[i] = sy + sin(a) * len
-        drawLine(trunk, Offset(sx, sy), Offset(ex[i], ey[i]), strokeWidth = model.width[i] * height, cap = StrokeCap.Round)
+        val w = model.width[i] * height
+        if (detailed && level <= 3) {
+            // bark: darker edge, the wood, and light catching the left side
+            drawLine(bark, Offset(sx, sy), Offset(ex[i], ey[i]), strokeWidth = w * 1.18f, cap = StrokeCap.Round)
+            drawLine(trunk, Offset(sx, sy), Offset(ex[i], ey[i]), strokeWidth = w, cap = StrokeCap.Round)
+            val nx = -sin(a) * w * 0.22f
+            val ny = cos(a) * w * 0.22f
+            drawLine(barkLight, Offset(sx + nx, sy + ny), Offset(ex[i] + nx, ey[i] + ny), strokeWidth = w * 0.22f, cap = StrokeCap.Round)
+        } else {
+            drawLine(trunk, Offset(sx, sy), Offset(ex[i], ey[i]), strokeWidth = w, cap = StrokeCap.Round)
+        }
+        if (parent < 0 && detailed) {
+            // root flare where the trunk meets the ground
+            val flare = Path().apply {
+                moveTo(sx - w * 1.1f, sy + w * 0.15f)
+                quadraticBezierTo(sx - w * 0.4f, sy - w * 0.2f, sx - w * 0.35f, sy - w * 1.2f)
+                lineTo(sx + w * 0.35f, sy - w * 1.2f)
+                quadraticBezierTo(sx + w * 0.4f, sy - w * 0.2f, sx + w * 1.1f, sy + w * 0.15f)
+                close()
+            }
+            drawPath(flare, trunk)
+        }
     }
     val leafR = height * 0.045f * species.crown * (0.5f + 0.5f * g)
     val colors = if (night) model.leafNight else model.leafDay
     val a = autumn.coerceIn(0f, 1f)
-    for (k in 0 until model.leafCount) {
+    // weeping trees: hanging strands under every tip
+    if (species.weeping && g > 0.3f) {
+        val strand = colors[0].copy(alpha = 0.75f)
+        for (k in 0 until model.leafCount step 3) {
+            val node = model.leafNode[k]
+            val x = ex[node] + model.leafDx[k] * leafR * 0.5f
+            val y = ey[node]
+            val drop = leafR * (2.2f + model.leafScale[k] * 1.6f) * g
+            val drift = swayAll * drop * 0.6f
+            drawLine(strand, Offset(x, y), Offset(x + drift, y + drop), strokeWidth = leafR * 0.28f, cap = StrokeCap.Round)
+        }
+    }
+    // canopy, back to front: a shaded underside, the leaves, and sunlit tops
+    for (o in 0 until model.leafCount) {
+        val k = model.leafOrder[o]
         val node = model.leafNode[k]
-        val col = if (a > 0f) lerp(colors[k], AUTUMN_LEAF[k % AUTUMN_LEAF.size], a * 0.8f) else colors[k]
-        drawCircle(
-            col,
-            leafR * model.leafScale[k],
-            Offset(ex[node] + model.leafDx[k] * leafR, ey[node] + model.leafDy[k] * leafR),
-        )
+        val base0 = colors[k]
+        val col = if (a > 0f) lerp(base0, AUTUMN_LEAF[k % AUTUMN_LEAF.size], a * 0.8f) else base0
+        val r = leafR * model.leafScale[k]
+        val cx = ex[node] + model.leafDx[k] * leafR
+        val cy = ey[node] + model.leafDy[k] * leafR
+        if (detailed && k % 2 == 0) drawCircle(lerp(col, Color.Black, 0.28f), r * 1.04f, Offset(cx + r * 0.22f, cy + r * 0.28f))
+        drawCircle(col, r, Offset(cx, cy))
+        if (detailed && k % 3 == 0) drawCircle(lerp(col, Color(0xFFFFF6C8), if (night) 0.12f else 0.32f), r * 0.52f, Offset(cx - r * 0.28f, cy - r * 0.32f))
     }
     // snow settling on the crown
     if (snow > 0.02f) {
@@ -87,11 +133,29 @@ fun DrawScope.drawTree(
             )
         }
     }
-    if (model.bloomCount > 0 && g > 0.55f && a < 0.4f && snow < 0.3f) {
-        val bloom = if (night) model.bloomNight else model.bloomDay
+    if (model.bloomCount > 0 && g > 0.45f && a < 0.4f && snow < 0.3f) {
+        val petal = if (night) model.bloomNight else model.bloomDay
+        val eye = if (night) model.eyeNight else model.eyeDay
+        val open = ((g - 0.45f) / 0.35f).coerceIn(0.3f, 1f)
+        val br = leafR * 0.42f * open
         for (k in 0 until model.bloomCount) {
             val node = model.bloomNode[k]
-            drawCircle(bloom, leafR * 0.38f, Offset(ex[node] + model.bloomDx[k] * leafR, ey[node] + model.bloomDy[k] * leafR))
+            val cx = ex[node] + model.bloomDx[k] * leafR
+            val cy = ey[node] + model.bloomDy[k] * leafR
+            if (!detailed || br < 3f) {
+                drawCircle(petal, br, Offset(cx, cy))
+            } else if (species.ballBlooms) {
+                drawCircle(petal, br * 1.1f, Offset(cx, cy))
+                drawCircle(lerp(petal, Color.White, 0.45f), br * 0.45f, Offset(cx - br * 0.3f, cy - br * 0.3f))
+            } else {
+                // five petals around a small eye, each flower turned a little differently
+                val turn = k * 0.7f
+                for (pi in 0 until 5) {
+                    val pa = turn + pi * (2f * PI.toFloat() / 5f)
+                    drawCircle(petal, br * 0.55f, Offset(cx + cos(pa) * br * 0.55f, cy + sin(pa) * br * 0.55f))
+                }
+                drawCircle(eye, br * 0.32f, Offset(cx, cy))
+            }
         }
     }
 }
@@ -114,6 +178,8 @@ internal class TreeModel(
     val leafDx: FloatArray,
     val leafDy: FloatArray,
     val leafScale: FloatArray,
+    /** Leaf indices back to front (higher on the tree first), for depth. */
+    val leafOrder: IntArray,
     val leafDay: Array<Color>,
     val leafNight: Array<Color>,
     val bloomCount: Int,
@@ -124,11 +190,20 @@ internal class TreeModel(
     val bloomNight: Color,
     val trunkDay: Color,
     val trunkNight: Color,
+    val barkDay: Color,
+    val barkNight: Color,
+    val barkLightDay: Color,
+    val barkLightNight: Color,
+    val eyeDay: Color,
+    val eyeNight: Color,
 ) {
     val scratchX = FloatArray(count)
     val scratchY = FloatArray(count)
     val scratchA = FloatArray(count)
 }
+
+/** Sort key for leaf depth: leaves drawn top/back first. */
+private fun ey0(i: Int, dy: FloatArray): Float = -dy[i]
 
 internal object TreeModels {
     private val cache = object : LinkedHashMap<String, TreeModel>(64, 0.75f, true) {
@@ -170,19 +245,24 @@ internal object TreeModels {
         branch(-1, -PI.toFloat() / 2, 0.2f + 0.14f * g, 0.018f + 0.03f * g, 1)
 
         val leafRnd = Random(seed * 31 + 7)
-        val nLeaves = tips.size * 3
+        val perTip = if (species.foliage >= 0.99f) 3 else if (species.foliage >= 0.5f) 2 else 1
+        val nLeaves = (tips.size * perTip).coerceAtLeast(1)
         val leafNode = IntArray(nLeaves); val dx = FloatArray(nLeaves); val dy = FloatArray(nLeaves); val sc = FloatArray(nLeaves)
         val day = arrayOfNulls<Color>(nLeaves); val night = arrayOfNulls<Color>(nLeaves)
         var k = 0
         tips.forEach { t ->
-            repeat(3) {
+            repeat(perTip) {
+                if (k >= nLeaves) return@repeat
                 leafNode[k] = t
                 dx[k] = (leafRnd.nextFloat() - 0.5f) * 1.6f
                 dy[k] = (leafRnd.nextFloat() - 0.5f) * 1.6f
                 val jitterL = (leafRnd.nextFloat() - 0.5f) * 0.12f
-                val hue = species.leafHue + (leafRnd.nextFloat() - 0.5f) * 16f
-                day[k] = Color.hsl(hue, species.leafSat, (0.42f + jitterL).coerceIn(0.1f, 0.8f), 0.82f)
-                night[k] = Color.hsl(hue, species.leafSat, (0.28f + jitterL).coerceIn(0.1f, 0.8f), 0.82f)
+                val hue = (species.leafHue + (leafRnd.nextFloat() - 0.5f) * 22f + 360f) % 360f
+                // outer leaves a touch lighter and yellower, inner ones deeper green
+                val outer = dy[k] < 0f
+                val l = (if (outer) 0.44f else 0.36f) + jitterL
+                day[k] = Color.hsl(hue, (species.leafSat + if (outer) 0.04f else -0.04f).coerceIn(0f, 1f), l.coerceIn(0.1f, 0.8f), 0.92f)
+                night[k] = Color.hsl(hue, species.leafSat * 0.8f, (l - 0.15f).coerceIn(0.08f, 0.6f), 0.92f)
                 sc[k] = 0.7f + leafRnd.nextFloat() * 0.6f
                 k++
             }
@@ -192,19 +272,27 @@ internal object TreeModels {
         if (bloomHue != null) {
             val bloomRnd = Random(seed * 13 + 3)
             tips.forEach { t ->
-                if (bloomRnd.nextFloat() < 0.6f) {
-                    bNode.add(t)
-                    bdx.add(bloomRnd.nextFloat() - 0.5f)
-                    bdy.add(bloomRnd.nextFloat() - 0.5f)
+                // dense bloomers carry up to two flowers per tip
+                repeat(if (species.bloomDensity > 0.85f) 2 else 1) {
+                    if (bloomRnd.nextFloat() < species.bloomDensity) {
+                        bNode.add(t)
+                        bdx.add((bloomRnd.nextFloat() - 0.5f) * 1.6f)
+                        bdy.add((bloomRnd.nextFloat() - 0.5f) * 1.6f)
+                    }
                 }
             }
         }
         return TreeModel(
             depth, parents.size, parents.toIntArray(), levels.toIntArray(), rel.toFloatArray(), lens.toFloatArray(), widths.toFloatArray(),
-            nLeaves, leafNode, dx, dy, sc, day.requireNoNulls(), night.requireNoNulls(),
+            nLeaves, leafNode, dx, dy, sc, (0 until nLeaves).sortedBy { ey0(it, dy) }.toIntArray(),
+            day.requireNoNulls(), night.requireNoNulls(),
             bNode.size, bNode.toIntArray(), bdx.toFloatArray(), bdy.toFloatArray(),
-            Color.hsl(bloomHue ?: 0f, 0.75f, 0.78f), Color.hsl(bloomHue ?: 0f, 0.75f, 0.55f),
+            Color.hsl(bloomHue ?: 0f, species.bloomSat, species.bloomLight), Color.hsl(bloomHue ?: 0f, species.bloomSat, species.bloomLight * 0.7f),
             Color.hsl(species.trunkHue, 0.35f, 0.28f), Color.hsl(species.trunkHue, 0.35f, 0.18f),
+            Color.hsl(species.trunkHue, 0.30f, 0.17f), Color.hsl(species.trunkHue, 0.30f, 0.10f),
+            Color.hsl(species.trunkHue, 0.30f, 0.45f, 0.7f), Color.hsl(species.trunkHue, 0.30f, 0.28f, 0.6f),
+            Color.hsl(species.bloomEyeHue ?: (bloomHue ?: 0f), 0.85f, if (species.bloomEyeHue != null) 0.55f else species.bloomLight * 0.6f),
+            Color.hsl(species.bloomEyeHue ?: (bloomHue ?: 0f), 0.85f, 0.35f),
         )
     }
 }
@@ -255,6 +343,17 @@ private fun DrawScope.drawConifer(species: TreeSpecies, g: Float, base: Offset, 
             close()
         }
         drawPath(path, Color.hsl(species.leafHue, species.leafSat, (if (night) 0.18f else 0.30f) + f * 0.08f))
+        // shade the right half of each tier, as if the sun were on the left
+        val shade = Path().apply {
+            moveTo(base.x + lean, topY)
+            lineTo(base.x + w / 2 + lean * 0.5f, tierBase)
+            lineTo(base.x + lean * 0.5f + w * 0.05f, tierBase)
+            close()
+        }
+        drawPath(shade, Color.Black.copy(alpha = 0.16f))
+        // a few needle highlights along the lit edge
+        drawLine(Color.hsl(species.leafHue, species.leafSat, (if (night) 0.3f else 0.46f)).copy(alpha = 0.7f),
+            Offset(base.x + lean, topY + h * 0.03f), Offset(base.x - w * 0.34f + lean * 0.5f, tierBase - h * 0.02f), strokeWidth = h * 0.008f, cap = StrokeCap.Round)
         if (s > 0.02f) {
             // a lighter snow cap sitting on the upper half of each tier
             val snowPath = Path().apply {

@@ -1707,7 +1707,12 @@ class AmendRepository(
 
     private fun today() = LocalDate.now().toString()
 
-    private fun seedFor(index: Int) = Hashes.sha256("amend-tree:$me:$index".toByteArray()).toHex()
+    /** New trees (amend 4.2+) choose from every species, including the flowering ones. */
+    private fun seedFor(index: Int) = app.amend.messenger.eco.Species.markSeed(Hashes.sha256("amend-tree:$me:$index".toByteArray())).toHex()
+
+    /** The species of the tree growing in my forest right now. */
+    fun growingSpecies(): app.amend.messenger.eco.TreeSpecies =
+        app.amend.messenger.eco.Species.fromSeed(seedFor(_eco.value.trees.size).hexToBytes())
 
     private fun award(points: Int, reason: String, isMessage: Boolean) {
         var event: GrowthEvent? = null
