@@ -53,6 +53,8 @@ class Store(private val dir: File) {
         val modListAt: Long = 0,
         /** The blocks the moderator list made (so lifting one never undoes a block you made). */
         val modAdded: Set<String> = emptySet(),
+        /** Close friends: who gets your Instants and close-friends stories by default. */
+        val closeFriends: Set<String> = emptySet(),
     )
 
     @Suppress("UNCHECKED_CAST")
@@ -75,6 +77,7 @@ class Store(private val dir: File) {
             modBlocked = strList("modBlocked").toSet(),
             modListAt = m.long("modListAt") ?: 0,
             modAdded = strList("modAdded").toSet(),
+            closeFriends = strList("closeFriends").toSet(),
         )
     }
 
@@ -89,7 +92,7 @@ class Store(private val dir: File) {
                 "disappear" to s.disappear,
                 "disappearAt" to s.disappearAt,
                 "unsent" to s.unsent.entries.toList().takeLast(2000).associate { it.key to it.value },
-                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt, "modAdded" to s.modAdded.toList(),
+                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt, "modAdded" to s.modAdded.toList(), "closeFriends" to s.closeFriends.toList(),
             )
         )
     )
@@ -131,6 +134,39 @@ class Store(private val dir: File) {
     }
 
     fun saveInboxRelays(m: Map<String, List<String>>) = write("inbox_relays.json", Json.write(m))
+
+    // --- stories -----------------------------------------------------------------
+
+    @Suppress("UNCHECKED_CAST")
+    fun loadStories(): List<Story> {
+        val list = read("stories.json")?.let { runCatching { Json.parseArray(it) }.getOrNull() } ?: return emptyList()
+        return list.mapNotNull { (it as? Map<String, Any?>)?.let(Story::fromMap) }
+    }
+
+    fun saveStories(list: List<Story>) = write("stories.json", Json.write(list.map { it.toMap() }))
+
+    // --- instants archive -----------------------------------------------------------
+
+    fun instantFile(id: String) = File(dir, "instants/$id.jpg")
+
+    fun saveInstant(a: ArchivedInstant, jpeg: ByteArray) {
+        val f = instantFile(a.id)
+        f.parentFile?.mkdirs()
+        f.writeBytes(jpeg)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun loadInstantArchive(): List<ArchivedInstant> {
+        val list = read("instants/index.json")?.let { runCatching { Json.parseArray(it) }.getOrNull() } ?: return emptyList()
+        val cutoff = System.currentTimeMillis() / 1000 - 365L * 86400
+        val all = list.mapNotNull { (it as? Map<String, Any?>)?.let(ArchivedInstant::fromMap) }
+        all.filter { it.createdAt <= cutoff }.forEach { instantFile(it.id).delete() }
+        return all.filter { it.createdAt > cutoff && instantFile(it.id).exists() }
+    }
+
+    fun saveInstantArchive(list: List<ArchivedInstant>) = write("instants/index.json", Json.write(list.map { it.toMap() }))
+
+    fun deleteInstant(id: String) { instantFile(id).delete() }
 
     // --- friends' shared forests ---------------------------------------------------
 

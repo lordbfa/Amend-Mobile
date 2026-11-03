@@ -420,9 +420,12 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: 
         conversations.values.sortedWith(compareByDescending<Conversation> { it.pinned }.thenByDescending { it.lastActivity })
     }
     val (accepted, requests) = sorted.partition { repo.isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }
+    var showInstant by remember { mutableStateOf(false) }
+    if (showInstant) InstantCameraScreen(repo, presetRecipients = emptyList(), onClose = { showInstant = false })
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-        item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan, onGrove = { openChat(GROVE_ROUTE) }) }
+        item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan, onGrove = { openChat(GROVE_ROUTE) }, onInstant = { showInstant = true }) }
+        item { StoriesTray(repo) }
         // Friends who need help right now — always on top
         val activeSos = incomingSos.values.filter { it.active }.sortedByDescending { it.updatedAt }
         items(activeSos, key = { "sos" + it.peer }) { sos ->
@@ -450,7 +453,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int, onScan: () -> Unit, onGrove: () -> Unit = {}) {
+private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, trees: Int, onScan: () -> Unit, onGrove: () -> Unit = {}, onInstant: () -> Unit = {}) {
     val hour = rememberHourOfDay()
     val sway by rememberSway()
     val efficiency = LocalEfficiency.current
@@ -512,6 +515,13 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SosButton()
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { haptics.tap(); onInstant() },
+                modifier = Modifier.clip(CircleShape).background(Color(0x33FFFFFF)),
+            ) {
+                Text("📸", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Send an Instant" })
+            }
             Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = { haptics.tap(); onGrove() },
