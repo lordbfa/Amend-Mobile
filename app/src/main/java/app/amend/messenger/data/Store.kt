@@ -51,6 +51,8 @@ class Store(private val dir: File) {
         /** Accounts amend's moderator has blocked (from the shared blocklist), and that list's time. */
         val modBlocked: Set<String> = emptySet(),
         val modListAt: Long = 0,
+        /** The blocks the moderator list made (so lifting one never undoes a block you made). */
+        val modAdded: Set<String> = emptySet(),
     )
 
     @Suppress("UNCHECKED_CAST")
@@ -72,6 +74,7 @@ class Store(private val dir: File) {
             unsent = (m["unsent"] as? Map<String, Any?>).orEmpty().mapValues { it.value.toString() },
             modBlocked = strList("modBlocked").toSet(),
             modListAt = m.long("modListAt") ?: 0,
+            modAdded = strList("modAdded").toSet(),
         )
     }
 
@@ -86,7 +89,7 @@ class Store(private val dir: File) {
                 "disappear" to s.disappear,
                 "disappearAt" to s.disappearAt,
                 "unsent" to s.unsent.entries.toList().takeLast(2000).associate { it.key to it.value },
-                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt,
+                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt, "modAdded" to s.modAdded.toList(),
             )
         )
     )
