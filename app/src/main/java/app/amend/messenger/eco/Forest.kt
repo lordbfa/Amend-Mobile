@@ -90,5 +90,12 @@ data class Garden(val seed: ByteArray, val messageCount: Int) {
             val (a, b) = if (pubA < pubB) pubA to pubB else pubB to pubA
             return Garden(Hashes.sha256("amend-garden:$a:$b".toByteArray()), messageCount)
         }
+
+        /**
+         * A shared garden (group): one plant for everyone, from the group's id. A group
+         * talks more, so it grows at half speed and needs twice as many messages to bloom.
+         */
+        fun forGroup(groupKey: String, messageCount: Int): Garden =
+            Garden(Hashes.sha256("amend-garden-group:$groupKey".toByteArray()), messageCount / 2)
     }
 }

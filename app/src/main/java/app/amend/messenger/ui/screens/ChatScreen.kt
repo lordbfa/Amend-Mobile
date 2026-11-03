@@ -42,6 +42,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -124,9 +126,12 @@ private val REACTIONS = listOf("💚", "🌱", "🌳", "😂", "😮", "🙏")
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
+fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenChat: (String) -> Unit = {}) {
     val conversations by repo.conversations.collectAsStateWithLifecycle()
     val profiles by repo.profiles.collectAsStateWithLifecycle()
+    val groups by repo.groups.collectAsStateWithLifecycle()
+    val isGroup = repo.isGroup(peer)
+    val group = groups[peer]
     val conv = conversations[peer]
     val messages = conv?.messages.orEmpty()
     val garden = remember(messages.size) { EcoRules.gardenFor(repo.me, conv ?: app.amend.messenger.data.Conversation(peer)) }
@@ -158,6 +163,12 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
     // The friend's latest SOS start bubble shows their live location while the SOS is active
     val latestSosStartId = remember(messages) { messages.lastOrNull { it.type == MessageType.SOS && !it.fromMe && it.cardId == "start" }?.id }
     val liveSosLocation = incomingSosAll[peer]?.takeIf { it.active }?.location
+    var showDisappear by remember { mutableStateOf(false) }
+    var showSchedule by remember { mutableStateOf(false) }
+    var showMembers by remember { mutableStateOf(false) }
+    var showRename by remember { mutableStateOf(false) }
+    var confirmLeave by remember { mutableStateOf(false) }
+    var unsendTarget by remember { mutableStateOf<ChatMessage?>(null) }
 
     DisposableEffect(peer) {
         AppVisibility.openPeer = peer
@@ -187,8 +198,18 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                 haptics.tick()
                 particles.burst(gardenPos, if (garden.flowers > 0) ParticleKind.PETALS else ParticleKind.LEAVES, 20, 0.7f)
             },
-            avatar = { LeafAvatar(peer, profiles[peer], 40.dp) },
+            avatar = {
+                if (isGroup) GroupAvatar(group?.members.orEmpty().filter { it != repo.me }, profiles, 40.dp)
+                else LeafAvatar(peer, profiles[peer], 40.dp)
+            },
             onCall = { video -> haptics.tap(); if (!accepted) { repo.accept(peer); accepted = true }; startCall(peer, video) },
+            isGroup = isGroup,
+            memberCount = group?.members?.size ?: 0,
+            disappearSecs = conv?.disappearSecs ?: 0,
+            onDisappear = { showDisappear = true },
+            onMembers = { showMembers = true },
+            onRename = { showRename = true },
+            onLeave = { confirmLeave = true },
         )
 
         // A live SOS from this person stays pinned at the top of the chat
@@ -201,7 +222,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             RequestBanner(
                 onAccept = { repo.accept(peer); accepted = true; haptics.success(); repo.markSeen(peer) },
                 onBlock = { repo.block(peer); haptics.heavy(); onBack() },
-                onReport = { repo.report(peer); haptics.heavy(); onBack() },
+                onReport = { repo.report(peer); group?.createdBy?.takeIf { it.length == 64 && it != repo.me }?.let { repo.report(it) }; haptics.heavy(); onBack() },
+                invitedBy = if (isGroup) group?.createdBy?.let { repo.displayName(it) } ?: "Someone" else null,
             )
         }
 
@@ -213,6 +235,10 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(reversed, key = { it.id }, contentType = { it.type }) { m ->
+                if (m.type == MessageType.NOTICE) {
+                    NoticeRow(m.text, Modifier.animateItem())
+                    return@items
+                }
                 MessageBubble(
                     liveSos = if (m.type == MessageType.SOS && !m.fromMe && m.id == latestSosStartId) liveSosLocation else null,
                     repo = repo,
@@ -227,6 +253,11 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                     },
                     onRetry = { scope.launch { repo.retry(peer, m.id) } },
                     onCall = { video -> startCall(peer, video) },
+                    authorName = if (isGroup && !m.fromMe) m.author?.let { repo.displayName(it) } else null,
+                    canUnsend = repo.canUnsend(m),
+                    onUnsend = { unsendTarget = m },
+                    onSendNow = { scope.launch { repo.sendDueScheduled(forceId = m.id) } },
+                    onCancelScheduled = { scope.launch { repo.cancelScheduled(peer, m.id) } },
                 )
             }
             if (messages.isEmpty()) {
@@ -235,7 +266,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                         Text(garden.species.emoji, fontSize = 48.sp)
                         Text("Your shared ${garden.species.name.lowercase()} is a seed", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Every message you two exchange helps it grow. You both see the same plant.",
+                            if (isGroup) "Every message anyone here sends helps it grow. Everyone in the garden sees the same plant."
+                            else "Every message you two exchange helps it grow. You both see the same plant.",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -252,13 +284,21 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             ) {
                 Box(Modifier.size(width = 3.dp, height = 32.dp).background(MaterialTheme.colorScheme.primary))
                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                    Text(if (replyTo?.fromMe == true) "You" else repo.displayName(peer), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(if (replyTo?.fromMe == true) "You" else repo.displayName(replyTo?.author ?: peer), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     Text(androidx.compose.ui.text.AnnotatedString(replyTo?.text ?: ""), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                 }
                 IconButton(onClick = { replyTo = null }) { Icon(Icons.Filled.Close, contentDescription = "Cancel reply") }
             }
         }
 
+        if ((conv?.disappearSecs ?: 0) > 0) {
+            Text(
+                "⏳ Messages disappear after ${app.amend.messenger.data.Disappear.label(conv!!.disappearSecs).lowercase()}",
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
         // Composer
         Row(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp),
@@ -372,7 +412,11 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
                         if (canSend) Brush.linearGradient(listOf(Color(0xFF2BB673), Color(0xFF5BE39B)))
                         else Brush.linearGradient(listOf(Color(0xFF6E8A7C), Color(0xFF6E8A7C)))
                     )
-                    .clickable(interactionSource = source, indication = null, enabled = canSend) {
+                    .combinedClickable(
+                        interactionSource = source, indication = null, enabled = canSend,
+                        // hold the send button to schedule it for later
+                        onLongClick = { haptics.heavy(); showSchedule = true },
+                    ) {
                         val text = input
                         val reply = replyTo?.id
                         input = ""
@@ -388,6 +432,89 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit) {
             }
             }
         }
+    }
+
+    if (showDisappear) {
+        DisappearDialog(
+            current = conv?.disappearSecs ?: 0,
+            onPick = { secs -> showDisappear = false; haptics.success(); scope.launch { repo.setDisappearing(peer, secs) } },
+            onDismiss = { showDisappear = false },
+        )
+    }
+    if (showSchedule) {
+        ScheduleDialog(
+            onPick = { at ->
+                showSchedule = false
+                val text = input
+                val reply = replyTo?.id
+                input = ""
+                replyTo = null
+                haptics.success()
+                if (!accepted) { repo.accept(peer); accepted = true }
+                scope.launch { repo.scheduleText(peer, text, at, reply) }
+            },
+            onDismiss = { showSchedule = false },
+        )
+    }
+    unsendTarget?.let { target ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { unsendTarget = null },
+            title = { Text("Unsend this message?") },
+            text = { Text(if (isGroup) "It disappears for everyone in the garden. They'll see that a message was unsent." else "It disappears for both of you. They'll see that a message was unsent.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    unsendTarget = null
+                    haptics.heavy()
+                    scope.launch { repo.unsend(peer, target.id) }
+                }) { Text("Unsend", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { unsendTarget = null }) { Text("Cancel") } },
+        )
+    }
+    if (showMembers && group != null) {
+        GroupMembersDialog(
+            repo = repo, group = group,
+            onAdd = { extra ->
+                showMembers = false
+                scope.launch {
+                    runCatching { repo.createGroup(group.name, group.members.filter { it != repo.me } + extra) }
+                        .onSuccess { onOpenChat(it) }
+                }
+            },
+            onDismiss = { showMembers = false },
+        )
+    }
+    if (showRename && group != null) {
+        var name by remember { mutableStateOf(group.name) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRename = false },
+            title = { Text("Name this garden") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = name, onValueChange = { name = it.take(60) }, singleLine = true,
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showRename = false; scope.launch { repo.renameGroup(peer, name) } }, enabled = name.isNotBlank()) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showRename = false }) { Text("Cancel") } },
+        )
+    }
+    if (confirmLeave) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            title = { Text("Leave this garden?") },
+            text = { Text("You'll say goodbye in the chat and stop getting its messages on this phone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmLeave = false
+                    repo.leaveGroupInBackground(peer)
+                    onBack()
+                }) { Text("Leave", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
+        )
     }
 
     if (showVideoRecorder) {
@@ -423,6 +550,13 @@ private fun GardenHeader(
     onBack: () -> Unit, onGardenPos: (Offset) -> Unit, onGardenTap: () -> Unit,
     avatar: @Composable () -> Unit,
     onCall: (Boolean) -> Unit = {},
+    isGroup: Boolean = false,
+    memberCount: Int = 0,
+    disappearSecs: Long = 0,
+    onDisappear: () -> Unit = {},
+    onMembers: () -> Unit = {},
+    onRename: () -> Unit = {},
+    onLeave: () -> Unit = {},
 ) {
     val hour = rememberHourOfDay()
     val sway by rememberSway()
@@ -455,30 +589,46 @@ private fun GardenHeader(
             Column(Modifier.padding(start = 10.dp).weight(1f).clickable { menu = true }) {
                 Text(profileName, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${garden.stage.emoji} Shared ${garden.species.name.lowercase()} · ${garden.stage.label.lowercase()} · ${(garden.progress * 100).toInt()}%",
+                    (if (isGroup) "🌳 Shared garden · $memberCount · " else "") +
+                        "${garden.stage.emoji} ${if (isGroup) "" else "Shared "}${garden.species.name.lowercase()} · ${(garden.progress * 100).toInt()}%" +
+                        (if (disappearSecs > 0) " · ⏳" else ""),
                     color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text(if (conv?.pinned == true) "Unpin" else "Pin") }, onClick = { repo.setPinned(peer, conv?.pinned != true); menu = false })
-                    DropdownMenuItem(text = { Text("Block") }, onClick = { repo.block(peer); menu = false; onBack() })
+                    DropdownMenuItem(
+                        text = { Text("Disappearing messages · " + app.amend.messenger.data.Disappear.label(disappearSecs)) },
+                        onClick = { menu = false; onDisappear() },
+                    )
+                    if (isGroup) {
+                        DropdownMenuItem(text = { Text("Members & add people") }, onClick = { menu = false; onMembers() })
+                        DropdownMenuItem(text = { Text("Rename garden") }, onClick = { menu = false; onRename() })
+                        DropdownMenuItem(text = { Text("Leave garden") }, onClick = { menu = false; onLeave() })
+                    } else {
+                        DropdownMenuItem(text = { Text("Block") }, onClick = { repo.block(peer); menu = false; onBack() })
+                    }
                     DropdownMenuItem(text = { Text("Report") }, onClick = { repo.report(peer); menu = false; onBack() })
                 }
             }
-            IconButton(onClick = { onCall(false) }) { Icon(Icons.Rounded.Call, contentDescription = "Voice call", tint = Color.White) }
-            IconButton(onClick = { onCall(true) }) { Icon(Icons.Rounded.Videocam, contentDescription = "Video call", tint = Color.White) }
+            if (!isGroup) {
+                IconButton(onClick = { onCall(false) }) { Icon(Icons.Rounded.Call, contentDescription = "Voice call", tint = Color.White) }
+                IconButton(onClick = { onCall(true) }) { Icon(Icons.Rounded.Videocam, contentDescription = "Video call", tint = Color.White) }
+            }
         }
     }
 }
 
 @Composable
-private fun RequestBanner(onAccept: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit) {
+private fun RequestBanner(onAccept: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit, invitedBy: String? = null) {
     Column(
         Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp)
     ) {
-        Text("New message request", style = MaterialTheme.typography.titleMedium)
+        Text(if (invitedBy != null) "🌳 Shared garden invitation" else "New message request", style = MaterialTheme.typography.titleMedium)
         Text(
-            "You haven't chatted with this person before. Accept to reply, block to never hear from them again, or report if it's abusive.",
+            if (invitedBy != null) "$invitedBy added you to a group you haven't joined yet. Accept to chat, block to never hear from it again, or report if it's abusive."
+            else "You haven't chatted with this person before. Accept to reply, block to never hear from them again, or report if it's abusive.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(10.dp))
@@ -502,9 +652,16 @@ private fun MessageBubble(
     onReact: (String, Offset) -> Unit,
     onRetry: () -> Unit,
     onCall: (Boolean) -> Unit = {},
+    authorName: String? = null,
+    canUnsend: Boolean = false,
+    onUnsend: () -> Unit = {},
+    onSendNow: () -> Unit = {},
+    onCancelScheduled: () -> Unit = {},
 ) {
     val mine = message.fromMe
     val dark = LocalDark.current
+    val unsent = message.type == MessageType.UNSENT
+    val scheduled = message.status == MessageStatus.SCHEDULED
     var showReactions by remember { mutableStateOf(false) }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     var bubblePos by remember { mutableStateOf(Offset.Zero) }
@@ -520,6 +677,12 @@ private fun MessageBubble(
         modifier.fillMaxWidth(),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
+        if (authorName != null) {
+            Text(
+                authorName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp, bottom = 2.dp),
+            )
+        }
         Box(
             Modifier
                 .graphicsLayer {
@@ -539,7 +702,9 @@ private fun MessageBubble(
                     )
                 )
                 .background(
-                    if (message.type == MessageType.SOS) {
+                    if (unsent) Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant))
+                    else if (scheduled) Brush.linearGradient(listOf(Color(0xFF2BB673).copy(alpha = 0.55f), Color(0xFF1C9A62).copy(alpha = 0.55f)))
+                    else if (message.type == MessageType.SOS) {
                         if (message.cardId == "stop") Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673)))
                         else Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFF7F0000)))
                     }
@@ -550,12 +715,13 @@ private fun MessageBubble(
                 )
                 .combinedClickable(
                     onClick = {},
-                    onDoubleClick = { onReact("💚", bubblePos) },
-                    onLongClick = { haptics.heavy(); showReactions = true },
+                    onDoubleClick = { if (!unsent && !scheduled) onReact("💚", bubblePos) },
+                    onLongClick = { if (!unsent) { haptics.heavy(); showReactions = true } },
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            val textColor = if (mine || message.type == MessageType.ECO_CARD || message.type == MessageType.SOS) Color.White else MaterialTheme.colorScheme.onSurface
+            val textColor = if (unsent) MaterialTheme.colorScheme.onSurfaceVariant
+                else if (mine || message.type == MessageType.ECO_CARD || message.type == MessageType.SOS) Color.White else MaterialTheme.colorScheme.onSurface
             Column {
                 replied?.let {
                     Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.12f)).padding(8.dp)) {
@@ -563,7 +729,13 @@ private fun MessageBubble(
                     }
                     Spacer(Modifier.height(6.dp))
                 }
-                if (message.type == MessageType.SOS) {
+                if (unsent) {
+                    Text(
+                        if (mine) "🚫 You unsent a message" else "🚫 This message was unsent",
+                        color = textColor, style = MaterialTheme.typography.bodyMedium,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    )
+                } else if (message.type == MessageType.SOS) {
                     SosMessageContent(message, liveSos)
                 } else if (message.type == MessageType.ECO_CARD) {
                     EcoCardContent(repo, message)
@@ -579,11 +751,14 @@ private fun MessageBubble(
                     Text(linkify(message.text, textColor), color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (message.expiresAt > 0) Text("⏳ ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
                     Text(
-                        Instant.ofEpochSecond(message.createdAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
+                        (if (scheduled) "Scheduled · " else "") +
+                            Instant.ofEpochSecond(if (scheduled) message.scheduledAt else message.createdAt).atZone(ZoneId.systemDefault())
+                                .format(DateTimeFormatter.ofPattern(if (scheduled) "d MMM HH:mm" else "HH:mm")),
                         color = textColor.copy(alpha = 0.7f), fontSize = 11.sp,
                     )
-                    if (mine && message.type != MessageType.CALL) {
+                    if (mine && message.type != MessageType.CALL && !unsent) {
                         Spacer(Modifier.size(4.dp))
                         GrowthTick(message.status, onRetry)
                     }
@@ -602,7 +777,11 @@ private fun MessageBubble(
             }
         }
         DropdownMenu(expanded = showReactions, onDismissRequest = { showReactions = false }) {
-            Row(Modifier.padding(horizontal = 8.dp)) {
+            if (scheduled) {
+                DropdownMenuItem(text = { Text("Send now") }, onClick = { showReactions = false; onSendNow() })
+                DropdownMenuItem(text = { Text("Cancel scheduled message") }, onClick = { showReactions = false; onCancelScheduled() })
+            }
+            if (!scheduled) Row(Modifier.padding(horizontal = 8.dp)) {
                 REACTIONS.forEachIndexed { i, emoji ->
                     var visible by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) { kotlinx.coroutines.delay(i * 40L); visible = true }
@@ -621,7 +800,14 @@ private fun MessageBubble(
                     leadingIcon = { GrowthTick(message.status, onRetry = {}, onBubble = false) },
                 )
             }
-            DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
+            if (canUnsend) {
+                val left = ((app.amend.messenger.data.AmendRepository.UNSEND_WINDOW - (System.currentTimeMillis() / 1000 - message.createdAt)) / 60).coerceAtLeast(1)
+                DropdownMenuItem(
+                    text = { Text("Unsend · ${left} min left", color = MaterialTheme.colorScheme.error) },
+                    onClick = { showReactions = false; onUnsend() },
+                )
+            }
+            if (!scheduled) DropdownMenuItem(text = { Text("Reply") }, onClick = { showReactions = false; onReply() })
             DropdownMenuItem(text = { Text("Copy") }, onClick = {
                 showReactions = false
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(message.text))
@@ -748,3 +934,161 @@ private fun Modifier.pointerDragToReply(
         }
     }
 )
+
+/** A small centred note in the chat ("⏳ … turned disappearing messages on", "🌱 … planted this garden"). */
+@Composable
+private fun NoticeRow(text: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(
+            androidx.compose.ui.text.AnnotatedString(text),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/** Two members' leaves overlapping — the face of a shared garden. */
+@Composable
+fun GroupAvatar(members: List<String>, profiles: Map<String, app.amend.messenger.data.Profile>, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size)) {
+        val small = size * 0.7f
+        members.getOrNull(0)?.let { Box(Modifier.align(Alignment.TopStart)) { LeafAvatar(it, profiles[it], small) } }
+        members.getOrNull(1)?.let { Box(Modifier.align(Alignment.BottomEnd)) { LeafAvatar(it, profiles[it], small) } }
+        if (members.isEmpty()) Text("🌳", fontSize = 22.sp, modifier = Modifier.align(Alignment.Center))
+    }
+}
+
+@Composable
+private fun DisappearDialog(current: Long, onPick: (Long) -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("⏳ Disappearing messages") },
+        text = {
+            Column {
+                Text(
+                    "New messages in this chat delete themselves from every phone after the time you pick. Relays that support it delete their encrypted copy too.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                app.amend.messenger.data.Disappear.options.forEach { secs ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(secs) }.padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.RadioButton(selected = secs == current, onClick = { onPick(secs) })
+                        Text(app.amend.messenger.data.Disappear.label(secs), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+/** Hold-to-send: pick when the message goes out. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ScheduleDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
+    var custom by remember { mutableStateOf(false) }
+    val zone = ZoneId.systemDefault()
+    val now = java.time.ZonedDateTime.now(zone)
+    fun at(t: java.time.ZonedDateTime) = t.toEpochSecond()
+    val tonight = now.withHour(20).withMinute(0).withSecond(0)
+    val tomorrowMorning = now.plusDays(1).withHour(9).withMinute(0).withSecond(0)
+    val picker = androidx.compose.material3.rememberTimePickerState(
+        initialHour = (now.hour + 1) % 24, initialMinute = 0, is24Hour = true,
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🕒 Send later") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (!custom) {
+                    ScheduleOption("In 1 hour") { onPick(at(now.plusHours(1))) }
+                    if (now.isBefore(tonight.minusMinutes(5))) ScheduleOption("Tonight at 20:00") { onPick(at(tonight)) }
+                    ScheduleOption("Tomorrow at 09:00") { onPick(at(tomorrowMorning)) }
+                    ScheduleOption("Pick a time…") { custom = true }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "It waits safely on this phone and sends by itself — even if amend is closed.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    androidx.compose.material3.TimePicker(state = picker)
+                }
+            }
+        },
+        confirmButton = {
+            if (custom) TextButton(onClick = {
+                var t = now.withHour(picker.hour).withMinute(picker.minute).withSecond(0)
+                if (!t.isAfter(now)) t = t.plusDays(1) // a time already past today means tomorrow
+                onPick(at(t))
+            }) { Text("Schedule") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ScheduleOption(label: String, onClick: () -> Unit) {
+    Text(
+        label, style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 12.dp, horizontal = 8.dp),
+    )
+}
+
+/** Who's in a shared garden, and adding people (which plants a new garden with everyone, as NIP-17 rooms are defined by their members). */
+@Composable
+private fun GroupMembersDialog(
+    repo: AmendRepository,
+    group: app.amend.messenger.data.GroupInfo,
+    onAdd: (List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var adding by remember { mutableStateOf(false) }
+    val picked = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    val conversations by repo.conversations.collectAsStateWithLifecycle()
+    val candidates = remember(conversations, group) {
+        conversations.values.filter { !it.isGroup && it.peer != repo.me && repo.isAccepted(it.peer) && it.peer !in group.members }.map { it.peer }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (adding) "Add people" else "🌳 ${group.members.size} in this garden") },
+        text = {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                if (!adding) {
+                    group.members.sortedBy { if (it == repo.me) "" else repo.displayName(it) }.forEach { m ->
+                        Text(
+                            if (m == repo.me) "You" else repo.displayName(m),
+                            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                    }
+                } else {
+                    Text(
+                        "Adding people starts a fresh garden with everyone (the old chat stays as it is), so new members never see earlier messages.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (candidates.isEmpty()) Text("Everyone you chat with is already here.", style = MaterialTheme.typography.bodyMedium)
+                    candidates.forEach { pub ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .clickable { if (pub in picked) picked.remove(pub) else picked.add(pub) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.Checkbox(checked = pub in picked, onCheckedChange = { on -> if (on) picked.add(pub) else picked.remove(pub) })
+                            Text(repo.displayName(pub), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!adding) TextButton(onClick = { adding = true }) { Text("Add people") }
+            else TextButton(onClick = { onAdd(picked.toList()) }, enabled = picked.isNotEmpty()) { Text("Plant new garden") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}

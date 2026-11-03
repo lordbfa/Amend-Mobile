@@ -18,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
@@ -76,6 +78,13 @@ class AmendApp : Application() {
         app.amend.messenger.util.EcoWeather.schedule(this)
         runCatching { app.amend.messenger.util.WearSync.attach(this, repo) }
         rescheduleBackground(repo)
+        // keep the wake-up for scheduled messages pointed at the next one
+        appScope.launch {
+            repo.conversations
+                .map { repo.nextScheduledAt() }
+                .distinctUntilChanged()
+                .collect { runCatching { app.amend.messenger.util.ScheduledSend.reschedule(this@AmendApp, repo) } }
+        }
         return repo
     }
 
@@ -92,7 +101,9 @@ class AmendApp : Application() {
                 val now = System.currentTimeMillis() / 1000
                 val recent = e.message.createdAt >= notifySince - 60 && e.message.createdAt >= now - 7 * 24 * 3600
                 if (chatOnScreen || !recent) return
-                val text = if (e.message.type == MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text
+                val base = if (e.message.type == MessageType.ECO_CARD) "🌱 sent you an eco challenge" else e.message.text
+                // in a shared garden, say who wrote it
+                val text = e.message.author?.takeIf { repo.isGroup(e.peer) }?.let { repo.displayName(it) + ": " + base } ?: base
                 val unread = repo.conversations.value[e.peer]?.unread ?: 1
                 val name = repo.displayName(e.peer) + if (repo.isAccepted(e.peer)) "" else " (new request)"
                 Notifications.message(this, e.peer, name, text, unread.coerceAtLeast(1))

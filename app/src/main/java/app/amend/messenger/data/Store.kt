@@ -40,6 +40,14 @@ class Store(private val dir: File) {
         val pinned: Set<String>,
         val nicknames: Map<String, String>,
         val seenWraps: List<String>,
+        /** Shared gardens (groups) by key. */
+        val groups: Map<String, GroupInfo> = emptyMap(),
+        /** Disappearing-message timer per chat, seconds. */
+        val disappear: Map<String, Long> = emptyMap(),
+        /** When each chat's timer was last changed (so older history can't undo a newer change). */
+        val disappearAt: Map<String, Long> = emptyMap(),
+        /** Unsent message ids → their author, so a copy that arrives late is not shown. */
+        val unsent: Map<String, String> = emptyMap(),
     )
 
     @Suppress("UNCHECKED_CAST")
@@ -54,6 +62,11 @@ class Store(private val dir: File) {
             pinned = strList("pinned").toSet(),
             nicknames = (m["nicknames"] as? Map<String, Any?>).orEmpty().mapValues { it.value.toString() },
             seenWraps = strList("seenWraps"),
+            groups = (m["groups"] as? Map<String, Any?>).orEmpty()
+                .mapNotNull { (k, v) -> (v as? Map<String, Any?>)?.let { k to GroupInfo.fromMap(it) } }.toMap(),
+            disappear = (m["disappear"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
+            disappearAt = (m["disappearAt"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
+            unsent = (m["unsent"] as? Map<String, Any?>).orEmpty().mapValues { it.value.toString() },
         )
     }
 
@@ -64,6 +77,10 @@ class Store(private val dir: File) {
                 "relays" to s.relays, "lastSync" to s.lastSync, "blocked" to s.blocked.toList(),
                 "accepted" to s.accepted.toList(), "pinned" to s.pinned.toList(), "nicknames" to s.nicknames,
                 "seenWraps" to s.seenWraps.takeLast(5000),
+                "groups" to s.groups.mapValues { it.value.toMap() },
+                "disappear" to s.disappear,
+                "disappearAt" to s.disappearAt,
+                "unsent" to s.unsent.entries.toList().takeLast(2000).associate { it.key to it.value },
             )
         )
     )

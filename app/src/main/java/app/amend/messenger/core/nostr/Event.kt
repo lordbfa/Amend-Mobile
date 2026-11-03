@@ -95,6 +95,10 @@ data class Event(
 /** Event kinds amend uses. */
 object Kinds {
     const val METADATA = 0
+    const val TEXT_NOTE = 1
+    const val CONTACTS = 3
+    /** NIP-09 deletion: inside a gift wrap, amend's "unsend". */
+    const val DELETION = 5
     const val REACTION = 7
     const val SEAL = 13
     const val CHAT_MESSAGE = 14
