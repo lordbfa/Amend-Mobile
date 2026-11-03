@@ -36,6 +36,8 @@ import app.amend.messenger.ui.screens.ChatScreen
 import app.amend.messenger.ui.screens.HomeScreen
 import app.amend.messenger.ui.screens.OnboardingScreen
 import app.amend.messenger.ui.screens.SosOverlay
+import app.amend.messenger.ui.screens.AgeGateScreen
+import app.amend.messenger.util.AgeCheck
 import app.amend.messenger.ui.screens.FakeCallOverlay
 import app.amend.messenger.ui.screens.CallOverlay
 import app.amend.messenger.ui.screens.WalkingReportsScreen
@@ -68,7 +70,7 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
     val direction = if (I18n.isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
     androidx.compose.runtime.CompositionLocalProvider(LocalParticles provides particles, androidx.compose.ui.platform.LocalLayoutDirection provides direction) {
         Box(Modifier.fillMaxSize()) {
-            AnimatedContent(
+            if (AgeCheck.group == AgeCheck.Group.UNKNOWN) AgeGateScreen() else AnimatedContent(
                 targetState = repository,
                 transitionSpec = { (fadeIn(tween(700)) + scaleIn(initialScale = 1.08f)) togetherWith fadeOut(tween(400)) },
                 label = "root",

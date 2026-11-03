@@ -318,4 +318,64 @@ class MessagingFeaturesTest {
         assertFalse(bob.canEdit(fresh.copy(fromMe = false)))
         assertFalse(bob.canEdit(fresh.copy(type = MessageType.VOICE)))
     }
+
+    @Test
+    fun moderatorBlocklistBlocksForEveryoneAndOnlyTheModeratorCanSignIt() = runBlocking {
+        val bob = repo("bob-mod")
+        val mod = KeyPair.generate()
+        bob.moderatorPubkey = mod.publicKeyHex
+        val bad = KeyPair.generate()
+        val t = Event.nowSeconds()
+        bob.injectMeshEvent(wrap(bad, bob.me, Kinds.CHAT_MESSAGE, "hey", listOf(listOf("p", bob.me)), t - 100).second)
+        assertNotNull(bob.conversations.value[bad.publicKeyHex])
+        // a list signed by anyone else is ignored
+        val fake = KeyPair.generate()
+        bob.applyModerationList(Event.sign(fake.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", listOf(listOf("p", bad.publicKeyHex))))
+        assertFalse(bob.isBlocked(bad.publicKeyHex))
+        // the moderator's list removes the chat and stops new messages
+        bob.applyModerationList(app.amend.messenger.data.Moderation.build(mod, listOf(bad.publicKeyHex), mod.publicKeyHex))
+        assertTrue(bob.isBlocked(bad.publicKeyHex))
+        assertNull(bob.conversations.value[bad.publicKeyHex])
+        bob.injectMeshEvent(wrap(bad, bob.me, Kinds.CHAT_MESSAGE, "again", listOf(listOf("p", bob.me)), t).second)
+        assertNull(bob.conversations.value[bad.publicKeyHex])
+    }
+
+    @Test
+    fun liftingAModeratorBlockNeverUndoesYourOwnBlock() = runBlocking {
+        val bob = repo("bob-mod-lift")
+        val mod = KeyPair.generate()
+        bob.moderatorPubkey = mod.publicKeyHex
+        val a = KeyPair.generate().publicKeyHex
+        val b = KeyPair.generate().publicKeyHex
+        bob.block(b) // bob blocked b himself
+        bob.applyModerationList(Event.sign(mod.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", listOf(listOf("p", a), listOf("p", b)), Event.nowSeconds() - 10))
+        bob.applyModerationList(Event.sign(mod.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", emptyList(), Event.nowSeconds()))
+        assertFalse(bob.isBlocked(a))
+        assertTrue(bob.isBlocked(b))
+    }
+
+    @Test
+    fun strangerShieldDropsRequestsButNotPeopleYouAccepted() = runBlocking {
+        val bob = repo("bob-shield")
+        bob.blockStrangers = true
+        val stranger = KeyPair.generate()
+        val friend = KeyPair.generate()
+        bob.accept(friend.publicKeyHex)
+        bob.injectMeshEvent(wrap(stranger, bob.me, Kinds.CHAT_MESSAGE, "hi there", listOf(listOf("p", bob.me))).second)
+        bob.injectMeshEvent(wrap(friend, bob.me, Kinds.CHAT_MESSAGE, "hi bob", listOf(listOf("p", bob.me))).second)
+        assertNull(bob.conversations.value[stranger.publicKeyHex])
+        assertNotNull(bob.conversations.value[friend.publicKeyHex])
+    }
+
+    @Test
+    fun reportEvidenceIsPlainTextOfTheLastMessages() = runBlocking {
+        val bob = repo("bob-evidence")
+        val alice = KeyPair.generate()
+        val t = Event.nowSeconds()
+        (1..12).forEach { i -> bob.injectMeshEvent(wrap(alice, bob.me, Kinds.CHAT_MESSAGE, "msg $i", listOf(listOf("p", bob.me)), t - 100 + i).second) }
+        val ev = bob.reportEvidence(alice.publicKeyHex)
+        assertEquals(10, ev.lines().size)
+        assertTrue(ev.contains("msg 12") && !ev.contains("msg 2\n"))
+        assertTrue(ev.contains(app.amend.messenger.core.crypto.Nip19.npub(alice.publicKeyHex)))
+    }
 }

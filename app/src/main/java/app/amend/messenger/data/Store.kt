@@ -48,6 +48,9 @@ class Store(private val dir: File) {
         val disappearAt: Map<String, Long> = emptyMap(),
         /** Unsent message ids → their author, so a copy that arrives late is not shown. */
         val unsent: Map<String, String> = emptyMap(),
+        /** Accounts amend's moderator has blocked (from the shared blocklist), and that list's time. */
+        val modBlocked: Set<String> = emptySet(),
+        val modListAt: Long = 0,
     )
 
     @Suppress("UNCHECKED_CAST")
@@ -67,6 +70,8 @@ class Store(private val dir: File) {
             disappear = (m["disappear"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
             disappearAt = (m["disappearAt"] as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toLong() ?: 0L },
             unsent = (m["unsent"] as? Map<String, Any?>).orEmpty().mapValues { it.value.toString() },
+            modBlocked = strList("modBlocked").toSet(),
+            modListAt = m.long("modListAt") ?: 0,
         )
     }
 
@@ -81,6 +86,7 @@ class Store(private val dir: File) {
                 "disappear" to s.disappear,
                 "disappearAt" to s.disappearAt,
                 "unsent" to s.unsent.entries.toList().takeLast(2000).associate { it.key to it.value },
+                "modBlocked" to s.modBlocked.toList(), "modListAt" to s.modListAt,
             )
         )
     )
