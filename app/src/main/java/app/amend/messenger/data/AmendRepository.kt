@@ -45,6 +45,8 @@ sealed class AmendEvent {
     data class MessageSent(val peer: String, val relays: Int) : AmendEvent()
     /** A friend started, updated or ended an SOS. */
     data class SosReceived(val peer: String, val sos: IncomingSos, val phase: SosPhase) : AmendEvent()
+    /** A new achievement tier ("id:TIER"). */
+    data class AchievementUnlocked(val key: String) : AmendEvent()
 }
 
 /**
@@ -170,6 +172,7 @@ class AmendRepository(
                 runCatching { purgeStories() }
                 runCatching { sendDueScheduled() }
                 runCatching { sendEcoStatsIfDue() }
+                runCatching { checkAchievements() }
                 delay(20_000)
             }
         }
@@ -350,7 +353,10 @@ class AmendRepository(
                     persistSettingsSoon()
                     return
                 }
-                val cardId = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "card" }?.get(2)
+                val achievement = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "achievement" }?.get(2)
+                    ?.takeIf { app.amend.messenger.eco.Achievements.parse(it) != null }
+                val cardId = achievement?.let { "ach:$it" }
+                    ?: rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "card" }?.get(2)
                 val proof = rumor.tags.firstOrNull { it.size >= 3 && it[0] == "amend" && it[1] == "proof" }?.get(2)
                 val message = if (proof != null) ChatMessage(
                     id = rumor.id, peer = peer, fromMe = fromMe, text = rumor.content, createdAt = rumor.createdAt,
@@ -368,7 +374,7 @@ class AmendRepository(
                     fromMe = fromMe,
                     text = rumor.content,
                     createdAt = rumor.createdAt,
-                    type = if (cardId != null && Challenges.byId(cardId) != null) MessageType.ECO_CARD else MessageType.TEXT,
+                    type = if (cardId != null && (achievement != null || Challenges.byId(cardId) != null)) MessageType.ECO_CARD else MessageType.TEXT,
                     cardId = cardId,
                     replyTo = rumor.firstTag("e"),
                     status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED,
@@ -1003,7 +1009,7 @@ class AmendRepository(
         }
         val tags = pTags(peer).toMutableList()
         msg.replyTo?.let { tags.add(listOf("e", it)) }
-        msg.cardId?.let { tags.add(listOf("amend", "card", it)) }
+        msg.cardId?.let { tags.add(if (it.startsWith("ach:")) listOf("amend", "achievement", it.removePrefix("ach:")) else listOf("amend", "card", it)) }
         val rumor = Event.unsigned(me, Kinds.CHAT_MESSAGE, msg.text, tags, msg.createdAt)
         val accepted = runCatching { publishRumor(peer, rumor) }.getOrDefault(0)
         mutex.withLock {
@@ -1240,6 +1246,58 @@ class AmendRepository(
     }
 
     /** Leave without waiting: keeps going after the chat screen closes. */
+    // ---------------------------------------------------------------- achievements
+
+    /** Numbers only the app knows (eco map posts, km walked this month), filled in by AmendApp. */
+    @Volatile var externalStats: () -> Pair<Long, Long> = { 0L to 0L }
+
+    private val _celebrate = MutableStateFlow<List<String>>(emptyList())
+    /** Newly unlocked achievements waiting to be celebrated on screen. */
+    val celebrate: StateFlow<List<String>> = _celebrate.asStateFlow()
+
+    fun celebrated(key: String) = _celebrate.update { it - key }
+
+    fun achievementStats(): app.amend.messenger.eco.AchievementStats {
+        val e = _eco.value
+        val caused = app.amend.messenger.eco.Footprint.gramsCo2(e.totalBytes)
+        val (map, km) = runCatching { externalStats() }.getOrDefault(0L to 0L)
+        return app.amend.messenger.eco.AchievementStats(
+            trees = e.trees.size.toLong(), points = e.totalPoints.toLong(), streak = e.streak.toLong(),
+            challenges = e.completedChallenges.size.toLong(), co2AvoidedGrams = e.co2AvoidedGrams,
+            offsetRatio = if (caused > 0) (e.co2AvoidedGrams / caused).toLong() else 0L,
+            gardens = _groups.value.size.toLong(), forestFriends = _friendStats.value.size.toLong(),
+            mapPosts = map, walkedKm = km, messages = (e.messagesSent + e.messagesReceived).toLong(),
+        )
+    }
+
+    /** Records newly reached tiers; celebrates the highest new tier of each achievement. */
+    fun checkAchievements() {
+        val earned = app.amend.messenger.eco.Achievements.earned(achievementStats())
+        val e = _eco.value
+        val fresh = earned - e.achievements.keys
+        if (fresh.isEmpty() && e.achievementsInit) return
+        val now = Event.nowSeconds()
+        _eco.update { it.copy(achievements = it.achievements + fresh.associateWith { now }, achievementsInit = true) }
+        store.saveEco(_eco.value)
+        if (!e.achievementsInit) return // first run: count what was already done, quietly
+        val top = fresh.mapNotNull { app.amend.messenger.eco.Achievements.parse(it) }
+            .groupBy { it.first.id }.values.map { l -> l.maxBy { it.second.ordinal } }
+            .map { (a, t) -> app.amend.messenger.eco.Achievements.key(a, t) }
+        if (top.isEmpty()) return
+        _celebrate.update { it + top }
+        top.forEach { _events.tryEmit(AmendEvent.AchievementUnlocked(it)) }
+    }
+
+    /** Sends an achievement card into a chat. */
+    suspend fun shareAchievement(peer: String, key: String): ChatMessage? {
+        val (a, t) = app.amend.messenger.eco.Achievements.parse(key) ?: return null
+        if (key !in _eco.value.achievements) return null
+        return sendRumor(
+            peer, "🏅 I unlocked ${a.title} · ${t.label} on amend — ${a.describe(t)}",
+            pTags(peer) + listOf(listOf("amend", "achievement", key)), MessageType.ECO_CARD, "ach:$key", null,
+        )
+    }
+
     // ---------------------------------------------------------------- stories
 
     private val _stories = MutableStateFlow(store.loadStories().filter { it.expiresAt > Event.nowSeconds() })

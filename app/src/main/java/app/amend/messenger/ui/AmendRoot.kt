@@ -37,6 +37,7 @@ import app.amend.messenger.ui.screens.HomeScreen
 import app.amend.messenger.ui.screens.OnboardingScreen
 import app.amend.messenger.ui.screens.SosOverlay
 import app.amend.messenger.ui.screens.AgeGateScreen
+import app.amend.messenger.ui.screens.AchievementCelebration
 import app.amend.messenger.util.AgeCheck
 import app.amend.messenger.ui.screens.FakeCallOverlay
 import app.amend.messenger.ui.screens.CallOverlay
@@ -86,6 +87,7 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
             CallOverlay(repository)
             SosOverlay(repository)
             FakeCallOverlay()
+            AchievementCelebration(repository)
         }
     }
 }
