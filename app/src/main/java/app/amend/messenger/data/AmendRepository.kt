@@ -86,6 +86,10 @@ class AmendRepository(
     private val _events = MutableSharedFlow<AmendEvent>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val events: SharedFlow<AmendEvent> = _events
 
+    private val _liveShares = MutableStateFlow<Map<String, LiveShare>>(emptyMap())
+    /** Live locations being shared in chats, by "chat|sender". */
+    val liveShares: StateFlow<Map<String, LiveShare>> = _liveShares.asStateFlow()
+
     private val _incomingSos = MutableStateFlow<Map<String, IncomingSos>>(emptyMap())
     /** Friends' SOS alerts (active and recently ended), by public key. */
     val incomingSos: StateFlow<Map<String, IncomingSos>> = _incomingSos.asStateFlow()
@@ -257,6 +261,13 @@ class AmendRepository(
             persistSettingsSoon()
             return
         }
+        if (rumor.kind == Kinds.CHAT_MESSAGE) {
+            LiveProtocol.parse(rumor)?.let { live ->
+                handleLive(rumor, peer, fromMe, live)
+                persistSettingsSoon()
+                return
+            }
+        }
         if (rumor.kind == Kinds.CHAT_MESSAGE && !inGroup) {
             SosProtocol.parse(rumor)?.let { signal ->
                 handleSos(rumor, peer, fromMe, signal)
@@ -395,7 +406,11 @@ class AmendRepository(
                 val accepted = runCatching {
                     val wrap = GiftWrap.wrap(rumor, keys, peer)
                     mutex.withLock { seenWraps.add(wrap.id) }
-                    pool.publish(wrap, inboxFor(peer)).count { it.accepted }
+                    // with the offline mesh on, the SOS also hops phone to phone — it can reach a
+                    // friend even when there is no internet at all
+                    meshOutbox?.invoke(wrap)
+                    val n = pool.publish(wrap, inboxFor(peer)).count { it.accepted }
+                    if (n == 0 && meshOutbox != null) 1 else n
                 }.getOrDefault(0)
                 if (phase != SosPhase.UPDATE) {
                     mutex.withLock {
@@ -413,6 +428,55 @@ class AmendRepository(
         }
         results.forEach { if (it.await()) delivered++ }
         return delivered
+    }
+
+    /** A live-location start/update/stop in a chat. */
+    private suspend fun handleLive(rumor: Event, peer: String, fromMe: Boolean, live: LiveSignal) {
+        val key = "$peer|${rumor.pubkey}"
+        if (live.phase != LivePhase.UPDATE) {
+            val msg = ChatMessage(
+                id = rumor.id, peer = peer, fromMe = fromMe, text = rumor.content, createdAt = rumor.createdAt,
+                type = if (live.phase == LivePhase.START) MessageType.LIVE else MessageType.NOTICE,
+                cardId = live.phase.tag, extra = live.location?.encode(), scheduledAt = live.until,
+                status = if (fromMe) MessageStatus.SENT else MessageStatus.RECEIVED, receipt = 2,
+                author = if (isGroup(peer)) rumor.pubkey else null,
+            )
+            upsertMessage(msg, countUnread = !fromMe && live.phase == LivePhase.START)
+            if (!fromMe && live.phase == LivePhase.START) _events.tryEmit(AmendEvent.MessageArrived(peer, msg))
+        }
+        val old = _liveShares.value[key]
+        if (old != null && rumor.createdAt < (old.location?.time ?: old.startedAt)) return // stale
+        if (live.phase == LivePhase.STOP || live.until <= Event.nowSeconds()) {
+            _liveShares.update { it - key }
+            return
+        }
+        _liveShares.update {
+            it + (key to LiveShare(peer, rumor.pubkey, live.location ?: old?.location, live.until,
+                if (live.phase == LivePhase.START || old == null) rumor.createdAt else old.startedAt))
+        }
+    }
+
+    /** Sends one live-location signal to a chat. Returns relays that accepted. */
+    suspend fun sendLive(peer: String, phase: LivePhase, location: SosLocation?, until: Long): Int {
+        val rumor = GiftWrap.rumor(me, Kinds.CHAT_MESSAGE, LiveProtocol.content(phase, until), LiveProtocol.tags(pTags(peer), phase, location, until))
+        if (phase != LivePhase.UPDATE) {
+            upsertMessage(
+                ChatMessage(
+                    rumor.id, peer, true, rumor.content, rumor.createdAt,
+                    if (phase == LivePhase.START) MessageType.LIVE else MessageType.NOTICE, phase.tag,
+                    status = MessageStatus.SENDING, extra = location?.encode(), scheduledAt = until, receipt = 2,
+                    author = if (isGroup(peer)) me else null,
+                ),
+                countUnread = false,
+            )
+            accept(peer)
+        }
+        val key = "$peer|$me"
+        if (phase == LivePhase.STOP) _liveShares.update { it - key }
+        else _liveShares.update { it + (key to LiveShare(peer, me, location ?: it[key]?.location, until, it[key]?.startedAt ?: rumor.createdAt)) }
+        val accepted = runCatching { publishRumor(peer, rumor) }.getOrDefault(0)
+        if (phase != LivePhase.UPDATE) setMessageStatus(peer, rumor.id, if (accepted > 0 || meshOutbox != null) MessageStatus.SENT else MessageStatus.FAILED, accepted)
+        return accepted
     }
 
     fun dismissIncomingSos(peer: String) {
