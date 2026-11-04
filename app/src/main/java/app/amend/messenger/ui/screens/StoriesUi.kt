@@ -211,12 +211,12 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                 )
             }
             Row(Modifier.safeTop().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose) { Text("✕", color = Color.White, fontSize = 20.sp) }
+                OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Close, "Close", onClose)
                 Spacer(Modifier.weight(1f))
                 if (uri == null) {
-                    TextButton(onClick = { haptics.tick(); bg = (bg + 1) % STORY_BACKGROUNDS.size }) { Text("🎨", fontSize = 20.sp) }
+                    OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Palette, "Change colour", { haptics.tick(); bg = (bg + 1) % STORY_BACKGROUNDS.size })
                 } else {
-                    TextButton(onClick = { uri = null }) { Text("Remove", color = Color.White) }
+                    OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Delete, "Remove photo or video", { uri = null })
                 }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -229,8 +229,8 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                 }
                 if (uri == null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        StoryChip("🖼 Gallery") { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
-                        StoryChip("📷 Camera") {
+                        OverlayChip("Gallery", androidx.compose.material.icons.Icons.Rounded.PhotoLibrary) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
+                        OverlayChip("Camera", androidx.compose.material.icons.Icons.Rounded.PhotoCamera) {
                             val dir = File(context.cacheDir, "camera").apply { mkdirs() }
                             val u = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", File(dir, "story-${System.currentTimeMillis()}.jpg"))
                             cameraUri = u
@@ -239,9 +239,15 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StoryChip(if (closeOnly) "⭐ Close friends (${repo.closeFriends.size})" else "🌍 All contacts", selected = true) { closeOnly = !closeOnly }
-                    if (closeOnly) StoryChip("Edit") { editFriends = true }
-                    Spacer(Modifier.weight(1f))
+                    // audience chips take the room that's left; Share always stays fully on screen
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OverlayChip(
+                            if (closeOnly) "Chosen (${repo.closeFriends.size})" else "All contacts",
+                            if (closeOnly) androidx.compose.material.icons.Icons.Rounded.Star else androidx.compose.material.icons.Icons.Rounded.Public,
+                            selected = true,
+                        ) { closeOnly = !closeOnly }
+                        if (closeOnly) OverlayChip("Edit") { editFriends = true }
+                    }
                     val canPost = !posting && (uri != null || text.isNotBlank())
                     Box(
                         Modifier.clip(RoundedCornerShape(24.dp)).background(if (canPost) Color.White else Color.White.copy(alpha = 0.4f))
@@ -280,7 +286,10 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                     }
                 }
                 error?.let { Text(it, color = Color.White, fontSize = 13.sp) }
-                Text("Encrypted for each person. Disappears after 24 hours.", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                Text(
+                    "Encrypted for each person. Disappears after 24 hours.", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -408,7 +417,7 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                             color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp,
                         )
                     }
-                    TextButton(onClick = onClose) { Text("✕", color = Color.White, fontSize = 20.sp) }
+                    OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Close, "Close", onClose, size = 40.dp)
                 }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(12.dp)) {
