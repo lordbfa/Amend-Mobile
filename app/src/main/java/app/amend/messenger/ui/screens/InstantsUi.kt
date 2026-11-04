@@ -1,5 +1,7 @@
 package app.amend.messenger.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -205,7 +207,7 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                 }
             }
             Row(Modifier.safeTop().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Close, "Close", onClose)
+                OverlayIconButton(Icons.Rounded.Close, "Close", onClose)
                 Spacer(Modifier.width(10.dp))
                 Text("Instant", color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
