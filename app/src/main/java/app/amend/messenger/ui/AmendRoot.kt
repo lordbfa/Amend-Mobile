@@ -38,6 +38,7 @@ import app.amend.messenger.ui.screens.OnboardingScreen
 import app.amend.messenger.ui.screens.SosOverlay
 import app.amend.messenger.ui.screens.AgeGateScreen
 import app.amend.messenger.ui.screens.AchievementCelebration
+import app.amend.messenger.ui.screens.FullScreenHost
 import app.amend.messenger.util.AgeCheck
 import app.amend.messenger.ui.screens.FakeCallOverlay
 import app.amend.messenger.ui.screens.CallOverlay
@@ -88,6 +89,8 @@ fun AmendRoot(app: AmendApp, repository: AmendRepository?, pendingPeer: MutableS
             SosOverlay(repository)
             FakeCallOverlay()
             AchievementCelebration(repository)
+            // cameras, stories, Instants and photo viewers, above everything
+            FullScreenHost()
         }
     }
 }
