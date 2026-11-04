@@ -1,5 +1,13 @@
 package app.amend.messenger.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Public
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -211,12 +219,12 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                 )
             }
             Row(Modifier.safeTop().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Close, "Close", onClose)
+                OverlayIconButton(Icons.Rounded.Close, "Close", onClose)
                 Spacer(Modifier.weight(1f))
                 if (uri == null) {
-                    OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Palette, "Change colour", { haptics.tick(); bg = (bg + 1) % STORY_BACKGROUNDS.size })
+                    OverlayIconButton(Icons.Rounded.Palette, "Change colour", { haptics.tick(); bg = (bg + 1) % STORY_BACKGROUNDS.size })
                 } else {
-                    OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Delete, "Remove photo or video", { uri = null })
+                    OverlayIconButton(Icons.Rounded.Delete, "Remove photo or video", { uri = null })
                 }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -229,8 +237,8 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                 }
                 if (uri == null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OverlayChip("Gallery", androidx.compose.material.icons.Icons.Rounded.PhotoLibrary) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
-                        OverlayChip("Camera", androidx.compose.material.icons.Icons.Rounded.PhotoCamera) {
+                        OverlayChip("Gallery", Icons.Rounded.PhotoLibrary) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
+                        OverlayChip("Camera", Icons.Rounded.PhotoCamera) {
                             val dir = File(context.cacheDir, "camera").apply { mkdirs() }
                             val u = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", File(dir, "story-${System.currentTimeMillis()}.jpg"))
                             cameraUri = u
@@ -243,7 +251,7 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         OverlayChip(
                             if (closeOnly) "Chosen (${repo.closeFriends.size})" else "All contacts",
-                            if (closeOnly) androidx.compose.material.icons.Icons.Rounded.Star else androidx.compose.material.icons.Icons.Rounded.Public,
+                            if (closeOnly) Icons.Rounded.Star else Icons.Rounded.Public,
                             selected = true,
                         ) { closeOnly = !closeOnly }
                         if (closeOnly) OverlayChip("Edit") { editFriends = true }
@@ -417,7 +425,7 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                             color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp,
                         )
                     }
-                    OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Close, "Close", onClose, size = 40.dp)
+                    OverlayIconButton(Icons.Rounded.Close, "Close", onClose, size = 40.dp)
                 }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(12.dp)) {
