@@ -72,7 +72,10 @@ internal suspend fun decodeImage(file: File, maxSide: Int): ImageBitmap? = withC
 /** Dialog flags for showing someone's media full screen (blocked from screenshots when protection is on). */
 internal fun mediaDialogProperties(alwaysSecure: Boolean = false) = DialogProperties(
     usePlatformDefaultWidth = false,
-    decorFitsSystemWindows = false,
+    // Fit the dialog between the status bar and the navigation bar on every phone (gesture
+    // or 3-button navigation, any size): edge-to-edge dialogs didn't get insets, so buttons
+    // ended up under the home button.
+    decorFitsSystemWindows = true,
     securePolicy = if (alwaysSecure || ScreenProtection.enabled) SecureFlagPolicy.SecureOn else SecureFlagPolicy.SecureOff,
 )
 
