@@ -194,7 +194,7 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) uri = cameraUri }
     val scope = rememberCoroutineScope()
 
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties()) {
+    FullScreenDialog(onDismissRequest = onClose) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(STORY_BACKGROUNDS[bg]))) {
             when {
                 preview != null -> Image(preview!!, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
@@ -210,7 +210,7 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                     ),
                 )
             }
-            Row(Modifier.statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.safeTop().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onClose) { Text("✕", color = Color.White, fontSize = 20.sp) }
                 Spacer(Modifier.weight(1f))
                 if (uri == null) {
@@ -219,7 +219,7 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
                     TextButton(onClick = { uri = null }) { Text("Remove", color = Color.White) }
                 }
             }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (uri != null && !isVideo) {
                     OutlinedTextField(
                         text, { text = it.take(Story.MAX_TEXT) }, Modifier.fillMaxWidth(),
@@ -363,7 +363,7 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
         next()
     }
 
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties()) {
+    FullScreenDialog(onDismissRequest = onClose) {
         Box(Modifier.fillMaxSize().background(if (media == null) Brush.verticalGradient(STORY_BACKGROUNDS[story.bg.coerceIn(0, STORY_BACKGROUNDS.lastIndex)]) else Brush.verticalGradient(listOf(Color.Black, Color.Black)))) {
             when {
                 media == null -> Text(
@@ -388,7 +388,7 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                     onTap = { pos -> haptics.tick(); if (pos.x < size.width / 3f) prev() else next() },
                 )
             })
-            Column(Modifier.statusBarsPadding().padding(10.dp).fillMaxWidth()) {
+            Column(Modifier.safeTop().padding(10.dp).fillMaxWidth()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
                     list.forEachIndexed { i, _ ->
                         val p = when { i < idx -> 1f; i == idx -> progress.coerceIn(0f, 1f); else -> 0f }
@@ -411,7 +411,7 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                     TextButton(onClick = onClose) { Text("✕", color = Color.White, fontSize = 20.sp) }
                 }
             }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp)) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(12.dp)) {
                 if (mine) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StoryChip("👁 ${story.viewers.size} of ${story.audience.size}") { showViewers = true }

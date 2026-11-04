@@ -211,8 +211,8 @@ private fun AchievementsDialog(repo: AmendRepository, tab: AchievementTab, onClo
     val eco by repo.eco.collectAsStateWithLifecycle()
     val stats = remember(eco) { repo.achievementStats() }
     var detail by remember { mutableStateOf<Achievement?>(null) }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+    FullScreenDialog(onDismissRequest = onClose) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeTop()) {
             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onClose) { Text("✕", fontSize = 20.sp) }
                 Text(if (tab == AchievementTab.FOREST) "Forest achievements" else "Impact achievements", style = MaterialTheme.typography.titleLarge)
@@ -334,7 +334,7 @@ fun AchievementCelebration(repo: AmendRepository?) {
         haptics.success()
         scale.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow))
     }
-    Dialog(onDismissRequest = { repo.celebrated(key) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    FullScreenDialog(onDismissRequest = { repo.celebrated(key) }) {
         val (light, deep) = tierColors(t)
         Box(
             Modifier.fillMaxSize().background(Brush.radialGradient(listOf(deep.copy(alpha = 0.95f), Color(0xF0061410)))),

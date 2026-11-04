@@ -130,7 +130,7 @@ fun FullScreenPhoto(file: File, onClose: () -> Unit, alwaysSecure: Boolean = fal
     LaunchedEffect(file) { image = decodeImage(file, 2400) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties(alwaysSecure)) {
+    FullScreenDialog(onDismissRequest = onClose, alwaysSecure = alwaysSecure) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             image?.let {
                 Image(
@@ -145,7 +145,7 @@ fun FullScreenPhoto(file: File, onClose: () -> Unit, alwaysSecure: Boolean = fal
                         .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
                 )
             } ?: CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-            IconButton(onClick = onClose, modifier = Modifier.statusBarsPadding().padding(8.dp).align(Alignment.TopStart)) {
+            IconButton(onClick = onClose, modifier = Modifier.safeTop().padding(8.dp).align(Alignment.TopStart)) {
                 Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
             }
         }
@@ -202,13 +202,13 @@ fun FullScreenVideo(file: File, onClose: () -> Unit, alwaysSecure: Boolean = fal
         }
     }
     DisposableEffect(player) { onDispose { player.release() } }
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties(alwaysSecure)) {
+    FullScreenDialog(onDismissRequest = onClose, alwaysSecure = alwaysSecure) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             AndroidView(
                 factory = { ctx -> androidx.media3.ui.PlayerView(ctx).apply { this.player = player; useController = true } },
                 modifier = Modifier.fillMaxSize(),
             )
-            IconButton(onClick = onClose, modifier = Modifier.statusBarsPadding().padding(8.dp).align(Alignment.TopStart)) {
+            IconButton(onClick = onClose, modifier = Modifier.safeTop().padding(8.dp).align(Alignment.TopStart)) {
                 Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
             }
         }
