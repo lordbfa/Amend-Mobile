@@ -101,7 +101,7 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
     var audience by remember { mutableStateOf(if (preset) "chat" else if (repo.instantsToAll) "all" else "close") }
     var editFriends by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties()) {
+    FullScreenDialog(onDismissRequest = onClose) {
         Box(Modifier.fillMaxSize().background(Color(0xFF06140E))) {
             val s = shot
             if (s == null) {
@@ -127,7 +127,7 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                 } else {
                     Text("amend needs the camera for Instants.", color = Color.White, modifier = Modifier.align(Alignment.Center))
                 }
-                Row(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.align(Alignment.BottomCenter).safeBottom().padding(bottom = 36.dp), verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(64.dp))
                     Box(
                         Modifier.size(84.dp).clip(CircleShape).background(Color.White).padding(6.dp).clip(CircleShape).background(Color(0xFF2BB673))
@@ -155,7 +155,7 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
             } else {
                 Image(s.asImageBitmap(), contentDescription = "Your Instant", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().imePadding().padding(16.dp),
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     OutlinedTextField(
@@ -207,12 +207,12 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                     Text("Disappears once it's opened, or after 24 hours. Can't be screenshotted.", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                 }
             }
-            Row(Modifier.statusBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.safeTop().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onClose) { Text("✕", color = Color.White, fontSize = 20.sp) }
                 Text("📸 Instant", color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
             status?.let {
-                Text(it, color = Color.White, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 56.dp)
+                Text(it, color = Color.White, modifier = Modifier.align(Alignment.TopCenter).safeTop().padding(top = 56.dp)
                     .clip(RoundedCornerShape(12.dp)).background(Color(0xCCB71C1C)).padding(horizontal = 12.dp, vertical = 6.dp))
             }
         }
@@ -283,7 +283,7 @@ fun InstantBubble(repo: AmendRepository, message: ChatMessage, textColor: Color)
 @Composable
 fun InstantViewerDialog(file: File, message: ChatMessage, onClose: () -> Unit) {
     val label = remember(message.extra) { MediaInfo.fromJson(message.extra)?.kind?.label }
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties(alwaysSecure = true)) {
+    FullScreenDialog(onDismissRequest = onClose, alwaysSecure = true) {
         var image by remember { mutableStateOf<ImageBitmap?>(null) }
         LaunchedEffect(file) { image = decodeImage(file, 2400) }
         Box(Modifier.fillMaxSize().background(Color.Black).clickable { onClose() }) {
@@ -292,13 +292,13 @@ fun InstantViewerDialog(file: File, message: ChatMessage, onClose: () -> Unit) {
             if (message.text != label && message.text.isNotBlank()) {
                 Text(
                     message.text, color = Color.White,
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp)
+                    modifier = Modifier.align(Alignment.BottomCenter).safeBottom().padding(24.dp)
                         .clip(RoundedCornerShape(12.dp)).background(Color(0x88000000)).padding(10.dp),
                 )
             }
             Text(
                 "Tap to close — it disappears", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp,
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 16.dp),
+                modifier = Modifier.align(Alignment.TopCenter).safeTop().padding(top = 16.dp),
             )
         }
     }
@@ -318,7 +318,7 @@ fun OpenInstantFromTray(repo: AmendRepository, message: ChatMessage, onDone: () 
     } else if (!loading) {
         LaunchedEffect(Unit) { onDone() }
     } else {
-        Dialog(onDismissRequest = onDone, properties = mediaDialogProperties(alwaysSecure = true)) {
+        FullScreenDialog(onDismissRequest = onDone, alwaysSecure = true) {
             Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
         }
     }
@@ -351,8 +351,8 @@ fun InstantArchiveCard(repo: AmendRepository) {
 private fun InstantArchiveDialog(repo: AmendRepository, archive: List<ArchivedInstant>, onClose: () -> Unit) {
     var selected by remember { mutableStateOf<ArchivedInstant?>(null) }
     var toStory by remember { mutableStateOf<File?>(null) }
-    Dialog(onDismissRequest = onClose, properties = mediaDialogProperties()) {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+    FullScreenDialog(onDismissRequest = onClose) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeTop()) {
             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onClose) { Text("✕", fontSize = 20.sp) }
                 Text("Your Instants", style = MaterialTheme.typography.titleLarge)
@@ -376,16 +376,16 @@ private fun InstantArchiveDialog(repo: AmendRepository, archive: List<ArchivedIn
     }
     selected?.let { a ->
         val f = repo.archivedInstantFile(a)
-        Dialog(onDismissRequest = { selected = null }, properties = mediaDialogProperties()) {
+        FullScreenDialog(onDismissRequest = { selected = null }) {
             var image by remember { mutableStateOf<ImageBitmap?>(null) }
             LaunchedEffect(a.id) { image = decodeImage(f, 2000) }
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 image?.let { Image(it, contentDescription = a.caption, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
-                Row(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.align(Alignment.BottomCenter).safeBottom().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     InstantChip("Add to story", true) { toStory = f; selected = null }
                     InstantChip("Close", false) { selected = null }
                 }
-                if (a.caption.isNotBlank()) Text(a.caption, color = Color.White, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp))
+                if (a.caption.isNotBlank()) Text(a.caption, color = Color.White, modifier = Modifier.align(Alignment.TopCenter).safeTop().padding(16.dp))
             }
         }
     }
