@@ -66,9 +66,9 @@ object ScreenProtection {
 
 /** While this is on screen (and protection is on), screenshots and recordings are blocked. */
 @Composable
-fun SecureScreen() {
+fun SecureScreen(always: Boolean = false) {
     val activity = LocalContext.current.findActivity() ?: return
-    val on = ScreenProtection.enabled
+    val on = always || ScreenProtection.enabled
     DisposableEffect(activity, on) {
         if (on) ScreenProtection.acquire(activity)
         onDispose { if (on) ScreenProtection.release(activity) }

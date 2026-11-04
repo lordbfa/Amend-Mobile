@@ -127,12 +127,12 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                 } else {
                     Text("amend needs the camera for Instants.", color = Color.White, modifier = Modifier.align(Alignment.Center))
                 }
-                Row(Modifier.align(Alignment.BottomCenter).safeBottom().padding(bottom = 36.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(64.dp))
-                    Box(
-                        Modifier.size(84.dp).clip(CircleShape).background(Color.White).padding(6.dp).clip(CircleShape).background(Color(0xFF2BB673))
-                            .clickable(enabled = capture != null) {
-                                val cap = capture ?: return@clickable
+                CameraBar(
+                    Modifier.align(Alignment.BottomCenter).safeBottom().padding(bottom = 28.dp),
+                    captureEnabled = capture != null,
+                    onFlip = { front = !front },
+                    onCapture = {
+                                val cap = capture ?: return@CameraBar
                                 haptics.heavy()
                                 cap.takePicture(ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageCapturedCallback() {
                                     override fun onCaptureSuccess(image: ImageProxy) {
@@ -147,11 +147,8 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                                         status = "Couldn't take the photo"
                                     }
                                 })
-                            },
-                    )
-                    Spacer(Modifier.width(24.dp))
-                    TextButton(onClick = { haptics.tick(); front = !front }) { Text("🔄", fontSize = 24.sp) }
-                }
+                    },
+                )
             } else {
                 Image(s.asImageBitmap(), contentDescription = "Your Instant", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 Column(
@@ -208,8 +205,9 @@ fun InstantCameraScreen(repo: AmendRepository, presetRecipients: List<String>, g
                 }
             }
             Row(Modifier.safeTop().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose) { Text("✕", color = Color.White, fontSize = 20.sp) }
-                Text("📸 Instant", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                OverlayIconButton(androidx.compose.material.icons.Icons.Rounded.Close, "Close", onClose)
+                Spacer(Modifier.width(10.dp))
+                Text("Instant", color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
             status?.let {
                 Text(it, color = Color.White, modifier = Modifier.align(Alignment.TopCenter).safeTop().padding(top = 56.dp)
