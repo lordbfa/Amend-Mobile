@@ -60,6 +60,9 @@ class AmendApp : Application() {
             osmdroidTileCache = java.io.File(cacheDir, "osmdroid/tiles")
         }
         keyStore.load()?.let { openRepository(it) }
+        // the identity is loaded now, so a check-in that ran out while amend was closed can start the SOS
+        runCatching { app.amend.messenger.util.CheckIn.rearm(this) }
+        runCatching { app.amend.messenger.util.FakeCall.rearm(this) }
         checkBurnerExpiry()
         appScope.launch {
             while (true) { kotlinx.coroutines.delay(60_000); runCatching { checkBurnerExpiry() } }
