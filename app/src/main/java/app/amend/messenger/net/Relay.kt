@@ -146,6 +146,9 @@ class Relay(
     @Suppress("UNCHECKED_CAST")
     private fun handleText(text: String) {
         onBytes(0, text.toByteArray(Charsets.UTF_8).size.toLong())
+        // A relay can send anything: ignore messages far bigger than any real event
+        // (the largest amend reads is the moderator's blocklist).
+        if (text.length > MAX_MESSAGE_CHARS) return
         val msg = try {
             Json.parseArray(text)
         } catch (e: Exception) {
@@ -223,6 +226,8 @@ class Relay(
     }
 
     companion object {
+        /** The moderator's list at its 50 000-key limit is about 3.6 MB of JSON. */
+        const val MAX_MESSAGE_CHARS = 5_000_000
         private val counter = AtomicLong()
         fun newSubscriptionId(prefix: String) = "$prefix-${counter.incrementAndGet()}"
     }
