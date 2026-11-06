@@ -2,7 +2,6 @@ package app.amend.messenger.data
 
 import app.amend.messenger.core.json.Json
 import app.amend.messenger.core.json.long
-import app.amend.messenger.core.json.str
 import java.io.File
 
 /**
@@ -182,7 +181,6 @@ class Store(private val dir: File) {
 
     fun saveInstantArchive(list: List<ArchivedInstant>) = write("instants/index.json", Json.write(list.map { it.toMap() }))
 
-    fun deleteInstant(id: String) { instantFile(id).delete() }
 
     // --- friends' shared forests ---------------------------------------------------
 
@@ -206,9 +204,6 @@ class Store(private val dir: File) {
         dir.mkdirs()
         File(dir, "chats").mkdirs()
     }
-
-    @Suppress("unused")
-    private fun Map<String, Any?>.s(k: String) = str(k)
 
     private companion object {
         val SAFE_ID = Regex("[A-Za-z0-9:_-]{1,96}")

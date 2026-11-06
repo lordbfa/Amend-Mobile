@@ -720,7 +720,6 @@ class AmendRepository(
     val ecoEvents: SharedFlow<Event> = _ecoEvents
 
     fun subscribeEco(id: String, filters: List<Map<String, Any?>>) = pool.subscribe(SUB_ECO_PREFIX + id, filters)
-    fun closeEco(id: String) = pool.unsubscribe(SUB_ECO_PREFIX + id)
 
     /** Signs and publishes a public event with our key. Returns it and how many relays accepted it. */
     suspend fun publishPublic(kind: Int, content: String, tags: List<List<String>>): Pair<Event, Int> {
@@ -1449,9 +1448,6 @@ class AmendRepository(
         settings = settings.copy(instantsToAll = all)
         persistSettings()
     }
-
-    /** Who a new Instant goes to by default. */
-    fun instantAudience(): List<String> = if (settings.instantsToAll) contactKeys() else contactKeys().filter { it in settings.closeFriends }
 
     /** Instants sent to me that I haven't opened yet, newest first. */
     fun unopenedInstants(): List<ChatMessage> = _conversations.value.values
