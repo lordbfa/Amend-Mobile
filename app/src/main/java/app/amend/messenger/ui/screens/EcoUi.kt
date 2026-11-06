@@ -120,6 +120,8 @@ const val ECO_MAP_PLANT_ROUTE = "amend:ecomap:plant"
 
 // ======================================================================= remote images
 
+private const val MAX_REPORT_PHOTO_BYTES = 8L * 1024 * 1024
+
 private object ImageCache {
     val http by lazy { OkHttpClient.Builder().proxySelector(app.amend.messenger.net.TorProxy).build() }
     val cache = LruCache<String, ImageBitmap>(40)
@@ -134,12 +136,21 @@ fun RemoteImage(url: String?, modifier: Modifier = Modifier, contentScale: Conte
         img = withContext(Dispatchers.IO) {
             runCatching {
                 ImageCache.http.newCall(Request.Builder().url(url).build()).execute().use { r ->
-                    val bytes = r.body?.bytes() ?: return@use null
-                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                    var sample = 1
-                    while (opts.outWidth / sample > 1080) sample *= 2
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+                    val body = r.body ?: return@use null
+                    // anyone can post a report: cap the download and decode it safely
+                    if (!r.isSuccessful || body.contentLength() > MAX_REPORT_PHOTO_BYTES) return@use null
+                    val bytes = body.byteStream().use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(16 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            if (out.size() > MAX_REPORT_PHOTO_BYTES) return@use null
+                        }
+                        out.toByteArray()
+                    } ?: return@use null
+                    app.amend.messenger.util.AvatarImages.decodeBounded(bytes, 1080)?.asImageBitmap()
                 }
             }.getOrNull()
         }?.also { ImageCache.cache.put(url, it) }
