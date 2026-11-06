@@ -65,6 +65,10 @@ class AmendRepository(
     private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS).let { s ->
         // Upgrade installs still on the original relay list (two of those relays proved unreliable).
         if (RelayPool.PREVIOUS_DEFAULTS.any { it.sorted() == s.relays.sorted() }) s.copy(relays = RelayPool.DEFAULT_RELAYS) else s
+    }.let { s ->
+        // relays saved before TLS was required: drop any ws:// one
+        val tls = s.relays.filter { it.startsWith("wss://") }
+        if (tls.size == s.relays.size) s else s.copy(relays = tls.ifEmpty { RelayPool.DEFAULT_RELAYS })
     }
 
     private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
@@ -1736,7 +1740,8 @@ class AmendRepository(
     }
 
     fun setRelays(urls: List<String>) {
-        val clean = urls.map { RelayPool.normalize(it) }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
+        // TLS only: Android blocks clear-text connections anyway, and ws:// would expose relay traffic
+        val clean = urls.map { RelayPool.normalize(it) }.filter { it.startsWith("wss://") }.distinct()
         if (clean.isEmpty()) return
         settings = settings.copy(relays = clean)
         _relays.value = clean
