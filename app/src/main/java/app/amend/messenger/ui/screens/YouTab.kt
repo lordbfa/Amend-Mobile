@@ -296,10 +296,12 @@ internal fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit)
 internal fun BackupCard(nsec: String) {
     var revealed by remember { mutableStateOf(false) }
     val blur by animateFloatAsState(if (revealed) 0f else 1f, tween(250), label = "reveal")
-    val clipboard = LocalClipboardManager.current
     val haptics = rememberHaptics()
     var copied by remember { mutableStateOf(false) }
     var linking by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // the secret key can be revealed here: never in a screenshot or screen recording
+    app.amend.messenger.util.SecureScreen(always = true)
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Backup key 🔑", style = MaterialTheme.typography.titleMedium)
@@ -327,7 +329,7 @@ internal fun BackupCard(nsec: String) {
             }
             AnimatedVisibility(true) {
                 TextButton(onClick = {
-                    clipboard.setText(AnnotatedString(nsec))
+                    app.amend.messenger.util.SensitiveClipboard.copySecret(context, "amend backup key", nsec)
                     copied = true
                     haptics.success()
                 }) { Text(if (copied) "Copied — store it somewhere safe and clear your clipboard" else "Copy backup key") }
@@ -340,6 +342,8 @@ internal fun BackupCard(nsec: String) {
         AlertDialog(
             onDismissRequest = { linking = false },
             confirmButton = { TextButton(onClick = { linking = false }) { Text("Done") } },
+            // a dialog is its own window: protect the QR code (it holds the secret key) separately
+            properties = androidx.compose.ui.window.DialogProperties(securePolicy = androidx.compose.ui.window.SecureFlagPolicy.SecureOn),
             title = { Text("Link another phone") },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
