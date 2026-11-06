@@ -1,5 +1,6 @@
 package app.amend.messenger.data
 
+import app.amend.messenger.core.crypto.isHex64
 import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.json.Json
 import app.amend.messenger.core.json.long
@@ -99,7 +100,7 @@ data class GroupInfo(val key: String, val members: List<String>, val name: Strin
     companion object {
         /** Room id from its members (order-free), so every member derives the same one. */
         fun keyFor(members: Collection<String>): String {
-            val sorted = members.filter { it.length == 64 }.distinct().sorted().joinToString(",")
+            val sorted = members.filter { it.isHex64() }.distinct().sorted().joinToString(",")
             return "g" + app.amend.messenger.core.crypto.Hashes.sha256("amend-group:$sorted".toByteArray()).toHex().take(31)
         }
 

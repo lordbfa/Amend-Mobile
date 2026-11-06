@@ -70,7 +70,7 @@ fun LeafAvatar(pubkey: String, profile: Profile?, size: Dp, garden: Garden? = nu
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            val photo by rememberAvatar(profile?.picture)
+            val photo by rememberAvatar(profile?.picture, pubkey)
             val image = photo
             if (image != null) {
                 Image(
