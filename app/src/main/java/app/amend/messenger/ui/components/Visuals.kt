@@ -70,7 +70,7 @@ fun LeafAvatar(pubkey: String, profile: Profile?, size: Dp, garden: Garden? = nu
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            val photo by rememberAvatar(profile?.picture)
+            val photo by rememberAvatar(profile?.picture, pubkey)
             val image = photo
             if (image != null) {
                 Image(
@@ -162,7 +162,7 @@ fun MyceliumNetwork(statuses: List<RelayStatus>, modifier: Modifier = Modifier) 
                 val mid = Offset((c.x + p.x) / 2 + (p.y - c.y) * 0.12f, (c.y + p.y) / 2 - (p.x - c.x) * 0.12f)
                 val path = androidx.compose.ui.graphics.Path().apply {
                     moveTo(c.x, c.y)
-                    quadraticBezierTo(mid.x, mid.y, p.x, p.y)
+                    quadraticTo(mid.x, mid.y, p.x, p.y)
                 }
                 drawPath(path, col.copy(alpha = 0.45f), style = Stroke(width = 2.dp.toPx()))
                 if (s.state == RelayState.ONLINE) {

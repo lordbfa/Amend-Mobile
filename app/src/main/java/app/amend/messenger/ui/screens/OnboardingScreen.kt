@@ -84,7 +84,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
             val hillTop = size.height * 0.68f
             val hill = Path().apply {
                 moveTo(0f, hillTop + 60f)
-                quadraticBezierTo(size.width * 0.5f, hillTop - 70f, size.width, hillTop + 40f)
+                quadraticTo(size.width * 0.5f, hillTop - 70f, size.width, hillTop + 40f)
                 lineTo(size.width, size.height)
                 lineTo(0f, size.height)
                 close()

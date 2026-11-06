@@ -71,6 +71,12 @@ class MeshStore(private val file: File) {
     }
 
     @Synchronized fun has(id: String) = entries.containsKey(id)
+
+    /** Forgets everything carried (on sign-out) and removes the file. */
+    @Synchronized fun clear() {
+        entries.clear()
+        file.delete()
+    }
     @Synchronized fun ids(limit: Int = 400): List<String> = entries.keys.toList().takeLast(limit)
     @Synchronized fun get(id: String): String? = entries[id]?.json
     @Synchronized fun size() = entries.size
@@ -173,6 +179,12 @@ object Mesh {
     }
 
     /** Turn the mesh on or off. Needs the nearby-devices permissions when turning on. */
+    /** Sign-out: drop everything this phone was carrying so nothing ties it to the old identity. */
+    fun wipe() {
+        store?.clear()
+        _ui.update { it.copy(holding = 0, delivered = 0, bridged = 0) }
+    }
+
     fun setEnabled(c: Context, on: Boolean) {
         init(c)
         prefs(c).edit().putBoolean("enabled", on).apply()

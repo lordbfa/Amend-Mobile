@@ -1,12 +1,9 @@
 package app.amend.messenger.util
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
-import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -15,7 +12,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.amend.messenger.data.AlertLevel
-import app.amend.messenger.data.EcoAlert
 import app.amend.messenger.data.EcoAlerts
 import app.amend.messenger.data.WeatherSnapshot
 import kotlinx.coroutines.Dispatchers
@@ -42,9 +38,7 @@ object EcoWeather {
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    fun hasLocationPermission(context: Context) =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    fun hasLocationPermission(context: Context) = SosManager.hasLocationPermission(context)
 
     fun alertsOn(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("alerts", true)
 
@@ -146,5 +140,3 @@ class WeatherWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     }
 }
 
-@Suppress("unused")
-private val keepType: EcoAlert? = null

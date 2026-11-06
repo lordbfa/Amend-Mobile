@@ -48,6 +48,38 @@ object AvatarImages {
 
     private fun key(picture: String) = Hashes.sha256(picture.toByteArray()).toHex()
 
+    /**
+     * Whose https profile photos may be fetched. Downloading a link tells its server your IP
+     * address and that you looked, so it's only done for you and people you've accepted;
+     * strangers (message requests) show their leaf avatar. Set by AmendApp.
+     */
+    @Volatile var mayFetch: (pubkey: String) -> Boolean = { false }
+
+    /** Images with a side longer than this are refused before decoding. */
+    private const val MAX_SIDE = 16_384
+
+    /**
+     * Decodes untrusted image bytes to at most [maxSide] px on the longer side. Reads the size
+     * first: a tiny PNG can claim 20 000 × 20 000 px, and decoding that in full needs over a
+     * gigabyte — an OutOfMemoryError (not an Exception) that would crash the app.
+     */
+    fun decodeBounded(bytes: ByteArray, maxSide: Int): Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || maxOf(bounds.outWidth, bounds.outHeight) > MAX_SIDE) null
+        else BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sampleFor(bounds, maxSide) })
+    } catch (e: Exception) {
+        null
+    } catch (e: OutOfMemoryError) {
+        null
+    }
+
+    private fun sampleFor(bounds: BitmapFactory.Options, maxSide: Int): Int {
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxSide) sample *= 2
+        return sample
+    }
+
     // ------------------------------------------------------------- encode
 
     /** Loads a picked image, scaled down so even huge camera photos stay light in memory. */
@@ -100,22 +132,19 @@ object AvatarImages {
 
     private fun decodeDataUri(picture: String): ImageBitmap? = try {
         val bytes = Base64.decode(picture.substringAfter(";base64,"), Base64.DEFAULT)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        decodeBounded(bytes, 512)?.asImageBitmap()
     } catch (e: Exception) {
         null
     }
 
-    private fun decodeFileScaled(file: File, target: Int = 256): ImageBitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.path, bounds)
-        if (bounds.outWidth <= 0) return null
-        var sample = 1
-        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= target) sample *= 2
-        return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
-    }
+    private fun decodeFileScaled(file: File, target: Int = 256): ImageBitmap? =
+        runCatching { decodeBounded(file.readBytes(), target)?.asImageBitmap() }.getOrNull()
 
-    /** Returns the picture as an image, from memory, disk cache, inline data or the web. */
-    suspend fun load(context: Context, picture: String): ImageBitmap? {
+    /**
+     * Returns the picture as an image, from memory, disk cache, inline data or the web.
+     * [pubkey] is whose photo it is: https photos are only fetched when [mayFetch] allows it.
+     */
+    suspend fun load(context: Context, picture: String, pubkey: String? = null): ImageBitmap? {
         if (!Profile.isValidPicture(picture)) return null
         val k = key(picture)
         memory.get(k)?.let { return it }
@@ -124,6 +153,7 @@ object AvatarImages {
             val dir = File(context.cacheDir, "avatars").apply { mkdirs() }
             val file = File(dir, k)
             if (!file.exists()) {
+                if (pubkey == null || !mayFetch(pubkey)) return@withContext null
                 try {
                     http.newCall(Request.Builder().url(picture).build()).execute().use { resp ->
                         val body = resp.body ?: return@withContext null
@@ -152,11 +182,11 @@ object AvatarImages {
     }
 }
 
-/** The decoded avatar for [picture], or null while loading / if there is none. */
+/** The decoded avatar for [picture] (the photo of [pubkey]), or null while loading / if there is none. */
 @Composable
-fun rememberAvatar(picture: String?): State<ImageBitmap?> {
+fun rememberAvatar(picture: String?, pubkey: String? = null): State<ImageBitmap?> {
     val context = LocalContext.current
-    return produceState<ImageBitmap?>(initialValue = null, picture) {
-        value = if (picture.isNullOrBlank()) null else AvatarImages.load(context, picture)
+    return produceState<ImageBitmap?>(initialValue = null, picture, pubkey) {
+        value = if (picture.isNullOrBlank()) null else AvatarImages.load(context, picture, pubkey)
     }
 }

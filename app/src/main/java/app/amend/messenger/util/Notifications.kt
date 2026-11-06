@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import app.amend.messenger.ui.tr
@@ -44,18 +45,60 @@ object Notifications {
     private const val STEP_REPORT_ID = 6_100
     private const val STEP_GOAL_ID = 6_101
 
+    /**
+     * The channel to post [base] notifications to. Android fixes a channel's sound when it is
+     * created, so each sound choice gets its own channel ("messages.dewdrop"); the phone's
+     * default sound keeps the original channel.
+     */
+    fun channelFor(context: Context, base: String): String {
+        val kind = soundKindOf(base) ?: return base
+        val id = Sounds.choice(context, kind)
+        return if (id == Sounds.SYSTEM) base else "$base.$id"
+    }
+
+    private fun soundKindOf(base: String): SoundKind? = when (base) {
+        CHANNEL_MESSAGES -> SoundKind.MESSAGE
+        CHANNEL_FOREST, CHANNEL_WALKING -> SoundKind.OTHER
+        else -> null
+    }
+
+    /**
+     * Creates the channel for [base] with the chosen sound and removes its other sound variants.
+     * The importance the user set on the old channel (even "blocked") carries over.
+     */
+    private fun soundChannel(context: Context, nm: NotificationManager, base: String, name: String, importance: Int, setup: NotificationChannel.() -> Unit = {}) {
+        val kind = soundKindOf(base) ?: return
+        val id = channelFor(context, base)
+        val variants = nm.notificationChannels.filter { it.id == base || it.id.startsWith("$base.") }
+        val previous = variants.firstOrNull { it.id != id }
+        val keepImportance = if (nm.getNotificationChannel(id) == null) previous?.importance else null
+        val uri = Sounds.uri(context, kind)
+        nm.createNotificationChannel(
+            NotificationChannel(id, name, keepImportance ?: importance).apply {
+                setup()
+                setSound(
+                    uri,
+                    uri?.let {
+                        AudioAttributes.Builder()
+                            .setUsage(if (kind == SoundKind.MESSAGE) AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT else AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                    },
+                )
+            }
+        )
+        variants.filter { it.id != id }.forEach { nm.deleteNotificationChannel(it.id) }
+    }
+
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_MESSAGES, tr(context.getString(R.string.channel_messages)), NotificationManager.IMPORTANCE_HIGH).apply {
-                enableVibration(true)
-                setShowBadge(true)
-            }
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_FOREST, tr(context.getString(R.string.channel_forest)), NotificationManager.IMPORTANCE_DEFAULT)
-        )
+        // an install that already has its message channel is an update: keep the phone's sounds
+        Sounds.initDefaults(context, existingInstall = nm.getNotificationChannel(CHANNEL_MESSAGES) != null)
+        soundChannel(context, nm, CHANNEL_MESSAGES, tr(context.getString(R.string.channel_messages)), NotificationManager.IMPORTANCE_HIGH) {
+            enableVibration(true)
+            setShowBadge(true)
+        }
+        soundChannel(context, nm, CHANNEL_FOREST, tr(context.getString(R.string.channel_forest)), NotificationManager.IMPORTANCE_DEFAULT)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_SOS_ALERTS, tr(context.getString(R.string.channel_sos_alerts)), NotificationManager.IMPORTANCE_HIGH).apply {
                 description = tr(context.getString(R.string.channel_sos_alerts_description))
@@ -87,17 +130,20 @@ object Notifications {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_CALL_ONGOING, tr("Ongoing call"), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
         )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_WALKING, tr("Walking"), NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = tr("Daily step goal and the monthly walking report")
-            }
-        )
+        soundChannel(context, nm, CHANNEL_WALKING, tr("Walking"), NotificationManager.IMPORTANCE_DEFAULT) {
+            description = tr("Daily step goal and the monthly walking report")
+        }
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_CONNECTION, tr(context.getString(R.string.channel_connection)), NotificationManager.IMPORTANCE_MIN).apply {
                 description = tr(context.getString(R.string.channel_connection_description))
                 setShowBadge(false)
             }
         )
+    }
+
+    /** Sign-out: no notification may still show the old identity's chats. */
+    fun cancelAll(context: Context) {
+        NotificationManagerCompat.from(context).cancelAll()
     }
 
     /** Whether amend may post notifications (permission granted and not blocked in settings). */
@@ -111,6 +157,7 @@ object Notifications {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             peer?.let { putExtra(EXTRA_PEER, it) }
+            IntentAuth.sign(context, this)
         }
         return PendingIntent.getActivity(
             context, peer?.hashCode() ?: 0, intent,
@@ -124,7 +171,7 @@ object Notifications {
     fun message(context: Context, peer: String, sender: String, text: String, unread: Int) {
         if (!areEnabled(context)) return
         val title = if (unread > 1) tr("$sender · $unread new messages") else sender
-        val n = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+        val n = NotificationCompat.Builder(context, channelFor(context, CHANNEL_MESSAGES))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
@@ -137,7 +184,7 @@ object Notifications {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(
-                NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+                NotificationCompat.Builder(context, channelFor(context, CHANNEL_MESSAGES))
                     .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle(tr(context.getString(R.string.app_name)))
                     .setContentText(tr(context.getString(R.string.notif_hidden)))
@@ -158,7 +205,7 @@ object Notifications {
 
     fun achievement(context: Context, title: String, text: String, id: Int) {
         if (!areEnabled(context)) return
-        val n = NotificationCompat.Builder(context, CHANNEL_FOREST)
+        val n = NotificationCompat.Builder(context, channelFor(context, CHANNEL_FOREST))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(tr(title))
             .setContentText(tr(text))
@@ -175,7 +222,7 @@ object Notifications {
 
     fun treeGrown(context: Context, speciesName: String, count: Int) {
         if (!areEnabled(context)) return
-        val n = NotificationCompat.Builder(context, CHANNEL_FOREST)
+        val n = NotificationCompat.Builder(context, channelFor(context, CHANNEL_FOREST))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(tr(context.getString(R.string.notif_tree_title, speciesName)))
             .setContentText(tr(context.getString(R.string.notif_tree_text, count)))
@@ -225,7 +272,7 @@ object Notifications {
                     ?: tr("They started an SOS. Location is on the way.")
             }
         }
-        val builder = NotificationCompat.Builder(context, if (phase == app.amend.messenger.data.SosPhase.STOP) CHANNEL_MESSAGES else CHANNEL_SOS_ALERTS)
+        val builder = NotificationCompat.Builder(context, if (phase == app.amend.messenger.data.SosPhase.STOP) channelFor(context, CHANNEL_MESSAGES) else CHANNEL_SOS_ALERTS)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
@@ -325,7 +372,7 @@ object Notifications {
         val text = tr("%,d steps · %s km — tap to see the full report".format(
             java.util.Locale.US, r.totalSteps, app.amend.messenger.data.StepLog.formatKm(r.km),
         ))
-        val n = NotificationCompat.Builder(context, CHANNEL_WALKING)
+        val n = NotificationCompat.Builder(context, channelFor(context, CHANNEL_WALKING))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(tr("👣 Your " + app.amend.messenger.data.StepLog.monthName(report.month) + " walking report"))
             .setContentText(text)
@@ -345,7 +392,7 @@ object Notifications {
 
     fun stepGoal(context: Context, steps: Int, goal: Int) {
         if (!areEnabled(context)) return
-        val n = NotificationCompat.Builder(context, CHANNEL_WALKING)
+        val n = NotificationCompat.Builder(context, channelFor(context, CHANNEL_WALKING))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(tr("🎉 Daily goal reached!"))
             .setContentText(tr("%,d steps today — your %,d-step goal is done. 🌿".format(java.util.Locale.US, steps, goal)))
@@ -366,6 +413,7 @@ object Notifications {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(EXTRA_CALL, mode)
+            IntentAuth.sign(context, this)
         }
         return PendingIntent.getActivity(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
@@ -546,6 +594,7 @@ object Notifications {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(FakeCall.EXTRA, true)
+            IntentAuth.sign(context, this)
         }
         val pi = PendingIntent.getActivity(context, 7_201, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(context, CHANNEL_CALLS)

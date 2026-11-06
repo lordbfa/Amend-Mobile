@@ -36,6 +36,10 @@ class SecureKeyStore(context: Context) {
     fun hasIdentity(): Boolean = prefs.contains(KEY_BLOB)
 
     fun save(keys: KeyPair) {
+        // Never overwrite a stored identity this phone can't open right now: keep it aside so
+        // it isn't lost for good if the Keystore was only failing for a moment.
+        val old = prefs.getString(KEY_BLOB, null)
+        if (old != null && load() == null) prefs.edit().putString(KEY_UNREADABLE, old).apply()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, masterKey())
         val blob = cipher.iv + cipher.doFinal(keys.secretKey)
@@ -43,15 +47,23 @@ class SecureKeyStore(context: Context) {
     }
 
     fun load(): KeyPair? {
-        val blob = prefs.getString(KEY_BLOB, null)?.let { Base64.decode(it, Base64.NO_WRAP) } ?: return null
-        return try {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(128, blob.copyOfRange(0, 12)))
-            KeyPair(cipher.doFinal(blob.copyOfRange(12, blob.size)))
-        } catch (e: Exception) {
-            null
+        val blob = prefs.getString(KEY_BLOB, null)?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() } ?: return null
+        if (blob.size <= 12) return null
+        // the Keystore can fail for a moment (busy after boot, OS update): try a few times
+        repeat(3) { attempt ->
+            try {
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(128, blob.copyOfRange(0, 12)))
+                return KeyPair(cipher.doFinal(blob.copyOfRange(12, blob.size)))
+            } catch (e: Exception) {
+                if (attempt < 2) Thread.sleep(150L * (attempt + 1))
+            }
         }
+        return null
     }
+
+    /** An identity is stored but couldn't be opened (see [save]). */
+    fun hasUnreadableIdentity(): Boolean = hasIdentity() && load() == null
 
     fun clear() {
         prefs.edit().clear().apply()
@@ -61,5 +73,7 @@ class SecureKeyStore(context: Context) {
     private companion object {
         const val ALIAS = "amend_identity_key"
         const val KEY_BLOB = "sk_blob"
+        /** An identity that couldn't be opened, kept instead of being overwritten. */
+        const val KEY_UNREADABLE = "sk_blob_unreadable"
     }
 }

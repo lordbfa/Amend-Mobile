@@ -10,6 +10,13 @@ object Json {
 
     class JsonException(message: String) : Exception(message)
 
+    /**
+     * Deepest nesting accepted. Everything amend reads is shallow (Nostr events nest 3
+     * levels); without a limit, a message of a few kB like [[[[…]]]] — which anyone can
+     * send inside a gift wrap — would overflow the stack and crash the app.
+     */
+    const val MAX_DEPTH = 64
+
     fun parse(text: String): Any? {
         val p = Parser(text)
         p.skipWs()
@@ -95,6 +102,12 @@ object Json {
 
     private class Parser(val s: String) {
         var pos = 0
+        private var depth = 0
+
+        private inline fun <T> nested(block: () -> T): T {
+            if (++depth > MAX_DEPTH) fail("nested too deeply")
+            try { return block() } finally { depth-- }
+        }
 
         fun skipWs() {
             while (pos < s.length && (s[pos] == ' ' || s[pos] == '\n' || s[pos] == '\r' || s[pos] == '\t')) pos++
@@ -105,8 +118,8 @@ object Json {
         fun value(): Any? {
             if (pos >= s.length) fail("unexpected end")
             return when (val c = s[pos]) {
-                '{' -> obj()
-                '[' -> arr()
+                '{' -> nested { obj() }
+                '[' -> nested { arr() }
                 '"' -> str()
                 't' -> literal("true", true)
                 'f' -> literal("false", false)

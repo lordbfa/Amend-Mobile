@@ -4,6 +4,7 @@ import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.crypto.hexToBytes
 import app.amend.messenger.core.crypto.Nip19
 import app.amend.messenger.core.crypto.Hashes
+import app.amend.messenger.core.crypto.isHex64
 import app.amend.messenger.core.nostr.Event
 import app.amend.messenger.core.nostr.GiftWrap
 import app.amend.messenger.core.nostr.KeyPair
@@ -65,6 +66,10 @@ class AmendRepository(
     private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS).let { s ->
         // Upgrade installs still on the original relay list (two of those relays proved unreliable).
         if (RelayPool.PREVIOUS_DEFAULTS.any { it.sorted() == s.relays.sorted() }) s.copy(relays = RelayPool.DEFAULT_RELAYS) else s
+    }.let { s ->
+        // relays saved before TLS was required: drop any ws:// one
+        val tls = s.relays.filter { it.startsWith("wss://") }
+        if (tls.size == s.relays.size) s else s.copy(relays = tls.ifEmpty { RelayPool.DEFAULT_RELAYS })
     }
 
     private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
@@ -140,7 +145,8 @@ class AmendRepository(
     private val eoseFrom = HashSet<String>()
 
     init {
-        val chats = store.loadChats()
+        // chats with accounts on the moderator's blocklist stay on disk but out of sight
+        val chats = store.loadChats().filterKeys { it !in settings.modBlocked }
         _conversations.value = chats.mapValues { (peer, msgs) ->
             Conversation(
                 peer = peer,
@@ -265,7 +271,8 @@ class AmendRepository(
         }
         val fromMe = rumor.pubkey == me
         // NIP-17: the room is the sender plus everyone in the "p" tags. Three or more people = a shared garden.
-        val participants = (rumor.tagValues("p") + rumor.pubkey).filter { it.length == 64 }.distinct()
+        // only real keys (64 hex digits): a "p" tag is whatever the sender wrote
+        val participants = (rumor.tagValues("p").map { it.lowercase() } + rumor.pubkey).filter { it.isHex64() }.distinct()
         val inGroup = participants.size >= 3
         val peer = when {
             inGroup -> GroupInfo.keyFor(participants)
@@ -713,7 +720,6 @@ class AmendRepository(
     val ecoEvents: SharedFlow<Event> = _ecoEvents
 
     fun subscribeEco(id: String, filters: List<Map<String, Any?>>) = pool.subscribe(SUB_ECO_PREFIX + id, filters)
-    fun closeEco(id: String) = pool.unsubscribe(SUB_ECO_PREFIX + id)
 
     /** Signs and publishes a public event with our key. Returns it and how many relays accepted it. */
     suspend fun publishPublic(kind: Int, content: String, tags: List<List<String>>): Pair<Event, Int> {
@@ -1171,13 +1177,23 @@ class AmendRepository(
     }
 
     suspend fun cancelScheduled(peer: String, id: String) {
-        mutex.withLock {
-            _conversations.update { all ->
-                val conv = all[peer] ?: return@update all
-                all + (peer to conv.copy(messages = conv.messages.filter { !(it.id == id && it.status == MessageStatus.SCHEDULED) }))
-            }
-            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        claimScheduled(peer, id)
+    }
+
+    /**
+     * Takes a scheduled message off the queue. Only one caller gets true for a message, so the
+     * in-app timer and the background worker can never both send it.
+     */
+    private suspend fun claimScheduled(peer: String, id: String): Boolean = mutex.withLock {
+        var claimed = false
+        _conversations.update { all ->
+            val conv = all[peer] ?: return@update all
+            claimed = conv.messages.any { it.id == id && it.status == MessageStatus.SCHEDULED }
+            if (!claimed) all
+            else all + (peer to conv.copy(messages = conv.messages.filter { !(it.id == id && it.status == MessageStatus.SCHEDULED) }))
         }
+        if (claimed) _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        claimed
     }
 
     /** Sends every scheduled message whose time has come (or [force] one now). Returns how many. */
@@ -1187,11 +1203,13 @@ class AmendRepository(
         val due = _conversations.value.values.flatMap { c ->
             c.messages.filter { it.status == MessageStatus.SCHEDULED && (it.scheduledAt <= now || it.id == forceId) }
         }
+        var sent = 0
         due.forEach { m ->
-            cancelScheduled(m.peer, m.id)
+            if (!claimScheduled(m.peer, m.id)) return@forEach // someone else is already sending it
             runCatching { sendText(m.peer, m.text, m.replyTo) }
+            sent++
         }
-        return due.size
+        return sent
     }
 
     /** The earliest pending scheduled send, if any (unix seconds). */
@@ -1245,7 +1263,6 @@ class AmendRepository(
         )
     }
 
-    /** Leave without waiting: keeps going after the chat screen closes. */
     // ---------------------------------------------------------------- achievements
 
     /** Numbers only the app knows (eco map posts, km walked this month), filled in by AmendApp. */
@@ -1432,9 +1449,6 @@ class AmendRepository(
         persistSettings()
     }
 
-    /** Who a new Instant goes to by default. */
-    fun instantAudience(): List<String> = if (settings.instantsToAll) contactKeys() else contactKeys().filter { it in settings.closeFriends }
-
     /** Instants sent to me that I haven't opened yet, newest first. */
     fun unopenedInstants(): List<ChatMessage> = _conversations.value.values
         .flatMap { c -> c.messages.filter { !it.fromMe && isInstant(it) } }
@@ -1549,6 +1563,7 @@ class AmendRepository(
         scope.launch { runCatching { block() } }
     }
 
+    /** Leave without waiting: keeps going after the chat screen closes. */
     fun leaveGroupInBackground(key: String) {
         scope.launch { leaveGroup(key) }
     }
@@ -1609,13 +1624,15 @@ class AmendRepository(
         _feed.update { list -> list.filterNot { if (author) it.pubkey == note.pubkey else it.id == note.id } }
     }
 
-    /** The moderator's shared blocklist: block every listed account here, unblock any removed. */
     /** Whose blocklist this phone follows (tests swap in their own key). */
     internal var moderatorPubkey: String = Moderation.MODERATOR
 
+    /** The moderator's shared blocklist: block every listed account here, unblock any removed. */
     internal suspend fun applyModerationList(e: Event) {
         val keys = Moderation.parse(e, moderatorPubkey) ?: return
         if (e.createdAt <= settings.modListAt) return
+        // a list dated in the future would lock out every real update after it
+        if (e.createdAt > Event.nowSeconds() + Moderation.MAX_CLOCK_SKEW) return
         val added = keys - settings.modBlocked
         val removed = settings.modBlocked - keys
         // lifting a moderator block only undoes the block the list made, never one you made yourself
@@ -1626,7 +1643,18 @@ class AmendRepository(
             blocked = settings.blocked + added - unblock.toSet(),
             accepted = settings.accepted - added,
         )
-        added.forEach { if (it != me) deleteConversation(it) }
+        // The list only hides: a remote list never deletes anything from this phone, so a
+        // mistaken (or forged-key) entry can be undone without losing the history.
+        _conversations.update { all -> all - added }
+        val restore = unblock.filter { it != me }.mapNotNull { p -> store.loadChat(p)?.let { p to it } }
+        if (restore.isNotEmpty()) _conversations.update { all ->
+            all + restore.filter { (p, _) -> p !in all }.map { (p, msgs) ->
+                p to Conversation(
+                    peer = p, messages = msgs.sortedBy { it.createdAt }, pinned = p in settings.pinned,
+                    nickname = settings.nicknames[p] ?: "", disappearSecs = settings.disappear[p] ?: 0,
+                )
+            }
+        }
         _modBlocked.value = keys
         _feed.update { list -> list.filterNot { it.pubkey in keys } }
         persistSettings()
@@ -1710,7 +1738,8 @@ class AmendRepository(
     }
 
     fun setRelays(urls: List<String>) {
-        val clean = urls.map { RelayPool.normalize(it) }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
+        // TLS only: Android blocks clear-text connections anyway, and ws:// would expose relay traffic
+        val clean = urls.map { RelayPool.normalize(it) }.filter { it.startsWith("wss://") }.distinct()
         if (clean.isEmpty()) return
         settings = settings.copy(relays = clean)
         _relays.value = clean

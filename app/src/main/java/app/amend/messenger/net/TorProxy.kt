@@ -27,7 +27,8 @@ object TorProxy : ProxySelector() {
 
     @Volatile var enabled: Boolean = false
 
-    private val socks = Proxy(Proxy.Type.SOCKS, InetSocketAddress(HOST, PORT))
+    /** Orbot's SOCKS proxy, for clients that don't take a ProxySelector (map tiles). */
+    val socks = Proxy(Proxy.Type.SOCKS, InetSocketAddress(HOST, PORT))
 
     override fun select(uri: URI?): List<Proxy> = if (enabled) listOf(socks) else listOf(Proxy.NO_PROXY)
 
