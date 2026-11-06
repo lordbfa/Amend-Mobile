@@ -1,9 +1,13 @@
 package app.amend.messenger
 
 import android.Manifest
+import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,6 +22,7 @@ import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.StepTracker
 import app.amend.messenger.util.CallManager
+import app.amend.messenger.util.CallPhase
 import app.amend.messenger.util.Mesh
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.util.PressPattern
@@ -26,6 +31,8 @@ import app.amend.messenger.util.SosPrefs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -35,6 +42,12 @@ class MainActivity : ComponentActivity() {
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var offlineJob: Job? = null
+
+    /** True while amend is a small floating window (picture-in-picture) during a video call. */
+    val inPictureInPicture = mutableStateOf(false)
+
+    /** A video call with the friend's picture on screen: leaving amend shrinks it into a floating window. */
+    private var pipEligible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,6 +74,43 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        lifecycleScope.launch {
+            combine(CallManager.state, CallManager.remoteVideo) { st, remote ->
+                st.video && st.phase == CallPhase.CONNECTED && remote != null
+            }.distinctUntilChanged().collect { eligible ->
+                pipEligible = eligible
+                updatePictureInPicture()
+            }
+        }
+    }
+
+    private val supportsPip: Boolean
+        get() = packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private fun pipParams(): PictureInPictureParams {
+        val b = PictureInPictureParams.Builder().setAspectRatio(Rational(9, 16))
+        if (Build.VERSION.SDK_INT >= 31) {
+            // Android 12+: the system shrinks amend into the window on its own (smooth gesture-nav animation)
+            b.setAutoEnterEnabled(pipEligible).setSeamlessResizeEnabled(false)
+        }
+        return b.build()
+    }
+
+    private fun updatePictureInPicture() {
+        if (supportsPip) runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Android 8–11 have no auto-enter: going home during a video call opens the floating window here
+        if (Build.VERSION.SDK_INT < 31 && pipEligible && supportsPip) {
+            runCatching { enterPictureInPictureMode(pipParams()) }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPictureInPicture.value = isInPictureInPictureMode
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -69,6 +119,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        // MainActivity is exported (it's the launcher): only act on extras from amend's own notifications
+        if (!app.amend.messenger.util.IntentAuth.isOurs(this, intent)) return
         intent?.getStringExtra(Notifications.EXTRA_PEER)?.let { pendingPeer.value = it }
         // a fake call rings over the lock screen like a real one
         if (intent?.getBooleanExtra(app.amend.messenger.util.FakeCall.EXTRA, false) == true) showOverLockScreen(true)

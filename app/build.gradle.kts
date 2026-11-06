@@ -19,13 +19,26 @@ android {
     }
 
     signingConfigs {
-        // A shared development key so every CI build installs over the previous one.
-        // It is public in this repository — use your own key for store releases.
+        // A shared development key so every CI debug build installs over the previous one.
+        // It is public in this repository, so it signs DEBUG builds only (app.amend.messenger.debug):
+        // anyone could sign an "update" with it, so it must never sign the real app.
         create("dev") {
             storeFile = file("amend-dev.keystore")
             storePassword = "amenddev"
             keyAlias = "amend"
             keyPassword = "amenddev"
+        }
+        // The private release key, only from outside the repository: environment variables
+        // (CI secrets) or ~/.gradle/gradle.properties. Without it the release build is unsigned.
+        val releaseStore = (System.getenv("AMEND_RELEASE_STORE_FILE") ?: project.findProperty("amend.release.storeFile") as String?)
+            ?.let { file(it) }?.takeIf { it.isFile }
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = System.getenv("AMEND_RELEASE_STORE_PASSWORD") ?: project.findProperty("amend.release.storePassword") as String?
+                keyAlias = System.getenv("AMEND_RELEASE_KEY_ALIAS") ?: project.findProperty("amend.release.keyAlias") as String?
+                keyPassword = System.getenv("AMEND_RELEASE_KEY_PASSWORD") ?: project.findProperty("amend.release.keyPassword") as String?
+            }
         }
     }
 
@@ -41,9 +54,10 @@ android {
             // Bundle native debug symbols (for WebRTC / secp256k1) into the AAB so Play can
             // symbolicate native crashes and ANRs. Uploaded to Play only, never shipped to users.
             ndk { debugSymbolLevel = "FULL" }
-            // -Pamend.unsigned=true builds an unsigned release (the Play Store bundle from CI),
-            // which the owner signs on their own computer with the private upload key.
-            signingConfig = if (project.findProperty("amend.unsigned") == "true") null else signingConfigs.getByName("dev")
+            // Signed only with the private release key (see signingConfigs). Without it, or with
+            // -Pamend.unsigned=true (the Play Store bundle from CI), the release is unsigned and
+            // the owner signs it on their own computer with the private upload key.
+            signingConfig = if (project.findProperty("amend.unsigned") == "true") null else signingConfigs.findByName("release")
         }
     }
 
@@ -129,7 +143,8 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("io.getstream:stream-webrtc-android:1.3.7")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
-    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
+    // 0.19.0+ ships 16 KB-aligned 64-bit libsecp256k1 and still builds with Kotlin 2.1
+    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.19.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

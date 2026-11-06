@@ -30,7 +30,6 @@ object Palette {
     val Sun = Color(0xFFFFC145)
     val Sky = Color(0xFF4FC3F7)
     val Blossom = Color(0xFFFF7AA2)
-    val Soil = Color(0xFF7A5134)
     val Night = Color(0xFF06140E)
     val NightSurface = Color(0xFF0D2219)
     val NightVariant = Color(0xFF16352A)

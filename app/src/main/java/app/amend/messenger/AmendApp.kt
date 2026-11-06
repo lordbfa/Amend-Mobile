@@ -59,7 +59,11 @@ class AmendApp : Application() {
             osmdroidBasePath = java.io.File(cacheDir, "osmdroid")
             osmdroidTileCache = java.io.File(cacheDir, "osmdroid/tiles")
         }
+        applyMapProxy()
         keyStore.load()?.let { openRepository(it) }
+        // the identity is loaded now, so a check-in that ran out while amend was closed can start the SOS
+        runCatching { app.amend.messenger.util.CheckIn.rearm(this) }
+        runCatching { app.amend.messenger.util.FakeCall.rearm(this) }
         checkBurnerExpiry()
         appScope.launch {
             while (true) { kotlinx.coroutines.delay(60_000); runCatching { checkBurnerExpiry() } }
@@ -67,6 +71,16 @@ class AmendApp : Application() {
     }
 
     private fun dataDir() = File(filesDir, "amend")
+
+    /**
+     * Map tiles are downloaded by osmdroid with its own connection, not through TorProxy, so
+     * with Tor on they'd still show your IP address — and which area you're looking at (a
+     * friend's SOS location) — to the tile server. Route them through Orbot too.
+     */
+    fun applyMapProxy() {
+        org.osmdroid.config.Configuration.getInstance().httpProxy =
+            if (app.amend.messenger.net.TorProxy.enabled) app.amend.messenger.net.TorProxy.socks else null
+    }
 
     fun openRepository(keys: KeyPair): AmendRepository {
         _repository.value?.let { if (it.me == keys.publicKeyHex) return it }
@@ -88,6 +102,8 @@ class AmendApp : Application() {
         app.amend.messenger.util.EcoMap.attach(this, repo)
         app.amend.messenger.util.Mesh.init(this)
         app.amend.messenger.util.Mesh.attach(repo)
+        // https profile photos are only downloaded for you and people you accepted (no IP leak to strangers)
+        app.amend.messenger.util.AvatarImages.mayFetch = { pk -> pk == repo.me || repo.isAccepted(pk) }
         app.amend.messenger.util.EcoWeather.schedule(this)
         runCatching { app.amend.messenger.util.WearSync.attach(this, repo) }
         rescheduleBackground(repo)
@@ -163,6 +179,11 @@ class AmendApp : Application() {
     }
 
     fun createIdentity(keys: KeyPair): AmendRepository {
+        // An identity is stored but couldn't be opened: keep its chats aside (and the key, see
+        // SecureKeyStore.save) instead of mixing them into the new identity or deleting them.
+        if (_repository.value == null && keyStore.hasUnreadableIdentity() && dataDir().exists()) {
+            dataDir().renameTo(File(filesDir, "amend-unreadable-" + System.currentTimeMillis()))
+        }
         keyStore.save(keys)
         return openRepository(keys)
     }
@@ -200,13 +221,41 @@ class AmendApp : Application() {
     /** Removes the identity and all local data from this device. */
     fun signOut() {
         burnerPrefs.edit().clear().apply()
+        // stop anything still running for this identity (tells friends live location stopped)
+        runCatching { app.amend.messenger.util.LiveShareManager.shares.value.keys.toList().forEach { app.amend.messenger.util.LiveShareManager.stop(this, it) } }
+        runCatching { app.amend.messenger.util.CheckIn.safe(this) }
+        runCatching { app.amend.messenger.util.FakeCall.cancelScheduled(this) }
         LiveService.stop(this)
         eventsJob?.cancel()
         _repository.value?.goOffline()
         _repository.value = null
         keyStore.clear()
         dataDir().deleteRecursively()
+        wipeIdentityTraces()
         SyncScheduler.cancel(this)
+    }
+
+    /**
+     * Everything outside the data folder that belongs to the identity: public keys of
+     * contacts, chat ids, carried mesh messages, photos and recordings in the cache. Without
+     * this a "burner" could be linked to the identity before it. Settings that aren't about
+     * who you are (language, theme, steps) stay.
+     */
+    private fun wipeIdentityTraces() {
+        listOf("amend_notify", "amend_live_share", "amend_checkin", "amend_eco_map", "amend_fakecall")
+            .forEach { runCatching { getSharedPreferences(it, MODE_PRIVATE).edit().clear().apply() } }
+        runCatching {
+            val sos = app.amend.messenger.util.SosPrefs(this)
+            sos.excluded = emptySet()
+            sos.activeRecipients = emptySet()
+            sos.activeSince = 0
+        }
+        runCatching { app.amend.messenger.util.IntentAuth.reset(this) }
+        runCatching { app.amend.messenger.util.Mesh.wipe() }
+        runCatching { File(filesDir, "mesh.json").delete() }
+        // photos, voice and video drafts, avatars; map tiles hold nothing personal and stay
+        runCatching { cacheDir.listFiles()?.filter { it.name != "osmdroid" }?.forEach { it.deleteRecursively() } }
+        runCatching { Notifications.cancelAll(this) }
     }
 
     companion object {

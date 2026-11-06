@@ -188,7 +188,7 @@ private fun ForestScene(repo: AmendRepository) {
                     moveTo(0f, ground - 30f)
                     var x = 0f
                     while (x < size.width) {
-                        quadraticBezierTo(x + 120f, ground - 70f, x + 240f, ground - 30f)
+                        quadraticTo(x + 120f, ground - 70f, x + 240f, ground - 30f)
                         x += 240f
                     }
                     lineTo(size.width, size.height); lineTo(0f, size.height); close()

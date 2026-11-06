@@ -544,6 +544,8 @@ object CallManager {
 /** Ringtone for incoming calls, ring-back tone while calling, short beeps on connect/hang-up. */
 private object Tones {
     private var ringtone: Ringtone? = null
+    /** amend's own ringtones (res/raw) loop through a MediaPlayer, which loops on every Android version. */
+    private var player: android.media.MediaPlayer? = null
     private var ringback: ToneGenerator? = null
     private var vibrator: Vibrator? = null
 
@@ -551,19 +553,38 @@ private object Tones {
         if (!on) {
             runCatching { ringtone?.stop() }
             ringtone = null
+            player?.let { p -> runCatching { p.stop() }; runCatching { p.release() } }
+            player = null
             vibrator?.cancel()
             vibrator = null
             return
         }
-        if (ringtone != null) return
+        if (ringtone != null || player != null) return
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (am.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
-            ringtone = RingtoneManager.getRingtone(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))?.apply {
-                audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-                if (Build.VERSION.SDK_INT >= 28) isLooping = true
-                play()
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        val choice = Sounds.option(context, SoundKind.CALL)
+        if (am.ringerMode == AudioManager.RINGER_MODE_NORMAL && choice.id != Sounds.SILENT) {
+            val ownUri = if (choice.raw != null) Sounds.uri(context, SoundKind.CALL, choice) else null
+            if (ownUri != null) {
+                player = runCatching {
+                    android.media.MediaPlayer().apply {
+                        setAudioAttributes(attrs)
+                        setDataSource(context.applicationContext, ownUri)
+                        isLooping = true
+                        prepare()
+                        start()
+                    }
+                }.getOrNull()
+            }
+            // the phone's ringtone — also the fallback if amend's own sound can't play
+            if (player == null) {
+                ringtone = RingtoneManager.getRingtone(context, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))?.apply {
+                    audioAttributes = attrs
+                    if (Build.VERSION.SDK_INT >= 28) isLooping = true
+                    play()
+                }
             }
         }
         if (am.ringerMode != AudioManager.RINGER_MODE_SILENT) {

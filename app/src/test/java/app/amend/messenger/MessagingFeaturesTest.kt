@@ -341,6 +341,50 @@ class MessagingFeaturesTest {
     }
 
     @Test
+    fun aModeratorListHidesChatsButNeverDeletesThem() = runBlocking {
+        val d = dir("bob-mod-hide")
+        val keys = KeyPair.generate()
+        val bob = repo("bob-mod-hide", keys, d)
+        val mod = KeyPair.generate()
+        bob.moderatorPubkey = mod.publicKeyHex
+        val friend = KeyPair.generate()
+        val t = Event.nowSeconds()
+        bob.injectMeshEvent(wrap(friend, bob.me, Kinds.CHAT_MESSAGE, "years of history", listOf(listOf("p", bob.me)), t - 100).second)
+        bob.applyModerationList(Event.sign(mod.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", listOf(listOf("p", friend.publicKeyHex)), t - 10))
+        assertNull(bob.conversations.value[friend.publicKeyHex])
+        // still on disk, and still hidden after a restart
+        assertTrue(File(d, "chats/${friend.publicKeyHex}.json").exists())
+        assertNull(repo("bob-mod-hide", keys, d).conversations.value[friend.publicKeyHex])
+        // lifting the block brings the chat back as it was
+        bob.applyModerationList(Event.sign(mod.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", emptyList(), t))
+        assertEquals("years of history", bob.conversations.value[friend.publicKeyHex]?.messages?.single()?.text)
+    }
+
+    @Test
+    fun aModeratorListDatedInTheFutureIsIgnored() = runBlocking {
+        val bob = repo("bob-mod-future")
+        val mod = KeyPair.generate()
+        bob.moderatorPubkey = mod.publicKeyHex
+        val x = KeyPair.generate().publicKeyHex
+        bob.applyModerationList(Event.sign(mod.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", listOf(listOf("p", x)), Event.nowSeconds() + 365L * 24 * 3600))
+        assertFalse(bob.isBlocked(x))
+        // and it doesn't lock out a real list that comes after it
+        bob.applyModerationList(Event.sign(mod.secretKey, app.amend.messenger.data.Moderation.LIST_KIND, "", listOf(listOf("p", x))))
+        assertTrue(bob.isBlocked(x))
+    }
+
+    @Test
+    fun chatFilesNeverLeaveTheChatsFolder() {
+        val d = dir("store-paths")
+        val store = app.amend.messenger.data.Store(d)
+        store.saveChat("../../escape", emptyList())
+        assertFalse(File(d, "escape.json").exists())
+        assertFalse(File(d.parentFile, "escape.json").exists())
+        store.saveChat("a".repeat(64), emptyList())
+        assertTrue(File(d, "chats/${"a".repeat(64)}.json").exists())
+    }
+
+    @Test
     fun liftingAModeratorBlockNeverUndoesYourOwnBlock() = runBlocking {
         val bob = repo("bob-mod-lift")
         val mod = KeyPair.generate()

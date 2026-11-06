@@ -494,7 +494,7 @@ private fun ChatsHeader(repo: AmendRepository, me: Profile?, progress: Float, tr
             val ground = size.height * 0.86f
             val hill = Path().apply {
                 moveTo(0f, ground)
-                quadraticBezierTo(size.width * 0.75f, ground - 60f, size.width, ground - 10f)
+                quadraticTo(size.width * 0.75f, ground - 60f, size.width, ground - 10f)
                 lineTo(size.width, size.height); lineTo(0f, size.height); close()
             }
             val night = isNight(hour)

@@ -195,6 +195,38 @@ class CoreCryptoTest {
     }
 
     @Test
+    fun deeplyNestedJsonIsRejectedNotACrash() {
+        val ok = "[".repeat(Json.MAX_DEPTH) + "]".repeat(Json.MAX_DEPTH)
+        Json.parseArray(ok)
+        for (n in listOf(Json.MAX_DEPTH + 1, 200_000)) {
+            val bomb = "[".repeat(n) + "]".repeat(n)
+            try {
+                Json.parse(bomb)
+                fail("depth $n accepted")
+            } catch (e: Json.JsonException) {
+                // expected: an ordinary exception the message handlers already catch
+            }
+        }
+        // the same bomb sealed inside a gift wrap is just an unreadable message
+        val alice = KeyPair.generate()
+        val bob = KeyPair.generate()
+        val sealKey = Nip44.conversationKey(alice.secretKey, bob.publicKeyHex.hexToBytes())
+        val seal = Event.sign(alice.secretKey, Kinds.SEAL, Nip44.encrypt("[".repeat(40_000), sealKey))
+        val oneTime = KeyPair.generate()
+        val wrap = Event.sign(
+            oneTime.secretKey, Kinds.GIFT_WRAP,
+            Nip44.encrypt(seal.toJson(), Nip44.conversationKey(oneTime.secretKey, bob.publicKeyHex.hexToBytes())),
+            listOf(listOf("p", bob.publicKeyHex)),
+        )
+        try {
+            GiftWrap.unwrap(wrap, bob)
+            fail("bomb opened")
+        } catch (e: Exception) {
+            // expected
+        }
+    }
+
+    @Test
     fun jsonRoundTrip() {
         val tricky = "q\"uote \\ back\nnl\u0001ctl 🌱"
         assertEquals(tricky, Json.parseArray(Json.write(listOf(tricky)))[0])
