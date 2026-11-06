@@ -84,9 +84,9 @@ fun DrawScope.drawTree(
             // root flare where the trunk meets the ground
             val flare = Path().apply {
                 moveTo(sx - w * 1.1f, sy + w * 0.15f)
-                quadraticBezierTo(sx - w * 0.4f, sy - w * 0.2f, sx - w * 0.35f, sy - w * 1.2f)
+                quadraticTo(sx - w * 0.4f, sy - w * 0.2f, sx - w * 0.35f, sy - w * 1.2f)
                 lineTo(sx + w * 0.35f, sy - w * 1.2f)
-                quadraticBezierTo(sx + w * 0.4f, sy - w * 0.2f, sx + w * 1.1f, sy + w * 0.15f)
+                quadraticTo(sx + w * 0.4f, sy - w * 0.2f, sx + w * 1.1f, sy + w * 0.15f)
                 close()
             }
             drawPath(flare, trunk)
@@ -316,7 +316,7 @@ private fun DrawScope.drawSeedling(base: Offset, height: Float, t: Float, sway: 
     val tip = Offset(base.x + sway * stemH * 0.6f, base.y - stemH)
     val path = Path().apply {
         moveTo(base.x, base.y - height * 0.02f)
-        quadraticBezierTo(base.x - stemH * 0.15f, base.y - stemH * 0.5f, tip.x, tip.y)
+        quadraticTo(base.x - stemH * 0.15f, base.y - stemH * 0.5f, tip.x, tip.y)
     }
     drawPath(path, Color(0xFF5BBF6A), style = androidx.compose.ui.graphics.drawscope.Stroke(width = height * 0.012f, cap = StrokeCap.Round))
     val leaf = height * 0.035f * t
