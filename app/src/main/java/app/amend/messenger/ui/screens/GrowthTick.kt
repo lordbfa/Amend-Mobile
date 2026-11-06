@@ -197,8 +197,8 @@ private fun leafPath(at: Offset, len: Float, side: Float, droop: Float): Path = 
     val tip = Offset(at.x + side * len, at.y + droop * len)
     val bulge = len * 0.38f
     moveTo(at.x, at.y)
-    quadraticBezierTo(at.x + side * len * 0.5f, at.y + droop * len * 0.5f - bulge, tip.x, tip.y)
-    quadraticBezierTo(at.x + side * len * 0.5f, at.y + droop * len * 0.5f + bulge, at.x, at.y)
+    quadraticTo(at.x + side * len * 0.5f, at.y + droop * len * 0.5f - bulge, tip.x, tip.y)
+    quadraticTo(at.x + side * len * 0.5f, at.y + droop * len * 0.5f + bulge, at.x, at.y)
     close()
 }
 
