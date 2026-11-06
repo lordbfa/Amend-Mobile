@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Check
 import app.amend.messenger.ui.I18n
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Policy
@@ -90,6 +91,7 @@ const val SUPPORT_ADDRESS = "40700, Jyväskylä, Finland"
 
 private enum class Section(val id: String, val title: String, val icon: ImageVector, val color: Long) {
     NOTIFICATIONS("notifications", "Notifications", Icons.Rounded.Notifications, 0xFFE53935),
+    SOUNDS("sounds", "Sounds", Icons.Rounded.MusicNote, 0xFF6D4C9F),
     PRIVACY("privacy", "Privacy & security", Icons.Rounded.Lock, 0xFF1E88E5),
     SAFETY("safety", "Safety & SOS", Icons.Rounded.HealthAndSafety, 0xFFD81B60),
     CALLS("calls", "Calls", Icons.Rounded.Call, 0xFF2BB673),
@@ -136,6 +138,7 @@ private fun SettingsList(repo: AmendRepository, onOpen: (Section) -> Unit) {
     val online = statuses.count { it.state == RelayState.ONLINE }
     fun status(s: Section): String? = when (s) {
         Section.NOTIFICATIONS -> if (eco.instantNotifications) "Instant" else "Every 15–60 min"
+        Section.SOUNDS -> app.amend.messenger.util.Sounds.option(context, app.amend.messenger.util.SoundKind.MESSAGE).label
         Section.PRIVACY -> if (eco.readReceipts) "Read receipts on" else "Read receipts off"
         Section.CALLS -> if (CallPrefs(context).hasTurn) "Works across networks" else "Direct only"
         Section.MESH -> if (mesh.enabled) (if (mesh.peers > 0) "${mesh.peers} nearby" else "On") else "Off"
@@ -145,7 +148,7 @@ private fun SettingsList(repo: AmendRepository, onOpen: (Section) -> Unit) {
         Section.INFO -> "v${BuildConfig.VERSION_NAME}"
         else -> null
     }
-    Group(listOf(Section.NOTIFICATIONS, Section.PRIVACY, Section.SAFETY), ::status, onOpen)
+    Group(listOf(Section.NOTIFICATIONS, Section.SOUNDS, Section.PRIVACY, Section.SAFETY), ::status, onOpen)
     Group(listOf(Section.CALLS, Section.MESH, Section.NETWORK), ::status, onOpen)
     Group(listOf(Section.LANGUAGE, Section.APPEARANCE), ::status, onOpen)
     Group(listOf(Section.ABOUT, Section.POLICY, Section.CONTACT, Section.INFO), ::status, onOpen)
@@ -199,6 +202,7 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
             RelayEditor(relays) { repo.setRelays(it) }
         }
         Section.APPEARANCE -> AppearancePage()
+        Section.SOUNDS -> SoundsPage()
         Section.LANGUAGE -> LanguagePage()
         Section.ABOUT -> AboutPage()
         Section.POLICY -> PolicyPage()
