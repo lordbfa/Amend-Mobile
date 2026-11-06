@@ -47,7 +47,7 @@ import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.PhoneInTalk
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VideocamOff
-import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -331,7 +331,7 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Control(if (st.muted) Icons.Rounded.MicOff else Icons.Rounded.Mic, if (st.muted) "Unmute" else "Mute", st.muted) { CallManager.toggleMute() }
-                    Control(if (st.speaker) Icons.Rounded.VolumeUp else Icons.Rounded.PhoneInTalk, if (st.speaker) "Speaker on" else "Speaker off", st.speaker) { CallManager.toggleSpeaker() }
+                    Control(if (st.speaker) Icons.AutoMirrored.Rounded.VolumeUp else Icons.Rounded.PhoneInTalk, if (st.speaker) "Speaker on" else "Speaker off", st.speaker) { CallManager.toggleSpeaker() }
                     if (st.video) {
                         Control(if (st.cameraOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff, if (st.cameraOn) "Camera off" else "Camera on", !st.cameraOn) { CallManager.toggleCamera() }
                         Control(Icons.Rounded.Cameraswitch, "Switch camera", false) { CallManager.switchCamera() }

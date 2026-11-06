@@ -743,7 +743,7 @@ private fun GardenHeader(
             val night = isNight(hour)
             val hill = Path().apply {
                 moveTo(size.width * 0.55f, size.height)
-                quadraticBezierTo(size.width * 0.82f, ground - 30f, size.width, ground - 8f)
+                quadraticTo(size.width * 0.82f, ground - 30f, size.width, ground - 8f)
                 lineTo(size.width, size.height); close()
             }
             drawPath(hill, if (night) Color(0xFF0F2E21) else Color(0xFF66C47A))

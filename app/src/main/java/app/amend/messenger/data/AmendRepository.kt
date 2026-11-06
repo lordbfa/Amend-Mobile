@@ -1264,7 +1264,6 @@ class AmendRepository(
         )
     }
 
-    /** Leave without waiting: keeps going after the chat screen closes. */
     // ---------------------------------------------------------------- achievements
 
     /** Numbers only the app knows (eco map posts, km walked this month), filled in by AmendApp. */
@@ -1568,6 +1567,7 @@ class AmendRepository(
         scope.launch { runCatching { block() } }
     }
 
+    /** Leave without waiting: keeps going after the chat screen closes. */
     fun leaveGroupInBackground(key: String) {
         scope.launch { leaveGroup(key) }
     }
