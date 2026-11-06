@@ -100,6 +100,11 @@ object Notifications {
         )
     }
 
+    /** Sign-out: no notification may still show the old identity's chats. */
+    fun cancelAll(context: Context) {
+        NotificationManagerCompat.from(context).cancelAll()
+    }
+
     /** Whether amend may post notifications (permission granted and not blocked in settings). */
     fun areEnabled(context: Context): Boolean {
         val permission = Build.VERSION.SDK_INT < 33 ||
@@ -111,6 +116,7 @@ object Notifications {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             peer?.let { putExtra(EXTRA_PEER, it) }
+            IntentAuth.sign(context, this)
         }
         return PendingIntent.getActivity(
             context, peer?.hashCode() ?: 0, intent,
@@ -366,6 +372,7 @@ object Notifications {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(EXTRA_CALL, mode)
+            IntentAuth.sign(context, this)
         }
         return PendingIntent.getActivity(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
@@ -546,6 +553,7 @@ object Notifications {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(FakeCall.EXTRA, true)
+            IntentAuth.sign(context, this)
         }
         val pi = PendingIntent.getActivity(context, 7_201, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(context, CHANNEL_CALLS)
