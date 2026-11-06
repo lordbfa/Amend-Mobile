@@ -612,6 +612,8 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
         val landscape = maxWidth > maxHeight
         val railOnSide = landscape && showRemoteVideo
         val controlSize = if (maxWidth < 360.dp || st.video) 54.dp else 60.dp
+        // read here: inside the Column below, BoxWithConstraints' maxHeight isn't reachable implicitly
+        val screenHeight = maxHeight
 
         if (showRemoteVideo) {
             VideoRenderer(remote!!, mirror = false, overlay = false, modifier = Modifier.fillMaxSize())
@@ -650,7 +652,7 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
             if (showRemoteVideo) {
                 Spacer(Modifier.weight(1f))
             } else {
-                val hero = minOf(260.dp, maxHeight * if (landscape) 0.42f else 0.32f)
+                val hero = minOf(260.dp, screenHeight * if (landscape) 0.42f else 0.32f)
                 Spacer(Modifier.weight(1f))
                 HeroAvatar(st.peer, profiles[st.peer], garden, hero, ringing = st.phase != CallPhase.CONNECTED && st.phase != CallPhase.ENDED)
                 CallerInfo(
