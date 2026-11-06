@@ -31,7 +31,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -249,14 +248,6 @@ object AudioPlayback {
         val next = when (_state.value.speed) { 1f -> 1.5f; 1.5f -> 2f; else -> 1f }
         player?.let { p -> runCatching { val wasPlaying = p.isPlaying; p.playbackParams = p.playbackParams.setSpeed(next); if (!wasPlaying) p.pause() } }
         _state.value = _state.value.copy(speed = next)
-    }
-
-    fun seek(id: String, fraction: Float) {
-        val p = player ?: return
-        if (_state.value.id != id) return
-        val pos = (p.duration * fraction).toInt()
-        p.seekTo(pos)
-        _state.value = _state.value.copy(positionMs = pos)
     }
 
     fun stop() {
@@ -737,5 +728,3 @@ fun VideoRecorderScreen(onDone: (File, Long, Int, Int) -> Unit, onClose: () -> U
     }
 }
 
-@Suppress("unused")
-private val keepArrangement = Arrangement.Center
