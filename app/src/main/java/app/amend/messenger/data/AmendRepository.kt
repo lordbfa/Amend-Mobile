@@ -1172,13 +1172,23 @@ class AmendRepository(
     }
 
     suspend fun cancelScheduled(peer: String, id: String) {
-        mutex.withLock {
-            _conversations.update { all ->
-                val conv = all[peer] ?: return@update all
-                all + (peer to conv.copy(messages = conv.messages.filter { !(it.id == id && it.status == MessageStatus.SCHEDULED) }))
-            }
-            _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        claimScheduled(peer, id)
+    }
+
+    /**
+     * Takes a scheduled message off the queue. Only one caller gets true for a message, so the
+     * in-app timer and the background worker can never both send it.
+     */
+    private suspend fun claimScheduled(peer: String, id: String): Boolean = mutex.withLock {
+        var claimed = false
+        _conversations.update { all ->
+            val conv = all[peer] ?: return@update all
+            claimed = conv.messages.any { it.id == id && it.status == MessageStatus.SCHEDULED }
+            if (!claimed) all
+            else all + (peer to conv.copy(messages = conv.messages.filter { !(it.id == id && it.status == MessageStatus.SCHEDULED) }))
         }
+        if (claimed) _conversations.value[peer]?.let { store.saveChat(peer, it.messages) }
+        claimed
     }
 
     /** Sends every scheduled message whose time has come (or [force] one now). Returns how many. */
@@ -1188,11 +1198,13 @@ class AmendRepository(
         val due = _conversations.value.values.flatMap { c ->
             c.messages.filter { it.status == MessageStatus.SCHEDULED && (it.scheduledAt <= now || it.id == forceId) }
         }
+        var sent = 0
         due.forEach { m ->
-            cancelScheduled(m.peer, m.id)
+            if (!claimScheduled(m.peer, m.id)) return@forEach // someone else is already sending it
             runCatching { sendText(m.peer, m.text, m.replyTo) }
+            sent++
         }
-        return due.size
+        return sent
     }
 
     /** The earliest pending scheduled send, if any (unix seconds). */
