@@ -129,7 +129,8 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("io.getstream:stream-webrtc-android:1.3.7")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
-    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.15.0")
+    // 0.19.0+ ships 16 KB-aligned 64-bit libsecp256k1 and still builds with Kotlin 2.1
+    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.19.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
