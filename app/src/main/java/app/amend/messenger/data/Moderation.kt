@@ -22,6 +22,8 @@ object Moderation {
     const val SUB = "amend-mod"
     /** Upper bound on keys we accept from the list (keeps a bad publish from flooding phones). */
     const val MAX_KEYS = 50_000
+    /** A list dated further ahead than this (seconds) is ignored. */
+    const val MAX_CLOCK_SKEW = 15 * 60L
 
     val filter: Map<String, Any?> get() = linkedMapOf("kinds" to listOf(LIST_KIND), "authors" to listOf(MODERATOR), "limit" to 1)
 
