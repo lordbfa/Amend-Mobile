@@ -147,10 +147,14 @@ jobs:
           if [ -f wear/build/outputs/apk/release/wear-release.apk ]; then cp wear/build/outputs/apk/release/wear-release.apk out/amend-wear-release.apk; fi
           ls -la out
 
+      # Artifacts count against the account's storage quota: keep them a week, and a full
+      # quota (it frees up within 6-12 h) must not turn a good build red.
       - name: Upload APKs
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: amend-apk
+          retention-days: 7
           path: |
             out/*.apk
             out/*.aab
