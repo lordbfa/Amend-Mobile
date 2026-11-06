@@ -50,10 +50,9 @@ jobs:
 
       # Report which bundled native libraries are not yet aligned for 16 KB memory pages
       # (Android 15+; Google Play hard-enforces this from 1 Feb 2027). Checks the p_align of
-      # every LOAD segment in every .so — 16 KB means >= 0x4000 (16384). This is a NON-blocking
-      # notice: the two native deps (WebRTC, secp256k1) have no 16 KB-aligned upstream build yet,
-      # so it flags status rather than failing the build, and turns all-green on its own once
-      # those libraries ship aligned .so.
+      # every LOAD segment in every 64-bit .so — 16 KB means >= 0x4000 (16384). Only arm64-v8a
+      # and x86_64 matter: 16 KB pages exist only on 64-bit devices, and 32-bit libraries are
+      # always 4 KB aligned. Non-blocking: it names any library still waiting on its upstream.
       - name: Check 16 KB native alignment
         continue-on-error: true
         run: |
@@ -66,11 +65,11 @@ jobs:
               min=$(readelf -lW "$so" | awk '/LOAD/ {print strtonum($NF)}' | sort -n | head -1)
               if [ -n "$min" ] && [ "$min" -lt 16384 ]; then
                 bad="$bad $(basename "$so")"
-                echo "::warning title=16KB alignment::$(basename "$so") in $(basename "$apk") is 4 KB aligned (LOAD align $min) — needs a 16 KB-aligned upstream build"
+                echo "::warning title=16KB alignment::$(basename "$so") in $(basename "$apk") ($(basename "$(dirname "$so")")) is 4 KB aligned (LOAD align $min) — needs a 16 KB-aligned upstream build"
               else
                 ok=$((ok+1))
               fi
-            done < <(find "$tmp" -name '*.so')
+            done < <(find "$tmp/lib/arm64-v8a" "$tmp/lib/x86_64" -name '*.so' 2>/dev/null)
             rm -rf "$tmp"
           done
           uniq_bad=$(echo $bad | tr ' ' '\n' | sort -u | tr '\n' ' ')
