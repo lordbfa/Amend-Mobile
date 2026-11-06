@@ -59,6 +59,7 @@ class AmendApp : Application() {
             osmdroidBasePath = java.io.File(cacheDir, "osmdroid")
             osmdroidTileCache = java.io.File(cacheDir, "osmdroid/tiles")
         }
+        applyMapProxy()
         keyStore.load()?.let { openRepository(it) }
         // the identity is loaded now, so a check-in that ran out while amend was closed can start the SOS
         runCatching { app.amend.messenger.util.CheckIn.rearm(this) }
@@ -70,6 +71,16 @@ class AmendApp : Application() {
     }
 
     private fun dataDir() = File(filesDir, "amend")
+
+    /**
+     * Map tiles are downloaded by osmdroid with its own connection, not through TorProxy, so
+     * with Tor on they'd still show your IP address — and which area you're looking at (a
+     * friend's SOS location) — to the tile server. Route them through Orbot too.
+     */
+    fun applyMapProxy() {
+        org.osmdroid.config.Configuration.getInstance().httpProxy =
+            if (app.amend.messenger.net.TorProxy.enabled) app.amend.messenger.net.TorProxy.socks else null
+    }
 
     fun openRepository(keys: KeyPair): AmendRepository {
         _repository.value?.let { if (it.me == keys.publicKeyHex) return it }

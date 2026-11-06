@@ -520,6 +520,7 @@ private fun TorCard(repo: AmendRepository) {
                     on = it
                     haptics.tick()
                     TorProxy.enabled = it
+                    (context.applicationContext as? app.amend.messenger.AmendApp)?.applyMapProxy()
                     context.getSharedPreferences("amend_net", android.content.Context.MODE_PRIVATE).edit().putBoolean("tor", it).apply()
                     // reconnect so every open connection takes the new route
                     scope.launch { repo.goOffline(); kotlinx.coroutines.delay(300); repo.goOnline() }
