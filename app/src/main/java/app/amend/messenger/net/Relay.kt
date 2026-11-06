@@ -19,7 +19,6 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 enum class RelayState { OFFLINE, CONNECTING, ONLINE, ERROR }
 
@@ -228,7 +227,5 @@ class Relay(
     companion object {
         /** The moderator's list at its 50 000-key limit is about 3.6 MB of JSON. */
         const val MAX_MESSAGE_CHARS = 5_000_000
-        private val counter = AtomicLong()
-        fun newSubscriptionId(prefix: String) = "$prefix-${counter.incrementAndGet()}"
     }
 }
