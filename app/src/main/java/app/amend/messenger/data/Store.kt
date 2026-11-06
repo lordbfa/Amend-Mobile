@@ -113,12 +113,25 @@ class Store(private val dir: File) {
         }.toMap()
     }
 
-    fun saveChat(peer: String, messages: List<ChatMessage>) =
+    /** One chat from disk, or null if there is none. */
+    @Suppress("UNCHECKED_CAST")
+    fun loadChat(peer: String): List<ChatMessage>? {
+        val f = chatFile(peer)?.takeIf { it.exists() } ?: return null
+        return runCatching { Json.parseArray(f.readText()).map { ChatMessage.fromMap(it as Map<String, Any?>) } }.getOrNull()
+    }
+
+    fun saveChat(peer: String, messages: List<ChatMessage>) {
+        if (chatFile(peer) == null) return // never write outside chats/
         write("chats/$peer.json", Json.write(messages.map { it.toMap() }))
+    }
 
     fun deleteChat(peer: String) {
-        File(dir, "chats/$peer.json").delete()
+        chatFile(peer)?.delete()
     }
+
+    /** Chat ids are hex keys, group keys or amend's own "amend:…" ids — never a path. */
+    private fun chatFile(peer: String): File? =
+        if (SAFE_ID.matches(peer)) File(dir, "chats/$peer.json") else null
 
     // --- profiles & relay lists -------------------------------------------------
 
@@ -196,4 +209,8 @@ class Store(private val dir: File) {
 
     @Suppress("unused")
     private fun Map<String, Any?>.s(k: String) = str(k)
+
+    private companion object {
+        val SAFE_ID = Regex("[A-Za-z0-9:_-]{1,96}")
+    }
 }

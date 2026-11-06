@@ -140,7 +140,8 @@ class AmendRepository(
     private val eoseFrom = HashSet<String>()
 
     init {
-        val chats = store.loadChats()
+        // chats with accounts on the moderator's blocklist stay on disk but out of sight
+        val chats = store.loadChats().filterKeys { it !in settings.modBlocked }
         _conversations.value = chats.mapValues { (peer, msgs) ->
             Conversation(
                 peer = peer,
@@ -1609,13 +1610,15 @@ class AmendRepository(
         _feed.update { list -> list.filterNot { if (author) it.pubkey == note.pubkey else it.id == note.id } }
     }
 
-    /** The moderator's shared blocklist: block every listed account here, unblock any removed. */
     /** Whose blocklist this phone follows (tests swap in their own key). */
     internal var moderatorPubkey: String = Moderation.MODERATOR
 
+    /** The moderator's shared blocklist: block every listed account here, unblock any removed. */
     internal suspend fun applyModerationList(e: Event) {
         val keys = Moderation.parse(e, moderatorPubkey) ?: return
         if (e.createdAt <= settings.modListAt) return
+        // a list dated in the future would lock out every real update after it
+        if (e.createdAt > Event.nowSeconds() + Moderation.MAX_CLOCK_SKEW) return
         val added = keys - settings.modBlocked
         val removed = settings.modBlocked - keys
         // lifting a moderator block only undoes the block the list made, never one you made yourself
@@ -1626,7 +1629,18 @@ class AmendRepository(
             blocked = settings.blocked + added - unblock.toSet(),
             accepted = settings.accepted - added,
         )
-        added.forEach { if (it != me) deleteConversation(it) }
+        // The list only hides: a remote list never deletes anything from this phone, so a
+        // mistaken (or forged-key) entry can be undone without losing the history.
+        _conversations.update { all -> all - added }
+        val restore = unblock.filter { it != me }.mapNotNull { p -> store.loadChat(p)?.let { p to it } }
+        if (restore.isNotEmpty()) _conversations.update { all ->
+            all + restore.filter { (p, _) -> p !in all }.map { (p, msgs) ->
+                p to Conversation(
+                    peer = p, messages = msgs.sortedBy { it.createdAt }, pinned = p in settings.pinned,
+                    nickname = settings.nicknames[p] ?: "", disappearSecs = settings.disappear[p] ?: 0,
+                )
+            }
+        }
         _modBlocked.value = keys
         _feed.update { list -> list.filterNot { it.pubkey in keys } }
         persistSettings()
