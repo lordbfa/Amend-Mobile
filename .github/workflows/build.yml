@@ -45,7 +45,26 @@ jobs:
           fi
           rm -f ice.json
 
+      # The release APK is signed only with the owner's private key, stored as repository
+      # secrets. Without them the release APK stays unsigned and only debug APKs (signed with
+      # the public development key, as app.amend.messenger.debug) are published.
+      - name: Release signing key (optional)
+        env:
+          KEYSTORE_B64: ${{ secrets.AMEND_RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "AMEND_RELEASE_STORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "::notice title=Signing::release APK signed with the private release key"
+          else
+            echo "::notice title=Signing::no release key configured: the release APK is unsigned"
+          fi
+
       - name: Build APKs
+        env:
+          AMEND_RELEASE_STORE_PASSWORD: ${{ secrets.AMEND_RELEASE_STORE_PASSWORD }}
+          AMEND_RELEASE_KEY_ALIAS: ${{ secrets.AMEND_RELEASE_KEY_ALIAS }}
+          AMEND_RELEASE_KEY_PASSWORD: ${{ secrets.AMEND_RELEASE_KEY_PASSWORD }}
         run: ./gradlew :app:assembleDebug :app:assembleRelease :wear:assembleDebug :wear:assembleRelease --stacktrace 2>&1 | tee -a build-output.txt; exit ${PIPESTATUS[0]}
 
       # Report which bundled native libraries are not yet aligned for 16 KB memory pages
@@ -57,7 +76,7 @@ jobs:
         continue-on-error: true
         run: |
           bad=""; ok=0
-          for apk in app/build/outputs/apk/release/*.apk wear/build/outputs/apk/release/*.apk; do
+          for apk in app/build/outputs/apk/release/*.apk wear/build/outputs/apk/release/*.apk; do  # signed or unsigned
             [ -f "$apk" ] || continue
             tmp=$(mktemp -d)
             unzip -o -q "$apk" 'lib/*' -d "$tmp" 2>/dev/null || true
@@ -121,10 +140,11 @@ jobs:
           mkdir -p out
           cp app/build/outputs/bundle/release/*.aab out/amend-release-unsigned.aab
           cp wear/build/outputs/bundle/release/*.aab out/amend-wear-release-unsigned.aab
-          cp wear/build/outputs/apk/release/*.apk out/amend-wear-release.apk
           cp wear/build/outputs/apk/debug/*.apk out/amend-wear-debug.apk
-          cp app/build/outputs/apk/release/*.apk out/amend-release.apk
           cp app/build/outputs/apk/debug/*.apk out/amend-debug.apk
+          # release APKs only when signed with the private key (an unsigned APK can't be installed)
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then cp app/build/outputs/apk/release/app-release.apk out/amend-release.apk; fi
+          if [ -f wear/build/outputs/apk/release/wear-release.apk ]; then cp wear/build/outputs/apk/release/wear-release.apk out/amend-wear-release.apk; fi
           ls -la out
 
       - name: Upload APKs
