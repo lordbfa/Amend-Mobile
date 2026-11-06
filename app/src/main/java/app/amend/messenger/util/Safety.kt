@@ -158,12 +158,31 @@ object CheckIn {
         _deadline.value = d.takeIf { it > 0 }
     }
 
+    /**
+     * Android forgets alarms when the phone restarts. Called at boot, after an update and
+     * when amend starts (with the identity loaded): sets the alarms again, or — if the
+     * deadline passed while the phone was off — starts the SOS now.
+     */
+    fun rearm(context: Context) {
+        restore(context)
+        val d = _deadline.value ?: return
+        if (System.currentTimeMillis() >= d) {
+            onAlarm(context, ACTION_DUE)
+            return
+        }
+        arm(context, d)
+    }
+
     fun start(context: Context, minutes: Int) {
         val d = System.currentTimeMillis() + minutes * 60_000L
         _deadline.value = d
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("deadline", d).apply()
+        arm(context, d)
+    }
+
+    private fun arm(context: Context, d: Long) {
         SafetyAlarms.cancel(context, ACTION_REMIND, CODE_REMIND)
-        if (minutes >= 10) SafetyAlarms.set(context, ACTION_REMIND, d - REMIND_BEFORE_MS, CODE_REMIND)
+        if (d - REMIND_BEFORE_MS > System.currentTimeMillis() + 60_000) SafetyAlarms.set(context, ACTION_REMIND, d - REMIND_BEFORE_MS, CODE_REMIND)
         SafetyAlarms.set(context, ACTION_DUE, d, CODE_DUE)
         Notifications.checkInOngoing(context, d)
     }
@@ -185,9 +204,10 @@ object CheckIn {
             ACTION_DUE -> {
                 // the alarm can be a little early in Doze; only act once the time has really come
                 if (System.currentTimeMillis() < d - 60_000) { SafetyAlarms.set(context, ACTION_DUE, d, CODE_DUE); return }
-                safe(context)
                 Notifications.checkInMissed(context)
-                SosManager.trigger(context, practice = false, force = true)
+                // An SOS that is already running covers it. Otherwise keep the deadline until the
+                // SOS really starts (e.g. the identity isn't loaded yet), so the next start retries.
+                if (SosManager.trigger(context, practice = false, force = true) || SosManager.state.value !is SosState.Idle) safe(context)
             }
         }
     }
@@ -225,16 +245,28 @@ object FakeCall {
     fun schedule(context: Context, seconds: Int) {
         val at = System.currentTimeMillis() + seconds * 1000L
         _scheduledAt.value = at
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("at", at).apply()
         SafetyAlarms.set(context, ACTION_RING, at, CODE)
     }
 
     fun cancelScheduled(context: Context) {
         _scheduledAt.value = null
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("at").apply()
         SafetyAlarms.cancel(context, ACTION_RING, CODE)
+    }
+
+    /** After a restart: set the scheduled call's alarm again. One that's long overdue is dropped — a late "way out" call only confuses. */
+    fun rearm(context: Context) {
+        val at = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("at", 0)
+        if (at <= 0) return
+        if (System.currentTimeMillis() > at + 2 * 60_000) { cancelScheduled(context); return }
+        _scheduledAt.value = at
+        SafetyAlarms.set(context, ACTION_RING, at, CODE)
     }
 
     fun ring(context: Context) {
         _scheduledAt.value = null
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("at").apply()
         if (_ringing.value != null || _answeredAt.value != null) return
         _ringing.value = callerName(context)
         runCatching {

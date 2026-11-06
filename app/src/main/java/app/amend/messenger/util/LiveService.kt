@@ -98,11 +98,15 @@ class LiveService : Service() {
     }
 }
 
-/** Restarts the live connection after the phone reboots or amend is updated. */
+/** After the phone reboots or amend is updated: restarts the live connection and sets the safety alarms again. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> LiveService.start(context)
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                LiveService.start(context)
+                runCatching { CheckIn.rearm(context) }
+                runCatching { FakeCall.rearm(context) }
+            }
         }
     }
 }

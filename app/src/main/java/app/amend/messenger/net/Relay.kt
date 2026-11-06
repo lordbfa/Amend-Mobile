@@ -19,7 +19,6 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 enum class RelayState { OFFLINE, CONNECTING, ONLINE, ERROR }
 
@@ -146,6 +145,9 @@ class Relay(
     @Suppress("UNCHECKED_CAST")
     private fun handleText(text: String) {
         onBytes(0, text.toByteArray(Charsets.UTF_8).size.toLong())
+        // A relay can send anything: ignore messages far bigger than any real event
+        // (the largest amend reads is the moderator's blocklist).
+        if (text.length > MAX_MESSAGE_CHARS) return
         val msg = try {
             Json.parseArray(text)
         } catch (e: Exception) {
@@ -223,7 +225,7 @@ class Relay(
     }
 
     companion object {
-        private val counter = AtomicLong()
-        fun newSubscriptionId(prefix: String) = "$prefix-${counter.incrementAndGet()}"
+        /** The moderator's list at its 50 000-key limit is about 3.6 MB of JSON. */
+        const val MAX_MESSAGE_CHARS = 5_000_000
     }
 }

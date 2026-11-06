@@ -45,7 +45,10 @@ protocol, so there are no accounts, phone numbers or company servers.
 ## Download
 
 Every push to `main` builds APKs with GitHub Actions:
-**Actions → Build amend → amend-apk**. Use `amend-release.apk`.
+**Actions → Build amend → amend-apk**. `amend-debug.apk` is a test build (installs beside the
+real app as `app.amend.messenger.debug`). `amend-release.apk` is only there when the release
+key is configured (repository secrets `AMEND_RELEASE_KEYSTORE_B64`, `AMEND_RELEASE_STORE_PASSWORD`,
+`AMEND_RELEASE_KEY_ALIAS`, `AMEND_RELEASE_KEY_PASSWORD`).
 
 Pushing a tag like `v2.0.0` attaches the APKs to a GitHub release.
 
@@ -76,8 +79,10 @@ to make it even more independent (in Bangla).
 ## Security notes
 
 - This is a young app and hasn't had an independent security audit.
-- The APKs from CI are signed with `app/amend-dev.keystore`, which is public in this repo.
-  Before publishing to a store, create your own keystore and keep it secret.
+- `app/amend-dev.keystore` is public in this repo, so it only signs debug builds
+  (`app.amend.messenger.debug`). Release builds are signed only with a private key supplied
+  from outside the repository (CI secrets, or `amend.release.*` in `~/.gradle/gradle.properties`);
+  without it they are unsigned.
 - Gift-wrapped messages hide metadata from relays, but your IP address is visible to the
   relays you connect to (use a VPN or Tor/Orbot if that matters to you).
 

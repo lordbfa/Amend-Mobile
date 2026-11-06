@@ -54,6 +54,13 @@ object MessageTranslator {
         if (source == target) return Result.SameLanguage
         val options = TranslatorOptions.Builder().setSourceLanguage(source).setTargetLanguage(target).build()
         Translation.getClient(options).use { t ->
+            if (app.amend.messenger.net.TorProxy.enabled) {
+                // ML Kit downloads models with its own connection, outside Tor: with Tor on, don't
+                // download (fail closed) and only translate with a model already on the phone
+                val done = runCatching { t.translate(text).await() }.getOrNull()
+                    ?: return Result.Failed("With Tor on, amend doesn't download translation models. Turn Tor off once to get this language.")
+                return Result.Done(done, Locale.forLanguageTag(source).displayLanguage)
+            }
             t.downloadModelIfNeeded(DownloadConditions.Builder().build()).await()
             Result.Done(t.translate(text).await(), Locale.forLanguageTag(source).displayLanguage)
         }

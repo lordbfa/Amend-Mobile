@@ -18,11 +18,24 @@ android {
     }
 
     signingConfigs {
+        // public development key: debug builds only (see app/build.gradle.kts)
         create("dev") {
             storeFile = file("../app/amend-dev.keystore")
             storePassword = "amenddev"
             keyAlias = "amend"
             keyPassword = "amenddev"
+        }
+        // The private release key, only from outside the repository: environment variables
+        // (CI secrets) or ~/.gradle/gradle.properties. Without it the release build is unsigned.
+        val releaseStore = (System.getenv("AMEND_RELEASE_STORE_FILE") ?: project.findProperty("amend.release.storeFile") as String?)
+            ?.let { file(it) }?.takeIf { it.isFile }
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = System.getenv("AMEND_RELEASE_STORE_PASSWORD") ?: project.findProperty("amend.release.storePassword") as String?
+                keyAlias = System.getenv("AMEND_RELEASE_KEY_ALIAS") ?: project.findProperty("amend.release.keyAlias") as String?
+                keyPassword = System.getenv("AMEND_RELEASE_KEY_PASSWORD") ?: project.findProperty("amend.release.keyPassword") as String?
+            }
         }
     }
 
@@ -35,7 +48,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = if (project.findProperty("amend.unsigned") == "true") null else signingConfigs.getByName("dev")
+            signingConfig = if (project.findProperty("amend.unsigned") == "true") null else signingConfigs.findByName("release")
         }
     }
 

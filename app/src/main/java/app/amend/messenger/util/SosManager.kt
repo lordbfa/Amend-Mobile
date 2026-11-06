@@ -165,11 +165,12 @@ object SosManager {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     /** Called by any trigger (volume, power, on-screen button). */
-    fun trigger(context: Context, practice: Boolean = false, force: Boolean = false) {
+    /** Returns false if no SOS was started (switched off, one already running, or no identity yet). */
+    fun trigger(context: Context, practice: Boolean = false, force: Boolean = false): Boolean {
         // [force]: a missed safety check-in starts the SOS even if the SOS triggers are switched off
-        if (!practice && !force && !SosPrefs(context).enabled) return
-        if (_state.value !is SosState.Idle) return
-        val repo = app(context).repository.value ?: return
+        if (!practice && !force && !SosPrefs(context).enabled) return false
+        if (_state.value !is SosState.Idle) return false
+        val repo = app(context).repository.value ?: return false
         recipients = repo.sosRecipients(SosPrefs(context).excluded)
         countdownJob?.cancel()
         countdownJob = scope.launch {
@@ -182,6 +183,7 @@ object SosManager {
             Notifications.cancelSosCountdown(context)
             activate(context, practice)
         }
+        return true
     }
 
     fun cancelCountdown(context: Context) {
