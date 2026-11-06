@@ -91,6 +91,8 @@ class AmendApp : Application() {
         app.amend.messenger.util.EcoMap.attach(this, repo)
         app.amend.messenger.util.Mesh.init(this)
         app.amend.messenger.util.Mesh.attach(repo)
+        // https profile photos are only downloaded for you and people you accepted (no IP leak to strangers)
+        app.amend.messenger.util.AvatarImages.mayFetch = { pk -> pk == repo.me || repo.isAccepted(pk) }
         app.amend.messenger.util.EcoWeather.schedule(this)
         runCatching { app.amend.messenger.util.WearSync.attach(this, repo) }
         rescheduleBackground(repo)

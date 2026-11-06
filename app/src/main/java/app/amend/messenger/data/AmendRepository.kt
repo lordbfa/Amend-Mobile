@@ -4,6 +4,7 @@ import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.crypto.hexToBytes
 import app.amend.messenger.core.crypto.Nip19
 import app.amend.messenger.core.crypto.Hashes
+import app.amend.messenger.core.crypto.isHex64
 import app.amend.messenger.core.nostr.Event
 import app.amend.messenger.core.nostr.GiftWrap
 import app.amend.messenger.core.nostr.KeyPair
@@ -270,7 +271,8 @@ class AmendRepository(
         }
         val fromMe = rumor.pubkey == me
         // NIP-17: the room is the sender plus everyone in the "p" tags. Three or more people = a shared garden.
-        val participants = (rumor.tagValues("p") + rumor.pubkey).filter { it.length == 64 }.distinct()
+        // only real keys (64 hex digits): a "p" tag is whatever the sender wrote
+        val participants = (rumor.tagValues("p").map { it.lowercase() } + rumor.pubkey).filter { it.isHex64() }.distinct()
         val inGroup = participants.size >= 3
         val peer = when {
             inGroup -> GroupInfo.keyFor(participants)
