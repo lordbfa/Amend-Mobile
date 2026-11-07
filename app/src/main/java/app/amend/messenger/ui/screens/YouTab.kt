@@ -512,7 +512,33 @@ internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
 internal fun AppearancePage() {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ThemeCard()
+        LiteMotionCard()
         IconStyleCard()
+    }
+}
+
+/** Lite animations: on by default on low-memory phones, where looping animations slow typing and scrolling. */
+@Composable
+private fun LiteMotionCard() {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    val lowEnd = androidx.compose.runtime.remember { app.amend.messenger.util.Performance.isLowEnd(context) }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Lite animations", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (lowEnd) "Recommended on this phone: keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer."
+                    else "Keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            androidx.compose.material3.Switch(
+                checked = app.amend.messenger.util.Performance.liteMotion,
+                onCheckedChange = { haptics.tick(); app.amend.messenger.util.Performance.setLiteMotion(context, it) },
+            )
+        }
     }
 }
 

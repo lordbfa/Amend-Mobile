@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val repo by app.repository.collectAsStateWithLifecycle()
             val eco = repo?.eco?.collectAsStateWithLifecycle()
-            AmendTheme(efficiency = eco?.value?.efficiencyMode == true) {
+            AmendTheme(efficiency = eco?.value?.efficiencyMode == true, liteMotion = app.amend.messenger.util.Performance.liteMotion) {
                 AmendRoot(app = app, repository = repo, pendingPeer = pendingPeer)
             }
         }
@@ -139,6 +139,7 @@ class MainActivity : ComponentActivity() {
     private fun useHighestRefreshRate() {
         val app = application as AmendApp
         if (app.repository.value?.eco?.value?.efficiencyMode == true) return
+        if (app.amend.messenger.util.Performance.liteMotion) return // a low-end phone: 60 Hz saves CPU and battery
         runCatching {
             val d: android.view.Display = (if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay) ?: return
             val current = d.mode
