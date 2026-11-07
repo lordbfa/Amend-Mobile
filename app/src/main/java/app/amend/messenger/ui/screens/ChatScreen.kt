@@ -976,21 +976,20 @@ private fun MessageBubble(
                 } else if (message.type == MessageType.ECO_PROOF) {
                     EcoProofContent(repo, message, textColor)
                 } else {
-                    // links from strangers aren't tappable (phishing / grooming lures)
-                    Text(
-                        if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor),
-                        color = textColor, style = MaterialTheme.typography.bodyLarge,
-                    )
+                    // links from strangers aren't tappable (phishing / grooming lures); worked out once per text
+                    val body = remember(message.text, textColor, fromStranger) {
+                        if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor)
+                    }
+                    Text(body, color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (message.expiresAt > 0) Text("⏳ ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
                     if (message.editedAt > 0 && !unsent) Text("edited · ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
-                    Text(
-                        (if (scheduled) "Scheduled · " else "") +
-                            Instant.ofEpochSecond(if (scheduled) message.scheduledAt else message.createdAt).atZone(ZoneId.systemDefault())
-                                .format(DateTimeFormatter.ofPattern(if (scheduled) "d MMM HH:mm" else "HH:mm")),
-                        color = textColor.copy(alpha = 0.7f), fontSize = 11.sp,
-                    )
+                    val time = remember(scheduled, message.scheduledAt, message.createdAt) {
+                        Instant.ofEpochSecond(if (scheduled) message.scheduledAt else message.createdAt).atZone(ZoneId.systemDefault())
+                            .format(if (scheduled) SCHEDULED_TIME else BUBBLE_TIME)
+                    }
+                    Text((if (scheduled) "Scheduled · " else "") + time, color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
                     if (mine && message.type != MessageType.CALL && !unsent) {
                         Spacer(Modifier.size(4.dp))
                         GrowthTick(message.status, onRetry)
@@ -1094,6 +1093,10 @@ private fun SosMessageContent(message: ChatMessage, live: app.amend.messenger.da
 }
 
 /** Turns http(s) and www links in a message into tappable links. */
+/** Formatters are costly to build: make them once, not on every bubble draw. */
+private val BUBBLE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val SCHEDULED_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM HH:mm")
+
 private val URL_REGEX = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"]+)""")
 
 /** Message types covered when they come from someone you haven't accepted. */
