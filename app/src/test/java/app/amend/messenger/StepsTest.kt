@@ -25,6 +25,27 @@ class StepsTest {
     }
 
     @Test
+    fun aGlitchyZeroReadingIsNotMistakenForARestart() {
+        // Some Android 10 phones report 0 for a moment when the sensor is switched on.
+        val boot = ms(2026, 10, 5, 6)
+        val log = StepLog()
+        log.record(25_000, ms(2026, 10, 5, 8), zone, boot)
+        assertEquals(0, log.record(0, ms(2026, 10, 5, 9), zone, boot))        // same boot: ignored
+        assertEquals(10, log.record(25_010, ms(2026, 10, 5, 10), zone, boot))  // not 25 010 phantom steps
+        assertEquals(10, log.steps(LocalDate.of(2026, 10, 5)))
+    }
+
+    @Test
+    fun aRealRestartIsStillCounted() {
+        val log = StepLog()
+        log.record(25_000, ms(2026, 10, 5, 8), zone, ms(2026, 10, 5, 6))
+        // the phone restarted at 11:00 and has counted 400 steps since
+        assertEquals(400, log.record(400, ms(2026, 10, 5, 12), zone, ms(2026, 10, 5, 11)))
+        // and a restart after which more steps were counted than before still counts from 0
+        assertEquals(30_000, log.record(30_000, ms(2026, 10, 5, 20), zone, ms(2026, 10, 5, 13)))
+    }
+
+    @Test
     fun stepsAcrossMidnightAreSplitByTime() {
         val log = StepLog()
         log.record(0, ms(2026, 10, 5, 23), zone)

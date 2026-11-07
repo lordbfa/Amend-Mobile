@@ -166,7 +166,8 @@ object StepTracker {
     private fun onReading(counter: Long) {
         val now = System.currentTimeMillis()
         synchronized(lock) {
-            log.record(counter, now)
+            // when the phone last started, so a sensor glitch isn't mistaken for a restart
+            log.record(counter, now, bootMs = now - android.os.SystemClock.elapsedRealtime())
             log.prune(LocalDate.now())
         }
         checkGoal()
