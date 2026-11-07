@@ -75,6 +75,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -142,7 +143,11 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     val haptics = rememberHaptics()
     val particles = LocalParticles.current
     val context = androidx.compose.ui.platform.LocalContext.current
-    var input by remember { mutableStateOf("") }
+    // The text being typed. Only ChatInput and the send/mic switch read it while composing, so a
+    // keystroke redraws the input box alone, not the whole chat (slow phones lagged on every key).
+    val inputState = remember { mutableStateOf("") }
+    var input by inputState
+    val canSend by remember { derivedStateOf { inputState.value.isNotBlank() } }
     var replyTo by remember { mutableStateOf<ChatMessage?>(null) }
     val startCall = rememberCallStarter()
     val voiceRecorder = remember { VoiceRecorder(context) }
@@ -378,22 +383,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             }
             if (recordingVoice) {
                 RecordingBar(voiceRecorder, cancellingVoice, Modifier.weight(1f))
-            } else TextField(
-                value = input,
-                onValueChange = { if (it.length <= 4000) input = it },
-                placeholder = { Text("Grow the conversation…") },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(26.dp),
-                maxLines = 5,
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            )
+            } else ChatInput(inputState, Modifier.weight(1f))
             Spacer(Modifier.size(8.dp))
-            val canSend = input.isNotBlank()
             if (!canSend) {
 
                 // hold to record a voice message, slide left to cancel
@@ -1377,4 +1368,23 @@ private fun LiveMessageContent(message: ChatMessage, share: app.amend.messenger.
             TextButton(onClick = onStop) { Text("Stop sharing", color = Color.White) }
         }
     }
+}
+
+/** The message box. It reads the text itself, so typing redraws only this box. */
+@Composable
+private fun ChatInput(state: androidx.compose.runtime.MutableState<String>, modifier: Modifier = Modifier) {
+    TextField(
+        value = state.value,
+        onValueChange = { if (it.length <= 4000) state.value = it },
+        placeholder = { Text("Grow the conversation…") },
+        modifier = modifier,
+        shape = RoundedCornerShape(26.dp),
+        maxLines = 5,
+        colors = TextFieldDefaults.colors(
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    )
 }
