@@ -38,7 +38,8 @@ object AvatarImages {
     const val SIZE_PX = 128
     private const val MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
 
-    private val memory = object : LruCache<String, ImageBitmap>(48 * 1024 * 1024) {
+    // up to 48 MB, but never more than an eighth of what this phone gives the app
+    private val memory = object : LruCache<String, ImageBitmap>(minOf(48L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 8).toInt()) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
 

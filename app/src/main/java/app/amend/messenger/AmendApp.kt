@@ -46,6 +46,7 @@ class AmendApp : Application() {
         keyStore = SecureKeyStore(this)
         app.amend.messenger.ui.I18n.init(this)
         app.amend.messenger.ui.theme.AppThemes.load(this)
+        app.amend.messenger.util.Performance.load(this)
         app.amend.messenger.util.CheckIn.restore(this)
         app.amend.messenger.util.ScreenProtection.load(this)
         app.amend.messenger.util.AgeCheck.load(this)
