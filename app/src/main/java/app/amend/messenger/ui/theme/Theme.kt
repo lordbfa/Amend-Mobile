@@ -148,14 +148,15 @@ object AppThemes {
     }
 }
 
-/** When true, animations and particle effects are reduced (Efficiency mode). */
+/** When true, animations and particle effects are reduced (Efficiency mode or lite animations). */
 val LocalEfficiency = staticCompositionLocalOf { false }
 val LocalDark = staticCompositionLocalOf { true }
 
 @Composable
-fun AmendTheme(efficiency: Boolean = false, content: @Composable () -> Unit) {
+fun AmendTheme(efficiency: Boolean = false, liteMotion: Boolean = false, content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme() || efficiency // efficiency mode forces dark (saves power on OLED)
-    CompositionLocalProvider(LocalEfficiency provides efficiency, LocalDark provides dark) {
+    // lite animations calm the motion like efficiency mode, but leave the look (light/dark) alone
+    CompositionLocalProvider(LocalEfficiency provides (efficiency || liteMotion), LocalDark provides dark) {
         val base = if (dark) DarkColors else LightColors
         val theme = AppThemes.current
         val colors = if (theme.isDefault) base else {
