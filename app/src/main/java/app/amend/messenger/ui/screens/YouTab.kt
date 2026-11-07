@@ -66,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.amend.messenger.AmendApp
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.ui.components.GlassCard
+import app.amend.messenger.util.Performance
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.ui.components.LeafAvatar
 import app.amend.messenger.ui.components.PhotoPickerAvatar
@@ -512,7 +513,33 @@ internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
 internal fun AppearancePage() {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ThemeCard()
+        LiteMotionCard()
         IconStyleCard()
+    }
+}
+
+/** Lite animations: on by default on low-memory phones, where looping animations slow typing and scrolling. */
+@Composable
+private fun LiteMotionCard() {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    val lowEnd = androidx.compose.runtime.remember { Performance.isLowEnd(context) }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Lite animations", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (lowEnd) "Recommended on this phone: keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer."
+                    else "Keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            androidx.compose.material3.Switch(
+                checked = Performance.liteMotion,
+                onCheckedChange = { haptics.tick(); Performance.setLiteMotion(context, it) },
+            )
+        }
     }
 }
 

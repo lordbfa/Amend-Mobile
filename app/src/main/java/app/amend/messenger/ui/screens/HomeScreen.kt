@@ -656,13 +656,18 @@ private fun ConversationRow(repo: AmendRepository, c: Conversation, profile: Pro
     }
 }
 
+// built once: a formatter is costly to make, and the chat list formats a time per row
+private val TIME_TODAY: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val TIME_THIS_YEAR: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
+private val TIME_OLDER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy")
+
 fun formatTime(epochSeconds: Long): String {
     val dt = Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault())
     val today = LocalDate.now()
     return when {
-        dt.toLocalDate() == today -> dt.format(DateTimeFormatter.ofPattern("HH:mm"))
+        dt.toLocalDate() == today -> dt.format(TIME_TODAY)
         dt.toLocalDate() == today.minusDays(1) -> "Yesterday"
-        dt.year == today.year -> dt.format(DateTimeFormatter.ofPattern("d MMM"))
-        else -> dt.format(DateTimeFormatter.ofPattern("d MMM yyyy"))
+        dt.year == today.year -> dt.format(TIME_THIS_YEAR)
+        else -> dt.format(TIME_OLDER)
     }
 }
