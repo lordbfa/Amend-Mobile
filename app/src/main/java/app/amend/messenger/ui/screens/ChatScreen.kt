@@ -75,6 +75,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -142,7 +143,11 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     val haptics = rememberHaptics()
     val particles = LocalParticles.current
     val context = androidx.compose.ui.platform.LocalContext.current
-    var input by remember { mutableStateOf("") }
+    // The text being typed. Only ChatInput and the send/mic switch read it while composing, so a
+    // keystroke redraws the input box alone, not the whole chat (slow phones lagged on every key).
+    val inputState = remember { mutableStateOf("") }
+    var input by inputState
+    val canSend by remember { derivedStateOf { inputState.value.isNotBlank() } }
     var replyTo by remember { mutableStateOf<ChatMessage?>(null) }
     val startCall = rememberCallStarter()
     val voiceRecorder = remember { VoiceRecorder(context) }
@@ -378,22 +383,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             }
             if (recordingVoice) {
                 RecordingBar(voiceRecorder, cancellingVoice, Modifier.weight(1f))
-            } else TextField(
-                value = input,
-                onValueChange = { if (it.length <= 4000) input = it },
-                placeholder = { Text("Grow the conversation…") },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(26.dp),
-                maxLines = 5,
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            )
+            } else ChatInput(inputState, Modifier.weight(1f))
             Spacer(Modifier.size(8.dp))
-            val canSend = input.isNotBlank()
             if (!canSend) {
 
                 // hold to record a voice message, slide left to cancel
@@ -985,21 +976,20 @@ private fun MessageBubble(
                 } else if (message.type == MessageType.ECO_PROOF) {
                     EcoProofContent(repo, message, textColor)
                 } else {
-                    // links from strangers aren't tappable (phishing / grooming lures)
-                    Text(
-                        if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor),
-                        color = textColor, style = MaterialTheme.typography.bodyLarge,
-                    )
+                    // links from strangers aren't tappable (phishing / grooming lures); worked out once per text
+                    val body = remember(message.text, textColor, fromStranger) {
+                        if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor)
+                    }
+                    Text(body, color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (message.expiresAt > 0) Text("⏳ ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
                     if (message.editedAt > 0 && !unsent) Text("edited · ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
-                    Text(
-                        (if (scheduled) "Scheduled · " else "") +
-                            Instant.ofEpochSecond(if (scheduled) message.scheduledAt else message.createdAt).atZone(ZoneId.systemDefault())
-                                .format(DateTimeFormatter.ofPattern(if (scheduled) "d MMM HH:mm" else "HH:mm")),
-                        color = textColor.copy(alpha = 0.7f), fontSize = 11.sp,
-                    )
+                    val time = remember(scheduled, message.scheduledAt, message.createdAt) {
+                        Instant.ofEpochSecond(if (scheduled) message.scheduledAt else message.createdAt).atZone(ZoneId.systemDefault())
+                            .format(if (scheduled) SCHEDULED_TIME else BUBBLE_TIME)
+                    }
+                    Text((if (scheduled) "Scheduled · " else "") + time, color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
                     if (mine && message.type != MessageType.CALL && !unsent) {
                         Spacer(Modifier.size(4.dp))
                         GrowthTick(message.status, onRetry)
@@ -1103,6 +1093,10 @@ private fun SosMessageContent(message: ChatMessage, live: app.amend.messenger.da
 }
 
 /** Turns http(s) and www links in a message into tappable links. */
+/** Formatters are costly to build: make them once, not on every bubble draw. */
+private val BUBBLE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val SCHEDULED_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM HH:mm")
+
 private val URL_REGEX = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"]+)""")
 
 /** Message types covered when they come from someone you haven't accepted. */
@@ -1377,4 +1371,23 @@ private fun LiveMessageContent(message: ChatMessage, share: app.amend.messenger.
             TextButton(onClick = onStop) { Text("Stop sharing", color = Color.White) }
         }
     }
+}
+
+/** The message box. It reads the text itself, so typing redraws only this box. */
+@Composable
+private fun ChatInput(state: androidx.compose.runtime.MutableState<String>, modifier: Modifier = Modifier) {
+    TextField(
+        value = state.value,
+        onValueChange = { if (it.length <= 4000) state.value = it },
+        placeholder = { Text("Grow the conversation…") },
+        modifier = modifier,
+        shape = RoundedCornerShape(26.dp),
+        maxLines = 5,
+        colors = TextFieldDefaults.colors(
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    )
 }

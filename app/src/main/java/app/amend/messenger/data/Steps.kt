@@ -56,9 +56,14 @@ class StepLog(
 
     /**
      * Records a counter reading. Returns the number of new steps.
-     * A smaller value than last time means the phone restarted (the counter resets to 0).
+     *
+     * [bootMs] is when the phone last started (wall clock), 0 if unknown. The counter restarts
+     * at 0 when the phone restarts, so a smaller value than last time means a restart — but
+     * only if the phone really booted after the last reading. Some phones (seen on Android 10)
+     * report 0 or a stale value for a moment when the sensor is switched on; treating that as
+     * a restart counted the whole running total again as new steps on the next reading.
      */
-    fun record(counter: Long, nowMs: Long, zone: ZoneId = ZoneId.systemDefault()): Int {
+    fun record(counter: Long, nowMs: Long, zone: ZoneId = ZoneId.systemDefault(), bootMs: Long = 0): Int {
         if (counter < 0) return 0
         val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
         if (startedMonth == null) startedMonth = YearMonth.from(today).toString()
@@ -67,7 +72,14 @@ class StepLog(
             lastAtMs = nowMs
             return 0
         }
-        val delta = if (counter >= lastCounter) counter - lastCounter else counter
+        val bootKnown = bootMs > 0
+        val rebooted = bootKnown && bootMs > lastAtMs
+        val delta = when {
+            rebooted -> counter                           // counted from 0 since the restart
+            counter >= lastCounter -> counter - lastCounter
+            bootKnown -> return 0                         // same boot, lower value: a bad reading, keep the last good one
+            else -> counter                               // no boot time: assume a restart, as before
+        }
         // sanity: nobody walks 100 000 steps between two readings
         val steps = delta.coerceIn(0, 100_000).toInt()
         if (steps > 0) addSpread(steps, lastAtMs, nowMs, zone)

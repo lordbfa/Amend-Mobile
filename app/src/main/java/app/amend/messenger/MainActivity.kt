@@ -26,6 +26,7 @@ import app.amend.messenger.util.CallPhase
 import app.amend.messenger.util.Mesh
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.util.PressPattern
+import app.amend.messenger.util.Performance
 import app.amend.messenger.util.SosManager
 import app.amend.messenger.util.SosPrefs
 import kotlinx.coroutines.Job
@@ -62,7 +63,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val repo by app.repository.collectAsStateWithLifecycle()
             val eco = repo?.eco?.collectAsStateWithLifecycle()
-            AmendTheme(efficiency = eco?.value?.efficiencyMode == true) {
+            AmendTheme(efficiency = eco?.value?.efficiencyMode == true, liteMotion = Performance.liteMotion) {
                 AmendRoot(app = app, repository = repo, pendingPeer = pendingPeer)
             }
         }
@@ -139,6 +140,7 @@ class MainActivity : ComponentActivity() {
     private fun useHighestRefreshRate() {
         val app = application as AmendApp
         if (app.repository.value?.eco?.value?.efficiencyMode == true) return
+        if (Performance.liteMotion) return // a low-end phone: 60 Hz saves CPU and battery
         runCatching {
             val d: android.view.Display = (if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay) ?: return
             val current = d.mode
