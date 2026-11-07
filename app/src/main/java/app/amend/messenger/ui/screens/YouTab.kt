@@ -66,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.amend.messenger.AmendApp
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.ui.components.GlassCard
+import app.amend.messenger.util.Performance
 import app.amend.messenger.util.Notifications
 import app.amend.messenger.ui.components.LeafAvatar
 import app.amend.messenger.ui.components.PhotoPickerAvatar
@@ -522,7 +523,7 @@ internal fun AppearancePage() {
 private fun LiteMotionCard() {
     val context = LocalContext.current
     val haptics = rememberHaptics()
-    val lowEnd = androidx.compose.runtime.remember { app.amend.messenger.util.Performance.isLowEnd(context) }
+    val lowEnd = androidx.compose.runtime.remember { Performance.isLowEnd(context) }
     GlassCard(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -535,8 +536,8 @@ private fun LiteMotionCard() {
             }
             Spacer(Modifier.width(12.dp))
             androidx.compose.material3.Switch(
-                checked = app.amend.messenger.util.Performance.liteMotion,
-                onCheckedChange = { haptics.tick(); app.amend.messenger.util.Performance.setLiteMotion(context, it) },
+                checked = Performance.liteMotion,
+                onCheckedChange = { haptics.tick(); Performance.setLiteMotion(context, it) },
             )
         }
     }
