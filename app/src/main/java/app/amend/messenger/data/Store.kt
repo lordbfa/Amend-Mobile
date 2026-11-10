@@ -2,31 +2,105 @@ package app.amend.messenger.data
 
 import app.amend.messenger.core.json.Json
 import app.amend.messenger.core.json.long
+import app.amend.messenger.core.crypto.Hashes
+import app.amend.messenger.core.crypto.Rand
 import java.io.File
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
- * Plain JSON files in the app's private storage. Every write goes to a temp
- * file first and is then renamed, so a crash never leaves a half-written file.
- * Messages are only ever stored decrypted on the device itself.
+ * JSON files in the app's private storage. Every write goes to a temp file first and is
+ * then renamed, so a crash never leaves a half-written file.
+ *
+ * With a [key] (32 bytes, derived from the identity key — see [keyFor]) every file is
+ * sealed with AES-256-GCM before it touches the disk, so chats, contacts and settings are
+ * unreadable to anything that copies the files off the phone without the identity key
+ * (which itself sits behind the Android Keystore). Files written by older versions are
+ * still read as plain text and are sealed the next time they are saved, or all at once by
+ * [sealExisting].
  */
-class Store(private val dir: File) {
+class Store(private val dir: File, private val key: ByteArray? = null) {
     init {
+        require(key == null || key.size == 32) { "store key must be 32 bytes" }
         dir.mkdirs()
         File(dir, "chats").mkdirs()
     }
 
-    private fun read(name: String): String? = File(dir, name).takeIf { it.exists() }?.readText()
+    private fun isSealed(bytes: ByteArray) =
+        bytes.size >= MAGIC.size && MAGIC.indices.all { bytes[it] == MAGIC[it] }
+
+    private fun seal(name: String, text: String): ByteArray {
+        val k = key ?: return text.toByteArray(Charsets.UTF_8)
+        val nonce = Rand.bytes(NONCE_SIZE)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(k, "AES"), GCMParameterSpec(128, nonce))
+        // the file's name is authenticated too: one sealed file can't be swapped in for another
+        cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
+        return MAGIC + nonce + cipher.doFinal(text.toByteArray(Charsets.UTF_8))
+    }
+
+    /** The text of [bytes] as stored under [name]; null if it is sealed and can't be opened. */
+    private fun open(name: String, bytes: ByteArray): String? {
+        if (!isSealed(bytes)) return String(bytes, Charsets.UTF_8) // written before sealing existed
+        val k = key ?: return null
+        if (bytes.size < MAGIC.size + NONCE_SIZE + 16) return null
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                Cipher.DECRYPT_MODE, SecretKeySpec(k, "AES"),
+                GCMParameterSpec(128, bytes, MAGIC.size, NONCE_SIZE),
+            )
+            cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
+            String(cipher.doFinal(bytes, MAGIC.size + NONCE_SIZE, bytes.size - MAGIC.size - NONCE_SIZE), Charsets.UTF_8)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    @Synchronized
+    private fun read(name: String): String? {
+        val f = File(dir, name).takeIf { it.exists() } ?: return null
+        val bytes = runCatching { f.readBytes() }.getOrNull() ?: return null
+        open(name, bytes)?.let { return it }
+        // Sealed with another key, or damaged. Keep it aside rather than let the next save
+        // silently replace it — it may still be recoverable.
+        runCatching { f.renameTo(File(f.parentFile, f.name + ".unreadable")) }
+        return null
+    }
 
     @Synchronized
     private fun write(name: String, text: String) {
         val target = File(dir, name)
         target.parentFile?.mkdirs()
         val tmp = File(target.parentFile, target.name + ".tmp")
-        tmp.writeText(text)
+        tmp.writeBytes(seal(name, text))
         if (!tmp.renameTo(target)) {
             target.delete()
             tmp.renameTo(target)
         }
+    }
+
+    /**
+     * Seals every file an older version left as plain text. Safe to run at any time and to
+     * interrupt: each file is rewritten on its own, through the usual temp-file-and-rename.
+     * Returns how many files were sealed.
+     */
+    fun sealExisting(): Int {
+        if (key == null) return 0
+        val names = (dir.listFiles().orEmpty().filter { it.isFile }.map { it.name } +
+            listOf("chats", "instants").flatMap { sub -> File(dir, sub).listFiles().orEmpty().filter { it.isFile }.map { "$sub/${it.name}" } })
+            .filter { it.endsWith(".json") }
+        return names.count { sealOne(it) }
+    }
+
+    @Synchronized
+    private fun sealOne(name: String): Boolean {
+        val f = File(dir, name)
+        val bytes = runCatching { f.readBytes() }.getOrNull() ?: return false
+        if (bytes.isEmpty() || isSealed(bytes)) return false
+        write(name, String(bytes, Charsets.UTF_8))
+        return true
     }
 
     // --- settings -------------------------------------------------------------
@@ -106,7 +180,7 @@ class Store(private val dir: File) {
         val files = File(dir, "chats").listFiles { f -> f.name.endsWith(".json") } ?: return emptyMap()
         return files.mapNotNull { f ->
             runCatching {
-                val list = Json.parseArray(f.readText()).map { ChatMessage.fromMap(it as Map<String, Any?>) }
+                val list = Json.parseArray(read("chats/${f.name}")!!).map { ChatMessage.fromMap(it as Map<String, Any?>) }
                 f.name.removeSuffix(".json") to list
             }.getOrNull()
         }.toMap()
@@ -115,8 +189,9 @@ class Store(private val dir: File) {
     /** One chat from disk, or null if there is none. */
     @Suppress("UNCHECKED_CAST")
     fun loadChat(peer: String): List<ChatMessage>? {
-        val f = chatFile(peer)?.takeIf { it.exists() } ?: return null
-        return runCatching { Json.parseArray(f.readText()).map { ChatMessage.fromMap(it as Map<String, Any?>) } }.getOrNull()
+        if (chatFile(peer) == null) return null
+        val text = read("chats/$peer.json") ?: return null
+        return runCatching { Json.parseArray(text).map { ChatMessage.fromMap(it as Map<String, Any?>) } }.getOrNull()
     }
 
     fun saveChat(peer: String, messages: List<ChatMessage>) {
@@ -205,7 +280,17 @@ class Store(private val dir: File) {
         File(dir, "chats").mkdirs()
     }
 
-    private companion object {
-        val SAFE_ID = Regex("[A-Za-z0-9:_-]{1,96}")
+    companion object {
+        private val SAFE_ID = Regex("[A-Za-z0-9:_-]{1,96}")
+        /** Marks a sealed file. Plain JSON starts with '{' or '[', so the two never collide. */
+        private val MAGIC = byteArrayOf(0x41, 0x4D, 0x44, 0x01) // "AMD" + format version 1
+        private const val NONCE_SIZE = 12
+
+        /**
+         * The storage key for an identity: derived one-way from its secret key, so whoever can
+         * open the identity can open its files and nothing extra has to be kept or can be lost.
+         */
+        fun keyFor(secretKey: ByteArray): ByteArray =
+            Hashes.hkdfExpand(Hashes.hkdfExtract("amend/store".toByteArray(), secretKey), "files/v1".toByteArray(), 32)
     }
 }

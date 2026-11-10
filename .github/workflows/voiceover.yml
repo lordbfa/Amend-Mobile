@@ -6,14 +6,17 @@ on:
       script:
         description: "Script file in promo/ (without .json)"
         default: voiceover
+# This one pushes the finished audio to a promo-voice-* branch, so it needs to write.
 permissions:
   contents: write
 jobs:
   tts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
       - name: Install Kokoro TTS
@@ -21,15 +24,23 @@ jobs:
           pip install kokoro-onnx==0.4.9 soundfile
           curl -sSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
           curl -sSLO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+      # The typed input only ever reaches the shell as a variable, and must be a plain file name.
       - name: Speak
-        run: python promo/tts.py promo/${{ inputs.script }}.json voice
-      - uses: actions/upload-artifact@v4
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: |
+          case "$SCRIPT" in *[!A-Za-z0-9_-]*|"") echo "script must be a plain name"; exit 1;; esac
+          python promo/tts.py "promo/$SCRIPT.json" voice
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: voiceover
           path: voice/*.wav
       - name: Publish to the promo-voice branch
+        env:
+          SCRIPT: ${{ inputs.script }}
+          TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/pub && cp voice/*.wav /tmp/pub/
           cd /tmp/pub && git init -q -b promo-voice && git add . \
             && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "voiceover" \
-            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:promo-voice-${{ inputs.script }}
+            && git push -qf "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:promo-voice-$SCRIPT"
