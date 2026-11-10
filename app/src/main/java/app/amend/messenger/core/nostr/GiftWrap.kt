@@ -53,9 +53,10 @@ object GiftWrap {
     class UnwrapException(message: String) : Exception(message)
 
     /** Opens a gift wrap addressed to [me]. Returns the verified rumor. */
-    fun unwrap(wrap: Event, me: KeyPair): Event {
+    fun unwrap(wrap: Event, me: KeyPair, wrapVerified: Boolean = false): Event {
         if (wrap.kind != Kinds.GIFT_WRAP && wrap.kind != Kinds.EPHEMERAL_GIFT_WRAP) throw UnwrapException("not a gift wrap")
-        if (!wrap.isValid()) throw UnwrapException("invalid gift wrap signature")
+        // [wrapVerified]: the caller has already checked this wrap's id and signature
+        if (!wrapVerified && !wrap.isValid()) throw UnwrapException("invalid gift wrap signature")
         val sealJson = try {
             Nip44.decrypt(wrap.content, Nip44.conversationKey(me.secretKey, wrap.pubkey.hexToBytes()))
         } catch (e: Exception) {

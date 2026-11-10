@@ -49,6 +49,7 @@ class AmendApp : Application() {
         app.amend.messenger.util.Performance.load(this)
         app.amend.messenger.util.CheckIn.restore(this)
         app.amend.messenger.util.ScreenProtection.load(this)
+        app.amend.messenger.util.WearSync.load(this)
         app.amend.messenger.util.AgeCheck.load(this)
         app.amend.messenger.net.TorProxy.enabled = getSharedPreferences("amend_net", MODE_PRIVATE).getBoolean("tor", false)
         Notifications.createChannels(this)

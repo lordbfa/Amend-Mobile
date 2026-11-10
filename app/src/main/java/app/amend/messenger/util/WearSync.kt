@@ -2,7 +2,11 @@ package app.amend.messenger.util
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import app.amend.messenger.AmendApp
+import app.amend.messenger.core.RateWindow
 import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.data.ChatMessage
 import app.amend.messenger.data.MessageType
@@ -79,7 +83,43 @@ object WearSync {
         Tasks.await(Wearable.getDataClient(context).putDataItem(req))
     }
 
-    private fun preview(m: ChatMessage): String = when (m.type) {
+    private const val PREFS = "amend_privacy"
+    private const val KEY_PREVIEWS = "watch_previews"
+
+    /** Whether the words of your messages are sent to the watch, or only that there is one. */
+    var showText by mutableStateOf(true)
+        private set
+
+    fun load(context: Context) {
+        showText = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_PREVIEWS, true)
+    }
+
+    fun setShowText(context: Context, on: Boolean) {
+        showText = on
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_PREVIEWS, on).apply()
+        refresh(context) // the watch drops (or gets back) the words right away
+    }
+
+    /**
+     * Only a watch that has amend installed may ask this phone for anything. The Wear OS
+     * data layer already delivers messages only between apps with amend's package name and
+     * signing key; this also checks that the sender really is one of those watches.
+     */
+    private fun fromAmendWatch(context: Context, nodeId: String): Boolean = runCatching {
+        Tasks.await(
+            Wearable.getCapabilityClient(context).getCapability(WATCH_CAPABILITY, CapabilityClient.FILTER_ALL),
+            5, java.util.concurrent.TimeUnit.SECONDS,
+        ).nodes.any { it.id == nodeId }
+    }.getOrDefault(false)
+
+    /** Replies the watch may send per minute: plenty for a person, not for a runaway loop. */
+    private val sends = RateWindow(MAX_SENDS_PER_MINUTE, 60_000)
+
+    private const val MAX_SENDS_PER_MINUTE = 20
+    private const val MAX_REQUEST_BYTES = 16 * 1024
+    private const val MAX_REPLY_CHARS = 2000
+
+    private fun preview(m: ChatMessage): String = if (!showText && (m.type == MessageType.TEXT || m.type == MessageType.NOTICE)) "💬 Message" else when (m.type) {
         MessageType.VOICE -> "🎤 Voice message"
         MessageType.VIDEO -> "🎬 Video message"
         MessageType.FILE -> "📷 Photo"
@@ -132,16 +172,24 @@ object WearSync {
     fun handle(context: Context, event: MessageEvent) {
         val app = context.applicationContext as? AmendApp ?: return
         val repo = app.repository.value ?: return
-        val body = runCatching { JSONObject(String(event.data, Charsets.UTF_8)) }.getOrNull()
+        val data = event.data ?: ByteArray(0)
+        if (data.size > MAX_REQUEST_BYTES) return
+        if (!fromAmendWatch(app, event.sourceNodeId)) {
+            Log.w(TAG, "ignored a request that didn't come from an amend watch")
+            return
+        }
+        val body = runCatching { JSONObject(String(data, Charsets.UTF_8)) }.getOrNull()
         when (event.path) {
             SEND_PATH -> {
                 val peer = body?.optString("peer").orEmpty()
-                val text = body?.optString("text").orEmpty().trim()
+                val text = body?.optString("text").orEmpty().trim().take(MAX_REPLY_CHARS)
                 if (peer.isBlank() || text.isBlank() || repo.conversations.value[peer] == null) return
+                // the watch only ever shows accepted chats, so it can only reply in those
+                if (!repo.isAccepted(peer) || repo.isBlocked(peer) || !sends.allow()) return
                 runBlocking { withTimeoutOrNull(25_000) { runCatching { repo.sendText(peer, text) } } }
                 repo.markRead(peer)
             }
-            READ_PATH -> body?.optString("peer")?.takeIf { it.isNotBlank() }?.let { repo.markRead(it) }
+            READ_PATH -> body?.optString("peer")?.takeIf { it.isNotBlank() && repo.conversations.value[it] != null }?.let { repo.markRead(it) }
             REFRESH_PATH -> runCatching { push(app, repo, force = true) }
         }
     }

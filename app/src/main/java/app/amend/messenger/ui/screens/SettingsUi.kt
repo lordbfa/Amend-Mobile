@@ -2,6 +2,7 @@ package app.amend.messenger.ui.screens
 
 import app.amend.messenger.net.TorProxy
 import app.amend.messenger.util.ScreenProtection
+import app.amend.messenger.util.WearSync
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -277,6 +278,19 @@ private fun ScreenshotCard() {
     }
 }
 
+/** Whether the words of your messages are sent to a paired watch, or only that there is one. */
+@Composable
+private fun WatchTextCard() {
+    val context = LocalContext.current
+    val on = WearSync.showText
+    SettingSwitch(
+        "Message text on your watch",
+        if (on) "On: a watch with amend shows the words of your recent messages."
+        else "Off: the watch shows that there is a message, never what it says.",
+        on,
+    ) { WearSync.setShowText(context, it) }
+}
+
 /** Burner identity: a fresh, unlinked key that can delete itself after a while. */
 @Composable
 private fun BurnerCard(app: AmendApp) {
@@ -323,6 +337,7 @@ private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     AgeCard()
     InstantsAudienceCard(repo)
     ScreenshotCard()
+    WatchTextCard()
     BackupCard(repo.keys.nsec)
     BurnerCard(app)
     OutlinedButton(
