@@ -18,6 +18,7 @@ import app.amend.messenger.data.AmendRepository
 import app.amend.messenger.data.CallLog
 import app.amend.messenger.data.CallOutcome
 import app.amend.messenger.data.CallSignal
+import app.amend.messenger.ui.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +51,8 @@ data class CallUi(
     val speaker: Boolean = false,
     val cameraOn: Boolean = true,
     val frontCamera: Boolean = true,
+    /** Our screen is being sent instead of the camera. */
+    val sharingScreen: Boolean = false,
     val endReason: String? = null,
 ) {
     val active: Boolean get() = phase != CallPhase.IDLE && phase != CallPhase.ENDED
@@ -466,7 +469,40 @@ object CallManager {
     }
 
     fun switchCamera() {
+        if (_state.value.sharingScreen) return // the camera rests while the screen is shared
         session?.switchCamera { front -> scope.launch { _state.update { it.copy(frontCamera = front) } } }
+    }
+
+    /**
+     * Starts sending the screen instead of the camera. [permission] is the result of the
+     * system's "start recording or casting?" prompt. Video calls only, once connected.
+     */
+    fun startScreenShare(permission: android.content.Intent) {
+        val st = _state.value
+        val s = session
+        if (s == null || !st.video || st.phase != CallPhase.CONNECTED || st.sharingScreen) return
+        // On Android 10+ the call service must say it captures the screen before it may start.
+        if (Build.VERSION.SDK_INT >= 29 && !CallService.allowScreen(st.video)) {
+            toast("Couldn't share your screen")
+            return
+        }
+        val started = s.startScreenShare(permission) {
+            // the system ended it (status-bar "Stop", screen locked…): back to the camera
+            scope.launch { stopScreenShare() }
+        }
+        if (started) _state.update { it.copy(sharingScreen = true) } else toast("Couldn't share your screen")
+    }
+
+    fun stopScreenShare() {
+        if (!_state.value.sharingScreen) return
+        session?.stopScreenShare()
+        _state.update { it.copy(sharingScreen = false) }
+        // the call service no longer needs to say it captures the screen
+        if (Build.VERSION.SDK_INT >= 29) CallService.allowScreen(_state.value.video, on = false)
+    }
+
+    private fun toast(text: String) {
+        runCatching { android.widget.Toast.makeText(context, tr(text), android.widget.Toast.LENGTH_SHORT).show() }
     }
 
     // ------------------------------------------------------------------ ending

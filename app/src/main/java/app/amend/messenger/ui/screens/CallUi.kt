@@ -35,7 +35,9 @@ import app.amend.messenger.data.Profile
 import app.amend.messenger.eco.Garden
 import app.amend.messenger.ui.theme.LocalEfficiency
 import app.amend.messenger.ui.tr
+import android.app.Activity
 import android.content.Context
+import android.media.projection.MediaProjectionManager
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -72,6 +74,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CancelPresentation
+import androidx.compose.material.icons.rounded.PresentToAll
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -130,6 +134,7 @@ import app.amend.messenger.util.CallUi
 import app.amend.messenger.util.Rtc
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import app.amend.messenger.util.TextureVideoView
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
@@ -216,7 +221,7 @@ private fun PipCall(repo: AmendRepository, st: CallUi) {
     val r = remote
     Box(Modifier.fillMaxSize().background(Color(0xFF06140E)), contentAlignment = Alignment.Center) {
         if (st.video && r != null && st.phase == CallPhase.CONNECTED) {
-            VideoRenderer(r, mirror = false, overlay = false, modifier = Modifier.fillMaxSize())
+            VideoRenderer(r, mirror = false, modifier = Modifier.fillMaxSize())
         } else {
             Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(repo.displayName(st.peer), color = Color.White, style = MaterialTheme.typography.titleSmall)
@@ -401,7 +406,7 @@ private fun CallControls(st: CallUi, size: Dp) {
             if (st.cameraOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff, "Camera", !st.cameraOn,
             { CallManager.toggleCamera() }, size = size, description = if (st.cameraOn) "Camera off" else "Camera on",
         )
-        CallControl(Icons.Rounded.Cameraswitch, "Flip", false, { CallManager.switchCamera() }, size = size, description = "Switch camera")
+        if (!st.sharingScreen) CallControl(Icons.Rounded.Cameraswitch, "Flip", false, { CallManager.switchCamera() }, size = size, description = "Switch camera")
     }
     CallControl(Icons.Rounded.CallEnd, "End", false, { CallManager.hangUp() }, danger = true, size = size, description = "End call")
 }
@@ -607,6 +612,17 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
     val elapsed = rememberElapsed(st.connectedAt)
     val showRemoteVideo = st.video && remote != null && st.phase == CallPhase.CONNECTED
     val garden = conversations[st.peer]?.let { EcoRules.gardenFor(repo.me, it) }
+    val context = LocalContext.current
+    // Android asks "start sharing your screen?" first; only a yes starts it
+    val shareLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val data = r.data
+        if (r.resultCode == Activity.RESULT_OK && data != null) CallManager.startScreenShare(data)
+    }
+    val canShare = st.video && st.phase == CallPhase.CONNECTED
+    val onShare: () -> Unit = {
+        if (st.sharingScreen) CallManager.stopScreenShare()
+        else context.getSystemService(MediaProjectionManager::class.java)?.let { shareLauncher.launch(it.createScreenCaptureIntent()) }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
@@ -616,16 +632,18 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
         val screenHeight = maxHeight
 
         if (showRemoteVideo) {
-            VideoRenderer(remote!!, mirror = false, overlay = false, modifier = Modifier.fillMaxSize())
+            // double-tap it: the whole picture (a shared screen, a sideways phone) ↔ fill the screen
+            VideoRenderer(remote!!, mirror = false, modifier = Modifier.fillMaxSize(), adaptive = true)
             Box(Modifier.fillMaxWidth().height(180.dp).align(Alignment.TopCenter).background(Brush.verticalGradient(listOf(Night.copy(alpha = 0.7f), Color.Transparent))))
             Box(Modifier.fillMaxWidth().height(260.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Night.copy(alpha = 0.85f)))))
         } else {
             CallBackdrop()
         }
 
-        // our own camera, as a small draggable window
+        // our own camera, as a small draggable window (not while the screen is shared: it would
+        // show the screen inside itself, and the camera rests meanwhile)
         val l = local
-        if (st.video && l != null && st.cameraOn && st.phase != CallPhase.ENDED) {
+        if (st.video && l != null && st.cameraOn && !st.sharingScreen && st.phase != CallPhase.ENDED) {
             var drag by remember { mutableStateOf(Offset.Zero) }
             // before the friend picks up, our camera fills the screen
             val full = !showRemoteVideo
@@ -638,7 +656,11 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
                     .clip(RoundedCornerShape(22.dp)).border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(22.dp))
                     .pointerInput(Unit) { detectDragGestures { change, amount -> change.consume(); drag += amount } }
             ) {
-                VideoRenderer(l, mirror = st.frontCamera, overlay = !full, modifier = Modifier.fillMaxSize())
+                // Drawn as part of the normal screen, not as its own video layer: it gets the rounded
+                // corners, and it can never end up stacked above the friend's video. (As a layer it
+                // did: it starts full screen before the friend picks up, and the friend's video,
+                // created later, stayed hidden behind it until the camera was switched off and on.)
+                LocalVideo(l, mirror = st.frontCamera, modifier = Modifier.fillMaxSize())
                 if (full) Box(Modifier.fillMaxSize().background(Color(0x66000000)))
             }
         }
@@ -648,7 +670,11 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
                 .padding(start = 20.dp, end = if (railOnSide) 112.dp else 20.dp, top = 8.dp, bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            CallTopBar(repo, st, elapsed, showRemoteVideo, onMinimize)
+            CallTopBar(repo, st, elapsed, showRemoteVideo, onMinimize, onShare = if (canShare) onShare else null)
+            if (st.sharingScreen && st.phase != CallPhase.ENDED) {
+                Spacer(Modifier.height(10.dp))
+                SharingScreenChip { CallManager.stopScreenShare() }
+            }
             if (showRemoteVideo) {
                 Spacer(Modifier.weight(1f))
             } else {
@@ -698,7 +724,7 @@ private fun InCall(repo: AmendRepository, st: CallUi, onMinimize: () -> Unit) {
 }
 
 @Composable
-private fun CallTopBar(repo: AmendRepository, st: CallUi, elapsed: Long, video: Boolean, onMinimize: () -> Unit) {
+private fun CallTopBar(repo: AmendRepository, st: CallUi, elapsed: Long, video: Boolean, onMinimize: () -> Unit, onShare: (() -> Unit)?) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         RoundGlassButton(Icons.Rounded.KeyboardArrowDown, "Minimise", onMinimize)
         if (video) {
@@ -714,6 +740,7 @@ private fun CallTopBar(repo: AmendRepository, st: CallUi, elapsed: Long, video: 
                     )
                 }
             }
+            onShare?.let { ShareScreenButton(st.sharingScreen, it) }
         } else {
             Spacer(Modifier.weight(1f))
             if (st.phase == CallPhase.CONNECTED && !st.reconnecting) {
@@ -728,8 +755,31 @@ private fun CallTopBar(repo: AmendRepository, st: CallUi, elapsed: Long, video: 
                 EncryptedPill()
             }
             Spacer(Modifier.weight(1f))
-            Spacer(Modifier.size(44.dp))
+            if (onShare != null) ShareScreenButton(st.sharingScreen, onShare) else Spacer(Modifier.size(44.dp))
         }
+    }
+}
+
+@Composable
+private fun ShareScreenButton(sharing: Boolean, onClick: () -> Unit) {
+    RoundGlassButton(
+        if (sharing) Icons.Rounded.CancelPresentation else Icons.Rounded.PresentToAll,
+        if (sharing) "Stop sharing your screen" else "Share your screen",
+        onClick,
+    )
+}
+
+/** Shown while our screen is being sent: what the friend sees, and how to stop. */
+@Composable
+private fun SharingScreenChip(onStop: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(18.dp)).background(Danger.copy(alpha = 0.9f))
+            .clickable(role = Role.Button) { onStop() }.padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.PresentToAll, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("You're sharing your screen · Stop", color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -768,18 +818,38 @@ private fun VoiceWave(active: Boolean) {
     }
 }
 
-/** Draws a WebRTC video track. */
+/**
+ * Draws a WebRTC video track as its own video layer, behind the rest of the screen: the
+ * friend's video. [adaptive]: picks "fill the screen" or "show it whole" from the picture's
+ * shape — a shared phone screen or a sideways camera is shown whole instead of cut off. A
+ * double tap switches between the two. Our own camera uses [LocalVideo] instead.
+ */
 @Composable
-private fun VideoRenderer(track: VideoTrack, mirror: Boolean, overlay: Boolean, modifier: Modifier) {
+private fun VideoRenderer(
+    track: VideoTrack, mirror: Boolean, modifier: Modifier,
+    adaptive: Boolean = false,
+) {
     var view by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
             SurfaceViewRenderer(ctx).apply {
-                init(Rtc.egl.eglBaseContext, null)
+                val scaling = if (adaptive) AdaptiveScaling(this) else null
+                init(Rtc.egl.eglBaseContext, scaling)
+                tag = scaling
                 setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
                 setEnableHardwareScaler(true)
-                if (overlay) setZOrderMediaOverlay(true)
+                scaling?.let { s ->
+                    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> s.apply() }
+                    val taps = android.view.GestureDetector(ctx, object : android.view.GestureDetector.SimpleOnGestureListener() {
+                        override fun onDown(e: android.view.MotionEvent) = true
+                        override fun onDoubleTap(e: android.view.MotionEvent): Boolean { s.toggle(); return true }
+                    })
+                    setOnTouchListener { v, e ->
+                        if (e.actionMasked == android.view.MotionEvent.ACTION_UP) v.performClick()
+                        taps.onTouchEvent(e)
+                    }
+                }
                 view = this
             }
         },
@@ -790,6 +860,62 @@ private fun VideoRenderer(track: VideoTrack, mirror: Boolean, overlay: Boolean, 
         val v = view
         if (v != null) runCatching { track.addSink(v) }
         onDispose { if (v != null) runCatching { track.removeSink(v) } }
+    }
+}
+
+/** Our own camera, drawn as an ordinary view (see [TextureVideoView]). */
+@Composable
+private fun LocalVideo(track: VideoTrack, mirror: Boolean, modifier: Modifier) {
+    var view by remember { mutableStateOf<TextureVideoView?>(null) }
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx -> TextureVideoView(ctx).also { view = it } },
+        update = { it.setMirror(mirror) },
+        onRelease = { runCatching { it.release() } },
+    )
+    DisposableEffect(track, view) {
+        val v = view
+        if (v != null) runCatching { track.addSink(v) }
+        onDispose { if (v != null) runCatching { track.removeSink(v) } }
+    }
+}
+
+/** Chooses how [view] scales the picture, from its shape (see [VideoRenderer]). */
+private class AdaptiveScaling(private val view: SurfaceViewRenderer) : RendererCommon.RendererEvents {
+    @Volatile private var frameW = 0
+    @Volatile private var frameH = 0
+    /** true = whole picture, false = fill, null = decide from the shape. Main thread only. */
+    private var forced: Boolean? = null
+    private var current: RendererCommon.ScalingType? = null
+
+    /** The user's choice: the other one of the two. */
+    fun toggle() {
+        forced = current != RendererCommon.ScalingType.SCALE_ASPECT_FIT
+        apply()
+    }
+
+    override fun onFirstFrameRendered() {}
+
+    override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) {
+        if (rotation % 180 == 0) { frameW = width; frameH = height } else { frameW = height; frameH = width }
+        view.post { apply() }
+    }
+
+    fun apply() {
+        val whole = forced ?: shouldShowWhole()
+        val type = if (whole) RendererCommon.ScalingType.SCALE_ASPECT_FIT else RendererCommon.ScalingType.SCALE_ASPECT_FILL
+        if (type != current) {
+            current = type
+            view.setScalingType(type)
+        }
+    }
+
+    /** Filling the screen would cut away more than a quarter of the picture. */
+    private fun shouldShowWhole(): Boolean {
+        if (frameW <= 0 || frameH <= 0 || view.width <= 0 || view.height <= 0) return false
+        val frame = frameW.toFloat() / frameH
+        val screen = view.width.toFloat() / view.height
+        return minOf(frame / screen, screen / frame) < 0.75f
     }
 }
 

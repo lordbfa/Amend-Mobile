@@ -38,6 +38,8 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <!-- Sharing your screen during a video call (only after you agree in the system prompt) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -157,11 +159,11 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- Keeps the microphone/camera available during a call. -->
+        <!-- Keeps the microphone/camera available during a call, and the screen while you share it. -->
         <service
             android:name=".util.CallService"
             android:exported="false"
-            android:foregroundServiceType="microphone|camera" />
+            android:foregroundServiceType="microphone|camera|mediaProjection" />
 
         <receiver
             android:name=".util.CallActionReceiver"
