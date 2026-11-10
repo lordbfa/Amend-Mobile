@@ -31,8 +31,14 @@ object Secp {
 }
 
 /**
- * Straightforward BigInteger implementation of secp256k1 (Jacobian coordinates).
- * Correct, but not constant-time — the native provider is preferred whenever it loads.
+ * BigInteger implementation of secp256k1 (Jacobian coordinates). The native provider is
+ * preferred whenever it loads; this one is what runs if it can't.
+ *
+ * BigInteger arithmetic is not constant-time, so everything that touches a secret scalar
+ * goes through [multiplySecret]: a Montgomery ladder that does the same add-and-double for
+ * every bit, over a scalar that is re-randomised on each call. What one operation takes
+ * therefore says nothing useful about the key. Public work (verifying) uses the plain,
+ * faster [multiply].
  */
 object PureSecp256k1 : SecpProvider {
     private val P = BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
@@ -111,6 +117,31 @@ object PureSecp256k1 : SecpProvider {
         return toAffine(result)
     }
 
+    /**
+     * k·p for a SECRET k. The scalar is blinded (k + r·N is the same point for any r) with a
+     * fresh random r, then walked with a Montgomery ladder: one addition and one doubling per
+     * bit whatever the bit is, over a fixed number of bits.
+     */
+    private fun multiplySecret(k: BigInteger, p: Point): Point? {
+        val blinded = k.mod(N).add(Rand.bytes(BLIND_BYTES).toPositiveBigInt().multiply(N))
+        var r0 = INF
+        var r1 = toJac(p)
+        for (i in SECRET_BITS - 1 downTo 0) {
+            if (blinded.testBit(i)) {
+                r0 = add(r0, r1)
+                r1 = double(r1)
+            } else {
+                r1 = add(r0, r1)
+                r0 = double(r0)
+            }
+        }
+        return toAffine(r0)
+    }
+
+    private const val BLIND_BYTES = 8
+    /** Enough for any blinded scalar: 256 bits of k, 64 of r, one of carry. */
+    private const val SECRET_BITS = 256 + BLIND_BYTES * 8 + 1
+
     private fun liftX(x: BigInteger): Point? {
         if (x >= P) return null
         val c = x.modPow(BigInteger.valueOf(3), P).add(SEVEN).modP()
@@ -127,14 +158,14 @@ object PureSecp256k1 : SecpProvider {
 
     override fun xOnlyPublicKey(secretKey: ByteArray): ByteArray {
         require(isValidSecretKey(secretKey)) { "invalid secret key" }
-        return multiply(secretKey.toPositiveBigInt(), G)!!.x.to32Bytes()
+        return multiplySecret(secretKey.toPositiveBigInt(), G)!!.x.to32Bytes()
     }
 
     override fun signSchnorr(message32: ByteArray, secretKey: ByteArray, auxRand32: ByteArray): ByteArray {
         require(message32.size == 32 && auxRand32.size == 32)
         require(isValidSecretKey(secretKey)) { "invalid secret key" }
         val d0 = secretKey.toPositiveBigInt()
-        val pub = multiply(d0, G)!!
+        val pub = multiplySecret(d0, G)!!
         val d = if (pub.y.testBit(0)) N.subtract(d0) else d0
         val pBytes = pub.x.to32Bytes()
         val auxHash = Hashes.taggedHash("BIP0340/aux", auxRand32)
@@ -142,7 +173,7 @@ object PureSecp256k1 : SecpProvider {
         for (i in t.indices) t[i] = (t[i].toInt() xor auxHash[i].toInt()).toByte()
         val k0 = Hashes.taggedHash("BIP0340/nonce", t, pBytes, message32).toPositiveBigInt().mod(N)
         check(k0.signum() != 0) { "nonce is zero" }
-        val r = multiply(k0, G)!!
+        val r = multiplySecret(k0, G)!!
         val k = if (r.y.testBit(0)) N.subtract(k0) else k0
         val rBytes = r.x.to32Bytes()
         val e = Hashes.taggedHash("BIP0340/challenge", rBytes, pBytes, message32).toPositiveBigInt().mod(N)
@@ -174,6 +205,6 @@ object PureSecp256k1 : SecpProvider {
     override fun sharedX(secretKey: ByteArray, xOnlyPub: ByteArray): ByteArray {
         require(isValidSecretKey(secretKey)) { "invalid secret key" }
         val pub = liftX(xOnlyPub.toPositiveBigInt()) ?: throw IllegalArgumentException("invalid public key")
-        return multiply(secretKey.toPositiveBigInt(), pub)!!.x.to32Bytes()
+        return multiplySecret(secretKey.toPositiveBigInt(), pub)!!.x.to32Bytes()
     }
 }

@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import app.amend.messenger.AmendApp
+import app.amend.messenger.core.RateWindow
 import app.amend.messenger.core.crypto.Rand
 import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.json.Json
@@ -145,6 +146,18 @@ object Mesh {
     private val connected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    // The mesh links to any amend phone in range without asking, so a stranger's phone must
+    // not be able to flood this one: every limit below is far above honest use.
+    /** Phones linked at once. */
+    private const val MAX_PEERS = 8
+    /** Frames one neighbour may send per minute before it is dropped. */
+    private const val FRAMES_PER_MINUTE = 600
+    private val frameLimits = java.util.concurrent.ConcurrentHashMap<String, RateWindow>()
+    /** Other people's messages taken in per hour, so the carried pool can't be flushed out. */
+    private val carriedIntake = RateWindow(900, 3_600_000)
+    /** "Someone nearby needs help" alerts shown in ten minutes. */
+    private val nearbyAlertLimit = RateWindow(4, 600_000)
+
     private val _ui = MutableStateFlow(MeshUi())
     val ui: StateFlow<MeshUi> = _ui.asStateFlow()
 
@@ -232,6 +245,7 @@ object Mesh {
         client = null
         connected.clear()
         pending.clear()
+        frameLimits.clear()
         store?.save()
         _ui.update { it.copy(running = false, peers = 0) }
     }
@@ -249,6 +263,10 @@ object Mesh {
 
     private val lifecycle = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
+            if (connected.size >= MAX_PEERS) {
+                client?.rejectConnection(endpointId)
+                return
+            }
             // No pairing code needed: everything that travels is signed and encrypted end to end.
             client?.acceptConnection(endpointId, payloads)
         }
@@ -263,6 +281,7 @@ object Mesh {
         }
 
         override fun onDisconnected(endpointId: String) {
+            frameLimits.remove(endpointId)
             connected.remove(endpointId)
             _ui.update { it.copy(peers = connected.size) }
         }
@@ -271,6 +290,14 @@ object Mesh {
     private val payloads = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
             val bytes = payload.asBytes() ?: return
+            // a neighbour that talks far too much is cut off
+            if (!frameLimits.getOrPut(endpointId) { RateWindow(FRAMES_PER_MINUTE, 60_000) }.allow()) {
+                client?.disconnectFromEndpoint(endpointId)
+                frameLimits.remove(endpointId)
+                connected.remove(endpointId)
+                _ui.update { it.copy(peers = connected.size) }
+                return
+            }
             scope.launch { onFrame(endpointId, bytes.toString(Charsets.UTF_8)) }
         }
 
@@ -310,6 +337,10 @@ object Mesh {
                     return
                 }
                 if (ev.kind != Kinds.GIFT_WRAP || !ev.isValid()) return
+                if (s.has(ev.id)) return
+                // messages for me always come in; what I carry for others is rationed
+                val forMe = repo()?.let { ev.tagValues("p").contains(it.me) } == true
+                if (!forMe && !carriedIntake.allow()) return
                 if (!s.add(ev.id, json, needsRelay = true)) return
                 _ui.update { it.copy(holding = s.size()) }
                 scheduleSave()
@@ -364,6 +395,8 @@ object Mesh {
         // pass it on so it reaches phones further away
         connected.filter { it != from }.forEach { peer -> send(peer, linkedMapOf("t" to "have", "ids" to listOf(ev.id))) }
         if (ev.id in ownBeacons || !SosPrefs(context).nearbyAlerts) return
+        // anyone in range can send a beacon, so they can't be allowed to ring without end
+        if (!nearbyAlertLimit.allow()) return
         val loc = runCatching { Json.parseObject(ev.content).str("loc") }.getOrNull()
             ?.let { app.amend.messenger.data.SosLocation.decode(it, ev.createdAt) }
         val mine = SosManager.lastKnownLocation(context)

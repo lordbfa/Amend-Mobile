@@ -8,7 +8,7 @@ import fr.acinq.secp256k1.Secp256k1
 /**
  * secp256k1 backed by the native, constant-time libsecp256k1 (via ACINQ's bindings).
  * Installed at app start; if the native library can't load, amend keeps the
- * pure-Kotlin implementation.
+ * pure-Kotlin implementation, whose secret-key operations are blinded (see PureSecp256k1).
  */
 object NativeSecp : SecpProvider {
     private val EVEN_PREFIX = byteArrayOf(0x02)
