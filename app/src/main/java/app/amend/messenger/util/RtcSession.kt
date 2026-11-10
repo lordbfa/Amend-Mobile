@@ -1,10 +1,6 @@
 package app.amend.messenger.util
 
 import android.content.Context
-import android.content.Intent
-import android.media.projection.MediaProjection
-import android.os.Build
-import android.view.WindowManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -25,8 +21,6 @@ import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
-import org.webrtc.RtpSender
-import org.webrtc.ScreenCapturerAndroid
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
@@ -140,19 +134,10 @@ class RtcSession(
     private var capturer: CameraVideoCapturer? = null
     private var textureHelper: SurfaceTextureHelper? = null
     private var videoSource: VideoSource? = null
-    /** What sends our video: the camera track, or the screen while it is being shared. */
-    private var videoSender: RtpSender? = null
     var localVideo: VideoTrack? = null
         private set
     var frontCamera = true
         private set
-
-    // screen sharing (see [startScreenShare])
-    private var screenCapturer: ScreenCapturerAndroid? = null
-    private var screenHelper: SurfaceTextureHelper? = null
-    private var screenSource: VideoSource? = null
-    private var screenTrack: VideoTrack? = null
-    val sharingScreen: Boolean get() = screenTrack != null
 
     init {
         pc.addTrack(audioTrack, listOf("amend"))
@@ -171,7 +156,7 @@ class RtcSession(
         cap.initialize(helper, context, source.capturerObserver)
         cap.startCapture(1280, 720, 30) // 720p30: sharp, and the encoder scales down on weak networks
         val track = factory.createVideoTrack("amend-video", source)
-        videoSender = pc.addTrack(track, listOf("amend"))
+        pc.addTrack(track, listOf("amend"))
         capturer = cap
         textureHelper = helper
         videoSource = source
@@ -259,71 +244,6 @@ class RtcSession(
 
     fun setCameraOn(on: Boolean) { localVideo?.setEnabled(on) }
 
-    /**
-     * Sends the screen instead of the camera, on the same video stream: nothing has to be
-     * renegotiated, the friend's phone just starts receiving the screen. [permission] is the
-     * result of the system's screen-capture prompt; [onStopped] runs if the system ends the
-     * capture (the user tapped "Stop" in the status bar, or the phone locked).
-     * The camera rests while the screen is shared.
-     */
-    fun startScreenShare(permission: Intent, onStopped: () -> Unit): Boolean {
-        if (closed || sharingScreen) return sharingScreen
-        val sender = videoSender ?: return false
-        val (w, h) = screenCaptureSize()
-        val cap = ScreenCapturerAndroid(permission, object : MediaProjection.Callback() {
-            override fun onStop() { onStopped() }
-        })
-        val helper = SurfaceTextureHelper.create("amend-screen", Rtc.egl.eglBaseContext)
-        val source = factory.createVideoSource(true) // screencast: keep text sharp rather than smooth
-        return try {
-            cap.initialize(helper, context, source.capturerObserver)
-            cap.startCapture(w, h, SCREEN_FPS)
-            val track = factory.createVideoTrack("amend-screen", source)
-            sender.setTrack(track, false)
-            screenCapturer = cap
-            screenHelper = helper
-            screenSource = source
-            screenTrack = track
-            runCatching { capturer?.stopCapture() }
-            true
-        } catch (e: Exception) {
-            runCatching { cap.dispose() }
-            runCatching { source.dispose() }
-            runCatching { helper.dispose() }
-            false
-        }
-    }
-
-    /** Back to the camera. */
-    fun stopScreenShare() {
-        val track = screenTrack ?: return
-        screenTrack = null
-        runCatching { videoSender?.setTrack(localVideo, false) }
-        if (!closed) runCatching { capturer?.startCapture(1280, 720, 30) }
-        runCatching { screenCapturer?.stopCapture() }
-        runCatching { screenCapturer?.dispose() }
-        runCatching { track.dispose() }
-        runCatching { screenSource?.dispose() }
-        runCatching { screenHelper?.dispose() }
-        screenCapturer = null
-        screenSource = null
-        screenHelper = null
-    }
-
-    /** The screen's shape, scaled so its long side is at most [SCREEN_MAX_SIDE] (even numbers for the encoder). */
-    private fun screenCaptureSize(): Pair<Int, Int> {
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val (w, h) = if (Build.VERSION.SDK_INT >= 30) {
-            wm.maximumWindowMetrics.bounds.let { it.width() to it.height() }
-        } else {
-            @Suppress("DEPRECATION")
-            android.util.DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }.let { it.widthPixels to it.heightPixels }
-        }
-        val scale = minOf(1.0, SCREEN_MAX_SIDE.toDouble() / maxOf(w, h))
-        fun even(v: Double) = (v.toInt() / 2 * 2).coerceAtLeast(2)
-        return even(w * scale) to even(h * scale)
-    }
-
     fun switchCamera(done: (Boolean) -> Unit) {
         val cap = capturer ?: return
         cap.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
@@ -335,8 +255,6 @@ class RtcSession(
     fun close() {
         if (closed) return
         closed = true
-        runCatching { screenCapturer?.stopCapture() }
-        runCatching { screenCapturer?.dispose() }
         runCatching { capturer?.stopCapture() }
         runCatching { capturer?.dispose() }
         runCatching { pc.close() }
@@ -344,19 +262,8 @@ class RtcSession(
         runCatching { videoSource?.dispose() }
         runCatching { textureHelper?.dispose() }
         runCatching { audioSource.dispose() }
-        runCatching { screenTrack?.dispose() }
-        runCatching { screenSource?.dispose() }
-        runCatching { screenHelper?.dispose() }
         capturer = null
-        screenCapturer = null
-        screenTrack = null
         localVideo = null
-    }
-
-    private companion object {
-        /** Long side of a shared screen: sharp enough to read, light enough for mobile data. */
-        const val SCREEN_MAX_SIDE = 1280
-        const val SCREEN_FPS = 15
     }
 }
 
