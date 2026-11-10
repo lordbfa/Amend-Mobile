@@ -152,7 +152,8 @@ jobs:
           if [ -f wear/build/outputs/apk/release/wear-release.apk ]; then cp wear/build/outputs/apk/release/wear-release.apk out/amend-wear-release.apk; fi
           ls -la out
 
-      # Artifacts count against the account's storage quota: keep them a week, and a full
+      # Artifacts count against the account's storage quota (only 500 MB for a private repo on
+      # the free plan, about two builds): keep them two days, and a full
       # quota (it frees up within 6-12 h) must not turn a good build red.
       # A tagged release needs the artifact (the release job attaches it), so there it must succeed.
       - name: Upload APKs
@@ -160,7 +161,7 @@ jobs:
         continue-on-error: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           name: amend-apk
-          retention-days: 7
+          retention-days: 2
           path: |
             out/*.apk
             out/*.aab
