@@ -21,6 +21,7 @@
    | `TURN_KEY_ID` | ধাপ ১ এর Turn Token ID |
    | `TURN_KEY_API_TOKEN` | ধাপ ১ এর API Token |
    | `APP_KEY` | `amend-calls-v1` |
+   `APP_KEY` ছাড়া Worker কাউকেই credential দেয় না (`/ice` তখন "APP_KEY is not set" বলে), তাই এটা বাদ দেবেন না।
 4. ব্রাউজারে `https://amend-turn.<আপনার-নাম>.workers.dev/health` খুলুন। `{"ok":true,...}` দেখালে সব ঠিক আছে।
 
 ## ৩. অ্যাপে যোগ করুন
@@ -30,3 +31,9 @@
 - **শুধু নিজের ফোনে:** You → Calls → "TURN service address" এ ঠিকানাটা দিন, তারপর **Save** আর **Test** চাপুন।
 
 চাইলে wrangler দিয়েও deploy করা যায়: `npx wrangler deploy`, তারপর `npx wrangler secret put TURN_KEY_ID` ইত্যাদি।
+
+## ৪. অপব্যবহার ঠেকানো
+
+- Worker প্রতি IP থেকে মিনিটে ২০টা আর সব মিলিয়ে মিনিটে ৬০০টা request নেয়। এই গণনা প্রতিটা Cloudflare লোকেশনে আলাদা, তাই আনুমানিক।
+- আসল সুরক্ষা হলো খরচের সতর্কবার্তা: Cloudflare ড্যাশবোর্ডে **Notifications** থেকে TURN ব্যবহারের জন্য একটা usage alert বসিয়ে রাখুন, যাতে ফ্রি 1,000 GB শেষ হওয়ার আগেই জানতে পারেন।
+- `APP_KEY` অ্যাপের ভেতরেই থাকে, তাই এটা আসল গোপন কিছু নয়। TURN API token কখনো অ্যাপে বা repo-তে রাখবেন না।

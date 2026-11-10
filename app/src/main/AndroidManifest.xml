@@ -52,6 +52,7 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
+        android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -174,7 +175,9 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <!-- Replies and "read" from the amend watch app -->
+        <!-- Replies and "read" from the amend watch app. Exported because Google Play services
+             delivers Wear OS messages by binding to it; Wear OS only passes messages between apps
+             with this package name and signing key, and WearSync checks the sending watch too. -->
         <service
             android:name=".util.WearMessageService"
             android:exported="true">
