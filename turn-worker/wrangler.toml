@@ -1,3 +1,12 @@
 name = "amend-turn"
 main = "worker.js"
 compatibility_date = "2025-06-01"
+
+# Optional: an exact rate limit shared by the whole service (the Worker falls back to its
+# built-in, per-location counters without it). Uncomment, then deploy with wrangler.
+# [[ratelimits]]
+# name = "RATE_LIMITER"
+# namespace_id = "1001"
+# [ratelimits.simple]
+# limit = 20
+# period = 60

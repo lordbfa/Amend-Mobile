@@ -1,5 +1,6 @@
 package app.amend.messenger.data
 
+import app.amend.messenger.core.RateWindow
 import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.crypto.hexToBytes
 import app.amend.messenger.core.crypto.Nip19
@@ -60,7 +61,7 @@ class AmendRepository(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     val me: String = keys.publicKeyHex
-    private val store = Store(dir)
+    private val store = Store(dir, Store.keyFor(keys.secretKey))
     private val mutex = Mutex()
 
     private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS).let { s ->
@@ -157,6 +158,8 @@ class AmendRepository(
             )
         }
         pool.setRelays(settings.relays)
+        // files an older version left as plain text are sealed once, in the background
+        scope.launch(Dispatchers.IO) { runCatching { store.sealExisting() } }
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -261,11 +264,16 @@ class AmendRepository(
     }
 
     private suspend fun handleWrap(wrap: Event) {
+        mutex.withLock { if (wrap.id in seenWraps) return }
+        // Check the id and signature before remembering the id: a forged event that only
+        // copies a real gift wrap's id (from a dishonest relay or a nearby mesh phone) must
+        // never make us skip the real one when it arrives.
+        if (!wrap.isValid()) return
         mutex.withLock {
             if (!seenWraps.add(wrap.id)) return
         }
         val rumor = try {
-            GiftWrap.unwrap(wrap, keys)
+            GiftWrap.unwrap(wrap, keys, wrapVerified = true)
         } catch (e: Exception) {
             return
         }
@@ -422,6 +430,20 @@ class AmendRepository(
             if (upsertMessage(msg, countUnread = !fromMe) && !fromMe) queueDelivered(msg)
         }
         if (fromMe) return
+        val now = Event.nowSeconds()
+        // A signal dated in the future would outrank every real update that follows it.
+        if (rumor.createdAt > now + SOS_MAX_CLOCK_SKEW) return
+        // Only people you know can raise the alarm: someone you accepted, or a chat you have
+        // written in. From anyone else an SOS is just a message request, with the usual quiet
+        // notification — otherwise a stranger could set off alarms on your phone at will.
+        val known = peer in settings.accepted || _conversations.value[peer]?.messages?.any { it.fromMe } == true
+        if (!known) {
+            if (signal.phase == SosPhase.START && rumor.createdAt >= now - 6 * 3600) {
+                _conversations.value[peer]?.messages?.firstOrNull { it.id == rumor.id }
+                    ?.let { _events.tryEmit(AmendEvent.MessageArrived(peer, it)) }
+            }
+            return
+        }
         val old = _incomingSos.value[peer]
         // Ignore stale updates that arrive after a newer one.
         if (old != null && rumor.createdAt < old.updatedAt) return
@@ -433,10 +455,22 @@ class AmendRepository(
             location = signal.location ?: old?.location,
         )
         // Don't raise alarms for SOS sessions that ended long ago (e.g. history after a restore).
-        val fresh = rumor.createdAt >= Event.nowSeconds() - 6 * 3600
+        val fresh = rumor.createdAt >= now - 6 * 3600
         _incomingSos.update { it + (peer to sos.copy(active = sos.active && fresh)) }
-        if (fresh) _events.tryEmit(AmendEvent.SosReceived(peer, sos, signal.phase))
+        if (!fresh) return
+        // No alarm storms: one person can sound a handful of alarms in a while, not hundreds.
+        // Past that their SOS still shows, on the alert and in the app — it just arrives the
+        // quiet way an update does, so nothing a friend sends is ever dropped.
+        val phase = if (signal.phase == SosPhase.START && !sosAlarmAllowed(peer, now)) SosPhase.UPDATE else signal.phase
+        _events.tryEmit(AmendEvent.SosReceived(peer, sos, phase))
     }
+
+    /** One limit per person on the SOS alarms they can sound here. */
+    private val sosAlarms = java.util.concurrent.ConcurrentHashMap<String, RateWindow>()
+
+    /** At most [SOS_ALARMS_PER_WINDOW] alarms from one person per [SOS_ALARM_WINDOW] seconds. */
+    private fun sosAlarmAllowed(peer: String, now: Long): Boolean =
+        sosAlarms.getOrPut(peer) { RateWindow(SOS_ALARMS_PER_WINDOW, SOS_ALARM_WINDOW * 1000) }.allow(now * 1000)
 
     /** People who receive my SOS: everyone I've chatted with, minus [excluded] and blocked contacts. */
     fun sosRecipients(excluded: Set<String>): List<String> =
@@ -1965,6 +1999,11 @@ class AmendRepository(
         /** How long after sending a message can still be unsent (15 minutes). */
         const val UNSEND_WINDOW = 15L * 60
         const val MAX_EDIT_CHARS = 8000
+        /** One person can sound this many SOS alarms here per [SOS_ALARM_WINDOW] seconds. */
+        const val SOS_ALARMS_PER_WINDOW = 5
+        const val SOS_ALARM_WINDOW = 10L * 60
+        /** SOS signals dated further ahead than this are ignored. */
+        const val SOS_MAX_CLOCK_SKEW = 10L * 60
         const val MAX_CAPTION = 1000
         /** Instants and stories last a day. */
         const val INSTANT_TTL = 24L * 3600
