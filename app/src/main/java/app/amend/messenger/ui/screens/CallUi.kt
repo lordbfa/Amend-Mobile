@@ -173,6 +173,15 @@ fun CallOverlay(repo: AmendRepository?) {
     LaunchedEffect(st.phase) {
         if (st.phase == CallPhase.IDLE) (context as? MainActivity)?.showOverLockScreen(false)
     }
+    // A video call keeps the screen on, as on any phone: no dimming or switching off mid-call,
+    // also while the call is minimised or in the floating window. (Voice calls are left to the
+    // proximity sensor, which turns the screen off at your ear.)
+    val keepOn = st.video && st.phase != CallPhase.IDLE && st.phase != CallPhase.ENDED
+    DisposableEffect(keepOn) {
+        val window = (context as? android.app.Activity)?.window
+        if (keepOn) window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
     if (repo == null || st.phase == CallPhase.IDLE) return
 
     val answerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
