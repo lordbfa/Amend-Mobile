@@ -18,13 +18,17 @@ enum class MediaKind(val tag: String) {
     /** A normal (rectangular) video from the gallery. */
     CLIP("clip"),
     /** An Instant: a camera-only photo that disappears once it's opened (or after 24 h). */
-    INSTANT("instant");
+    INSTANT("instant"),
+    /** An animated GIF (from the keyboard, the gallery, Tenor or Giphy); sent as it is, so it keeps playing. */
+    GIF("gif"),
+    /** A sticker from the keyboard (Gboard, Emoji Kitchen…): drawn without a bubble, animated if it is. */
+    STICKER("sticker");
 
     /** How a message carrying this media is stored and drawn. */
     val messageType: MessageType get() = when (this) {
         VOICE -> MessageType.VOICE
         VIDEO, CLIP -> MessageType.VIDEO
-        FILE, PHOTO, INSTANT -> MessageType.FILE
+        FILE, PHOTO, INSTANT, GIF, STICKER -> MessageType.FILE
     }
 
     /** Preview text in the chat list and notifications. */
@@ -35,12 +39,15 @@ enum class MediaKind(val tag: String) {
         PHOTO -> "📷 Photo"
         CLIP -> "🎬 Video"
         INSTANT -> "📸 Instant"
+        GIF -> "🎞 GIF"
+        STICKER -> "✨ Sticker"
     }
 
     companion object {
         fun of(tag: String?, mime: String): MediaKind = entries.firstOrNull { it.tag == tag }
             ?: when {
                 mime.startsWith("audio/") -> VOICE
+                mime == "image/gif" -> GIF
                 mime.startsWith("video/") -> CLIP
                 mime.startsWith("image/") -> PHOTO
                 else -> FILE

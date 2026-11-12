@@ -961,6 +961,8 @@ private fun MessageBubble(
                         else Brush.linearGradient(listOf(Color(0xFFE53935), Color(0xFF7F0000)))
                     }
                     else if (message.type == MessageType.VIDEO && mediaKind != app.amend.messenger.data.MediaKind.CLIP) Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+                    // stickers float on their own, without a bubble
+                    else if (mediaKind == app.amend.messenger.data.MediaKind.STICKER && !(fromStranger && !strangerRevealed)) Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
                     else if (message.type == MessageType.ECO_CARD) Brush.linearGradient(listOf(Color(0xFF1C7A4E), Color(0xFF2BB673), Color(0xFF4FC3F7)))
                     else if (mine) Brush.linearGradient(listOf(Color(0xFF2BB673), Color(0xFF1C9A62)))
                     else Brush.linearGradient(listOf(if (dark) Color(0xFF1B3A2D) else Color.White, if (dark) Color(0xFF16352A) else Color(0xFFF1F8F3)))
@@ -1011,6 +1013,10 @@ private fun MessageBubble(
                     VideoBubble(repo, message)
                 } else if (message.type == MessageType.FILE && mediaKind == app.amend.messenger.data.MediaKind.PHOTO) {
                     PhotoBubble(repo, message, textColor)
+                } else if (message.type == MessageType.FILE && mediaKind == app.amend.messenger.data.MediaKind.GIF) {
+                    GifBubble(repo, message, textColor)
+                } else if (message.type == MessageType.FILE && mediaKind == app.amend.messenger.data.MediaKind.STICKER) {
+                    StickerBubble(repo, message, textColor)
                 } else if (message.type == MessageType.FILE && mediaKind == app.amend.messenger.data.MediaKind.INSTANT) {
                     InstantBubble(repo, message, textColor)
                 } else if (message.type == MessageType.CALL) {

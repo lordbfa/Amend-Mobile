@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -118,12 +119,22 @@ object Gifs {
      * re-encoded so any hidden location data is dropped; MP4 "GIFs" go as short videos.
      * Returns an error to show, if any.
      */
-    suspend fun send(context: Context, repo: AmendRepository, peer: String, item: Received, replyTo: String?, caption: String = ""): String? {
+    suspend fun send(
+        context: Context, repo: AmendRepository, peer: String, item: Received, replyTo: String?,
+        caption: String = "", fromKeyboard: Boolean = true,
+    ): String? {
         return when (item.mime) {
-            "image/gif", "image/webp", "image/png" -> {
+            "image/gif" -> {
                 val (w, h) = bounds(item.bytes)
-                runCatching { repo.sendMedia(peer, item.bytes, MediaKind.PHOTO, item.mime, width = w, height = h, replyTo = replyTo, caption = caption) }
+                runCatching { repo.sendMedia(peer, item.bytes, MediaKind.GIF, item.mime, width = w, height = h, replyTo = replyTo, caption = caption) }
                     .exceptionOrNull()?.let { "Couldn't send the GIF — check your connection and tap ⟳ to retry" }
+            }
+            "image/webp", "image/png" -> {
+                // from the keyboard these are stickers (Gboard, Emoji Kitchen…), drawn without a bubble
+                val (w, h) = bounds(item.bytes)
+                val kind = if (fromKeyboard) MediaKind.STICKER else MediaKind.PHOTO
+                runCatching { repo.sendMedia(peer, item.bytes, kind, item.mime, width = w, height = h, replyTo = replyTo, caption = caption) }
+                    .exceptionOrNull()?.let { "Couldn't send the sticker — check your connection and tap ⟳ to retry" }
             }
             "image/jpeg" -> {
                 val bmp = withContext(Dispatchers.IO) { android.graphics.BitmapFactory.decodeByteArray(item.bytes, 0, item.bytes.size) }
@@ -141,7 +152,8 @@ object Gifs {
                     val v = app.amend.messenger.util.MediaPrep.video(context, Uri.fromFile(tmp)) { err = it } ?: return err ?: "Couldn't read that video"
                     val bytes = withContext(Dispatchers.IO) { v.file.readBytes() }
                     v.file.delete()
-                    runCatching { repo.sendMedia(peer, bytes, MediaKind.CLIP, v.mime, v.durationMs, width = v.width, height = v.height, replyTo = replyTo, caption = caption) }
+                    // a keyboard "GIF" that arrives as a short silent video still plays as a looping GIF
+                    runCatching { repo.sendMedia(peer, bytes, MediaKind.GIF, v.mime, v.durationMs, width = v.width, height = v.height, replyTo = replyTo, caption = caption) }
                         .exceptionOrNull()?.let { "Couldn't send the GIF — check your connection and tap ⟳ to retry" }
                 } finally {
                     tmp.delete()
@@ -157,7 +169,7 @@ object Gifs {
  * size so long chats stay light on memory.
  */
 @Composable
-fun AnimatedImage(file: File, contentDescription: String?, fit: Boolean, maxSide: Int, modifier: Modifier = Modifier) {
+fun AnimatedImage(file: File, contentDescription: String?, fit: Boolean, maxSide: Int, modifier: Modifier = Modifier, replay: Int = 0) {
     if (Build.VERSION.SDK_INT < 28) {
         var image by remember(file) { mutableStateOf<ImageBitmap?>(null) }
         LaunchedEffect(file) { image = decodeImage(file, maxSide) }
@@ -176,8 +188,8 @@ fun AnimatedImage(file: File, contentDescription: String?, fit: Boolean, maxSide
             }.getOrNull()
         }
     }
-    DisposableEffect(drawable) {
-        (drawable as? AnimatedImageDrawable)?.apply { repeatCount = AnimatedImageDrawable.REPEAT_INFINITE; start() }
+    DisposableEffect(drawable, replay) {
+        (drawable as? AnimatedImageDrawable)?.apply { stop(); repeatCount = AnimatedImageDrawable.REPEAT_INFINITE; start() }
         onDispose { (drawable as? AnimatedImageDrawable)?.stop() }
     }
     val d = drawable ?: return
@@ -321,4 +333,109 @@ fun GifLinkBubble(link: GifLink, autoLoad: Boolean, captionColor: Color) {
     Text(link.source, color = captionColor.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
     val f = file
     if (full && f != null) FullScreenPhoto(f, onClose = { full = false })
+}
+
+/** A GIF in a chat: plays on its own, looping and silent; tap for full screen. */
+@Composable
+fun GifBubble(repo: AmendRepository, message: app.amend.messenger.data.ChatMessage, captionColor: Color) {
+    val media = remember(message.extra) { app.amend.messenger.data.MediaInfo.fromJson(message.extra) } ?: return
+    val (file, loading, load) = rememberMediaFile(repo, media, autoLoad = media.size in 1..Gifs.MAX_BYTES)
+    val isVideo = media.mime.startsWith("video/")
+    var full by remember { mutableStateOf(false) }
+    val ratio = if (media.width > 0 && media.height > 0) (media.width.toFloat() / media.height).coerceIn(0.5f, 2f) else 1f
+    Box(
+        Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(16.dp))
+            .background(Color(0x33000000)).clickable { if (file == null) load() else full = true },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (file != null) {
+            if (isVideo) LoopingVideo(file, Modifier.fillMaxSize())
+            else AnimatedImage(file, "GIF", fit = false, maxSide = 700, modifier = Modifier.fillMaxSize())
+            GifBadge(Modifier.align(Alignment.BottomStart))
+        } else if (loading) {
+            CircularProgressIndicator(Modifier.size(28.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            Text("🎞 GIF · tap to load · ${formatSize(media.size)}", color = Color.White, fontSize = 12.sp)
+        }
+    }
+    if (message.text != media.kind.label && message.text.isNotBlank()) {
+        Text(linkify(message.text, captionColor), color = captionColor, modifier = Modifier.padding(top = 6.dp).widthIn(max = 260.dp))
+    }
+    if (full && file != null) {
+        if (isVideo) FullScreenVideo(file, onClose = { full = false }) else FullScreenPhoto(file, onClose = { full = false })
+    }
+}
+
+/**
+ * A keyboard sticker: no bubble, animated if it is. Tap it and it bounces, wiggles and plays
+ * again from the start; hold it to react like any message.
+ */
+@Composable
+fun StickerBubble(repo: AmendRepository, message: app.amend.messenger.data.ChatMessage, captionColor: Color) {
+    val media = remember(message.extra) { app.amend.messenger.data.MediaInfo.fromJson(message.extra) } ?: return
+    val (file, loading, load) = rememberMediaFile(repo, media, autoLoad = media.size in 1..Gifs.MAX_BYTES)
+    val haptics = app.amend.messenger.ui.components.rememberHaptics()
+    val scope = rememberCoroutineScope()
+    val bounce = remember { androidx.compose.animation.core.Animatable(1f) }
+    val wiggle = remember { androidx.compose.animation.core.Animatable(0f) }
+    var replay by remember { mutableStateOf(0) }
+    val ratio = if (media.width > 0 && media.height > 0) (media.width.toFloat() / media.height).coerceIn(0.5f, 2f) else 1f
+    Box(
+        Modifier.size(width = if (ratio >= 1f) 170.dp else (170 * ratio).dp, height = if (ratio >= 1f) (170 / ratio).dp else 170.dp)
+            .graphicsLayer { scaleX = bounce.value; scaleY = bounce.value; rotationZ = wiggle.value }
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) {
+                if (file == null) { load(); return@clickable }
+                haptics.tick()
+                replay++
+                scope.launch {
+                    bounce.snapTo(0.82f)
+                    bounce.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.35f, stiffness = 500f))
+                }
+                scope.launch {
+                    for (deg in listOf(-9f, 8f, -5f, 3f, 0f)) wiggle.animateTo(deg, androidx.compose.animation.core.tween(70))
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (file != null) {
+            AnimatedImage(file, "Sticker", fit = true, maxSide = 512, modifier = Modifier.fillMaxSize(), replay = replay)
+        } else if (loading) {
+            CircularProgressIndicator(Modifier.size(28.dp), color = captionColor, strokeWidth = 2.dp)
+        } else {
+            Text("✨ Sticker · tap to load", color = captionColor, fontSize = 12.sp)
+        }
+    }
+    if (message.text != media.kind.label && message.text.isNotBlank()) {
+        Text(linkify(message.text, captionColor), color = captionColor, modifier = Modifier.padding(top = 6.dp).widthIn(max = 260.dp))
+    }
+}
+
+/** A short video that plays like a GIF: silent, looping, no controls. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+fun LoopingVideo(file: File, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val player = remember(file) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(Uri.fromFile(file)))
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+            volume = 0f
+            playWhenReady = true
+            prepare()
+        }
+    }
+    DisposableEffect(player) { onDispose { player.release() } }
+    AndroidView(
+        factory = { ctx ->
+            androidx.media3.ui.PlayerView(ctx).apply {
+                this.player = player
+                useController = false
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
+        },
+        modifier = modifier,
+    )
 }

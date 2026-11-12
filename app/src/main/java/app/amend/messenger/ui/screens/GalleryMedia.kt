@@ -285,7 +285,7 @@ suspend fun sendPickedMedia(context: android.content.Context, repo: AmendReposit
             // GIFs go as they are so they stay animated (GIF files have no location data)
             val item = withContext(Dispatchers.IO) { Gifs.read(context, uri) }
             if (item == null) { error = "That GIF is too big to send (15 MB at most)"; return@forEachIndexed }
-            Gifs.send(context, repo, peer, item, reply, cap)?.let { error = it }
+            Gifs.send(context, repo, peer, item, reply, cap, fromKeyboard = false)?.let { error = it }
         } else {
             val p = app.amend.messenger.util.MediaPrep.photo(context, uri)
             if (p == null) { error = "Couldn't read that photo"; return@forEachIndexed }
