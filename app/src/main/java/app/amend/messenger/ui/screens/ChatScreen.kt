@@ -72,6 +72,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import app.amend.messenger.ui.Text
 import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.content.contentReceiver
 import androidx.compose.foundation.content.consume
 import androidx.compose.material3.TextField
