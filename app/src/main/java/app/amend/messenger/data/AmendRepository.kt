@@ -404,7 +404,7 @@ class AmendRepository(
             }
             Kinds.REACTION -> {
                 val target = rumor.firstTag("e") ?: return
-                applyReaction(peer, target, rumor.pubkey, rumor.content.take(8))
+                applyReaction(peer, target, rumor.pubkey, reactionEmoji(rumor.content))
             }
             Kinds.RECEIPT -> if (!fromMe) applyReceipt(peer, rumor)
             Kinds.INSTANT_OPENED -> rumor.firstTag("e")?.let { id -> if (fromMe) consumeInstantLocally(id) else markInstantOpened(id, rumor.pubkey) }
@@ -644,6 +644,18 @@ class AmendRepository(
             resubscribeMetadata()
         }
         return added
+    }
+
+    /**
+     * A reaction is one emoji, of any kind: flags, skin tones and joined (ZWJ) emoji can be
+     * many characters long, so keep the first whole character cluster rather than a fixed length.
+     */
+    private fun reactionEmoji(raw: String): String {
+        val t = raw.trim().take(64)
+        if (t.isEmpty() || t == "-") return t
+        val it = java.text.BreakIterator.getCharacterInstance().apply { setText(t) }
+        val end = it.next().takeIf { e -> e != java.text.BreakIterator.DONE } ?: t.length
+        return t.substring(0, end)
     }
 
     private suspend fun applyReaction(peer: String, messageId: String, reactor: String, emoji: String) {
@@ -927,6 +939,9 @@ class AmendRepository(
             media.mime.contains("mp4") -> "mp4"
             media.mime.contains("ogg") -> "ogg"
             media.mime.contains("webm") -> "webm"
+            media.mime == "image/gif" -> "gif"
+            media.mime == "image/webp" -> "webp"
+            media.mime == "image/png" -> "png"
             else -> "bin"
         }
         return File(mediaDir, "${media.sha256.ifBlank { media.keyHex.take(16) }}.$ext")

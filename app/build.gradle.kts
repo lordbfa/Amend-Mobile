@@ -143,6 +143,8 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.4.1")
     implementation("androidx.media3:media3-effect:1.4.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    // the full emoji picker for reacting to a message with any emoji
+    implementation("androidx.emoji2:emoji2-emojipicker:1.4.0")
     // installs the Baseline Profile (ours + Compose's) so code is pre-compiled: no first-scroll jank
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")

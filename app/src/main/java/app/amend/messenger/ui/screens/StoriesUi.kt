@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -391,13 +392,6 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                 image != null -> Image(image!!, contentDescription = "Story", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
             }
-            if (media != null && story.text.isNotBlank()) {
-                Text(
-                    story.text, color = Color.White, textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp, start = 20.dp, end = 20.dp)
-                        .clip(RoundedCornerShape(12.dp)).background(Color(0x88000000)).padding(10.dp),
-                )
-            }
             // tap zones: left third back, rest forward; hold to pause
             Box(Modifier.fillMaxSize().pointerInput(story.id) {
                 detectTapGestures(
@@ -429,6 +423,15 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                 }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeBottomAndIme().padding(12.dp)) {
+                // the caption sits in the same column as the reactions and reply box, so it is always above them
+                if (media != null && story.text.isNotBlank()) {
+                    Text(
+                        story.text, color = Color.White, textAlign = TextAlign.Center,
+                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(start = 8.dp, end = 8.dp, bottom = 12.dp)
+                            .heightIn(max = 220.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x88000000))
+                            .verticalScroll(rememberScrollState()).padding(10.dp),
+                    )
+                }
                 if (mine) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StoryChip("👁 ${story.viewers.size} of ${story.audience.size}") { showViewers = true }

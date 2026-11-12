@@ -71,6 +71,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import app.amend.messenger.ui.Text
+import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.content.contentReceiver
+import androidx.compose.foundation.content.consume
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -386,7 +389,27 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             }
             if (recordingVoice) {
                 RecordingBar(voiceRecorder, cancellingVoice, Modifier.weight(1f))
-            } else ChatInput(inputState, Modifier.weight(1f))
+            } else ChatInput(inputState, Modifier.weight(1f), onContent = { uris ->
+                // a GIF / sticker / image from the keyboard: read it now (the keyboard's permission
+                // to read it is short-lived), then encrypt and send it like a photo
+                val items = uris.mapNotNull { Gifs.read(context, it) }
+                if (items.isEmpty()) {
+                    android.widget.Toast.makeText(context, "Couldn't read that GIF", android.widget.Toast.LENGTH_SHORT).show()
+                    return@ChatInput
+                }
+                val reply = replyTo?.id
+                replyTo = null
+                haptics.success()
+                repo.launchInBackground {
+                    items.forEachIndexed { i, item ->
+                        Gifs.send(context, repo, peer, item, if (i == 0) reply else null)?.let { err ->
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+            })
             Spacer(Modifier.size(8.dp))
             if (!canSend) {
 
@@ -855,6 +878,7 @@ private fun MessageBubble(
     val unsent = message.type == MessageType.UNSENT
     val scheduled = message.status == MessageStatus.SCHEDULED
     var showReactions by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     var bubblePos by remember { mutableStateOf(Offset.Zero) }
     val haptics = rememberHaptics()
@@ -993,11 +1017,17 @@ private fun MessageBubble(
                 } else if (message.type == MessageType.ECO_PROOF) {
                     EcoProofContent(repo, message, textColor)
                 } else {
-                    // links from strangers aren't tappable (phishing / grooming lures); worked out once per text
-                    val body = remember(message.text, textColor, fromStranger) {
-                        if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor)
+                    // a message that is just a Tenor / Giphy link shows the GIF (never for strangers)
+                    val gif = remember(message.text, fromStranger) { if (fromStranger || unsent) null else GifLinks.parse(message.text) }
+                    if (gif != null) {
+                        GifLinkBubble(gif, autoLoad = mine, captionColor = textColor)
+                    } else {
+                        // links from strangers aren't tappable (phishing / grooming lures); worked out once per text
+                        val body = remember(message.text, textColor, fromStranger) {
+                            if (fromStranger) androidx.compose.ui.text.AnnotatedString(message.text) else linkify(message.text, textColor)
+                        }
+                        Text(body, color = textColor, style = MaterialTheme.typography.bodyLarge)
                     }
-                    Text(body, color = textColor, style = MaterialTheme.typography.bodyLarge)
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (message.expiresAt > 0) Text("⏳ ", color = textColor.copy(alpha = 0.7f), fontSize = 11.sp)
@@ -1050,6 +1080,15 @@ private fun MessageBubble(
                         )
                     }
                 }
+                // any other emoji: opens the full picker
+                Box(
+                    Modifier.padding(start = 2.dp).align(Alignment.CenterVertically).size(36.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { showReactions = false; showEmojiPicker = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = "More reactions", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             if (mine) {
                 DropdownMenuItem(
@@ -1078,6 +1117,38 @@ private fun MessageBubble(
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(message.text))
                 haptics.success()
             })
+        }
+    }
+    if (showEmojiPicker) {
+        EmojiPickerDialog(onDismiss = { showEmojiPicker = false }) { emoji ->
+            showEmojiPicker = false
+            haptics.success()
+            onReact(emoji, bubblePos)
+        }
+    }
+}
+
+/** The full emoji keyboard (every emoji, skin tones, recents) for reacting with anything. */
+@Composable
+private fun EmojiPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val dark = LocalDark.current
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            Modifier.fillMaxWidth().height(420.dp).clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surface),
+        ) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
+                    val themed = android.view.ContextThemeWrapper(
+                        ctx, if (dark) android.R.style.Theme_Material else android.R.style.Theme_Material_Light,
+                    )
+                    androidx.emoji2.emojipicker.EmojiPickerView(themed).apply {
+                        emojiGridColumns = 8
+                        setOnEmojiPickedListener { item -> onPick(item.emoji) }
+                    }
+                },
+                modifier = Modifier.fillMaxSize().padding(8.dp),
+            )
         }
     }
 }
@@ -1390,21 +1461,67 @@ private fun LiveMessageContent(message: ChatMessage, share: app.amend.messenger.
     }
 }
 
-/** The message box. It reads the text itself, so typing redraws only this box. */
+/**
+ * The message box. It reads the text itself, so typing redraws only this box.
+ * It also takes GIFs, stickers and images straight from the keyboard (Gboard, GIPHY,
+ * SwiftKey: Tenor and Giphy GIFs) or a paste, and hands them to [onContent].
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ChatInput(state: androidx.compose.runtime.MutableState<String>, modifier: Modifier = Modifier) {
-    TextField(
-        value = state.value,
-        onValueChange = { if (it.length <= 4000) state.value = it },
-        placeholder = { Text("Grow the conversation…") },
-        modifier = modifier,
-        shape = RoundedCornerShape(26.dp),
-        maxLines = 5,
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+private fun ChatInput(
+    state: androidx.compose.runtime.MutableState<String>,
+    modifier: Modifier = Modifier,
+    onContent: (List<android.net.Uri>) -> Unit = {},
+) {
+    val field = androidx.compose.foundation.text.input.rememberTextFieldState(state.value)
+    // keep the field and the chat's text in step: typing updates the text; sending, drafts
+    // and edits (which change the text from outside) update the field
+    val lastFromField = remember { arrayOf(state.value) }
+    LaunchedEffect(field) {
+        androidx.compose.runtime.snapshotFlow { field.text.toString() }.collect { t ->
+            lastFromField[0] = t
+            if (t != state.value) state.value = t
+        }
+    }
+    LaunchedEffect(field) {
+        androidx.compose.runtime.snapshotFlow { state.value }.collect { v ->
+            if (v != lastFromField[0] && v != field.text.toString()) field.setTextAndPlaceCursorAtEnd(v)
+        }
+    }
+    val receiver = remember(onContent) {
+        object : androidx.compose.foundation.content.ReceiveContentListener {
+            override fun onReceive(
+                transferableContent: androidx.compose.foundation.content.TransferableContent,
+            ): androidx.compose.foundation.content.TransferableContent? {
+                val uris = mutableListOf<android.net.Uri>()
+                val rest = transferableContent.consume { item ->
+                    val u = item.uri
+                    if (u != null && u.scheme == "content") { uris += u; true } else false
+                }
+                if (uris.isNotEmpty()) onContent(uris)
+                return rest
+            }
+        }
+    }
+    val colors = MaterialTheme.colorScheme
+    androidx.compose.foundation.text.BasicTextField(
+        state = field,
+        modifier = modifier.contentReceiver(receiver),
+        inputTransformation = androidx.compose.foundation.text.input.InputTransformation.maxLength(4000),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+        lineLimits = androidx.compose.foundation.text.input.TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
+        decorator = { inner ->
+            Box(
+                Modifier.heightIn(min = 56.dp).clip(RoundedCornerShape(26.dp)).background(colors.surfaceVariant)
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (field.text.isEmpty()) {
+                    Text("Grow the conversation…", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                }
+                inner()
+            }
+        },
     )
 }

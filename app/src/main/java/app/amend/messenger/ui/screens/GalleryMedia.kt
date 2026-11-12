@@ -91,9 +91,10 @@ internal fun rememberMediaFile(repo: AmendRepository, media: MediaInfo, autoLoad
 fun PhotoBubble(repo: AmendRepository, message: ChatMessage, captionColor: Color) {
     val media = remember(message.extra) { MediaInfo.fromJson(message.extra) } ?: return
     val (file, loading, load) = rememberMediaFile(repo, media, autoLoad = media.size in 1..4_000_000)
+    val animated = Gifs.isAnimatedMime(media.mime)
     var image by remember(file) { mutableStateOf<ImageBitmap?>(null) }
     var full by remember { mutableStateOf(false) }
-    LaunchedEffect(file) { file?.let { image = decodeImage(it, 900) } }
+    LaunchedEffect(file) { if (!animated) file?.let { image = decodeImage(it, 900) } }
     val ratio = if (media.width > 0 && media.height > 0) (media.width.toFloat() / media.height).coerceIn(0.5f, 2f) else 1f
     Box(
         Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(16.dp))
@@ -101,7 +102,10 @@ fun PhotoBubble(repo: AmendRepository, message: ChatMessage, captionColor: Color
         contentAlignment = Alignment.Center,
     ) {
         image?.let { Image(it, contentDescription = "Photo", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-        if (image == null) {
+        if (animated && file != null) {
+            AnimatedImage(file, "GIF", fit = false, maxSide = 700, modifier = Modifier.fillMaxSize())
+            if (media.mime == "image/gif") GifBadge(Modifier.align(Alignment.BottomStart))
+        } else if (image == null) {
             if (loading) CircularProgressIndicator(Modifier.size(28.dp), color = Color.White, strokeWidth = 2.dp)
             else Text("📷 Tap to load · ${formatSize(media.size)}", color = Color.White, fontSize = 12.sp)
         }
@@ -114,13 +118,24 @@ fun PhotoBubble(repo: AmendRepository, message: ChatMessage, captionColor: Color
 
 @Composable
 fun FullScreenPhoto(file: File, onClose: () -> Unit, alwaysSecure: Boolean = false) {
+    val animated = remember(file) { Gifs.isAnimatedFile(file) }
     var image by remember(file) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(file) { image = decodeImage(file, 2400) }
+    LaunchedEffect(file) { if (!animated) image = decodeImage(file, 2400) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     FullScreenDialog(onDismissRequest = onClose, alwaysSecure = alwaysSecure) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            image?.let {
+            if (animated) AnimatedImage(
+                file, "GIF", fit = true, maxSide = 1600,
+                modifier = Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            offset = if (scale <= 1f) Offset.Zero else offset + pan
+                        }
+                    }
+                    .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
+            ) else image?.let {
                 Image(
                     it, contentDescription = "Photo", contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
@@ -266,6 +281,11 @@ suspend fun sendPickedMedia(context: android.content.Context, repo: AmendReposit
             v.file.delete()
             runCatching { repo.sendMedia(peer, bytes, app.amend.messenger.data.MediaKind.CLIP, v.mime, v.durationMs, width = v.width, height = v.height, replyTo = reply, caption = cap) }
                 .onFailure { error = "Couldn't send the video — check your connection and tap ⟳ to retry" }
+        } else if (context.contentResolver.getType(uri) == "image/gif") {
+            // GIFs go as they are so they stay animated (GIF files have no location data)
+            val item = withContext(Dispatchers.IO) { Gifs.read(context, uri) }
+            if (item == null) { error = "That GIF is too big to send (15 MB at most)"; return@forEachIndexed }
+            Gifs.send(context, repo, peer, item, reply, cap)?.let { error = it }
         } else {
             val p = app.amend.messenger.util.MediaPrep.photo(context, uri)
             if (p == null) { error = "Couldn't read that photo"; return@forEachIndexed }
