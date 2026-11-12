@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
@@ -190,6 +191,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     val latestSosStartId = remember(messages) { messages.lastOrNull { it.type == MessageType.SOS && !it.fromMe && it.cardId == "start" }?.id }
     val liveSosLocation = incomingSosAll[peer]?.takeIf { it.active }?.location
     var showDisappear by remember { mutableStateOf(false) }
+    var showVerify by remember { mutableStateOf(false) }
     var showSchedule by remember { mutableStateOf(false) }
     var showMembers by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
@@ -242,6 +244,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             memberCount = group?.members?.size ?: 0,
             disappearSecs = conv?.disappearSecs ?: 0,
             onDisappear = { showDisappear = true },
+            onVerify = { showVerify = true },
             onMembers = { showMembers = true },
             onRename = { showRename = true },
             onLeave = { confirmLeave = true },
@@ -514,6 +517,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             confirmButton = { TextButton(onClick = { showLive = false }) { Text("Cancel") } },
         )
     }
+    if (showVerify && !isGroup) VerifyScreen(repo, peer, onClose = { showVerify = false })
     if (showDisappear) {
         DisappearDialog(
             current = conv?.disappearSecs ?: 0,
@@ -707,6 +711,7 @@ private fun GardenHeader(
     memberCount: Int = 0,
     disappearSecs: Long = 0,
     onDisappear: () -> Unit = {},
+    onVerify: () -> Unit = {},
     onMembers: () -> Unit = {},
     onRename: () -> Unit = {},
     onLeave: () -> Unit = {},
@@ -722,6 +727,8 @@ private fun GardenHeader(
     LaunchedEffect(garden.progress, garden.generation) { grow.animateTo(garden.progress, spring(Spring.DampingRatioLowBouncy, 60f)) }
     var menu by remember { mutableStateOf(false) }
     val conv = repo.conversations.collectAsStateWithLifecycle().value[peer]
+    val verifiedSet by app.amend.messenger.util.Verified.hashes.collectAsStateWithLifecycle()
+    val verified = !isGroup && app.amend.messenger.util.Verified.isVerified(peer, verifiedSet)
 
     Box(Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))) {
         LivingSky(Modifier.fillMaxSize(), hour = hour, animate = !efficiency)
@@ -751,7 +758,13 @@ private fun GardenHeader(
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
             avatar()
             Column(Modifier.padding(start = 10.dp).weight(1f).clickable { menu = true }) {
-                Text(profileName, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(profileName, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (verified) Icon(
+                        androidx.compose.material.icons.Icons.Rounded.Verified, contentDescription = "Verified",
+                        tint = Color.White, modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                    )
+                }
                 Text(
                     (if (isGroup) "🌳 Shared garden · $memberCount · " else "") +
                         (if (garden.generation > 0) "🌳×${garden.generation} · " else "") +
@@ -775,6 +788,10 @@ private fun GardenHeader(
                         DropdownMenuItem(text = { Text("Rename garden") }, onClick = { menu = false; onRename() })
                         DropdownMenuItem(text = { Text("Leave garden") }, onClick = { menu = false; onLeave() })
                     } else {
+                        DropdownMenuItem(
+                            text = { Text(if (verified) "Security code · verified ✓" else "Verify security code") },
+                            onClick = { menu = false; onVerify() },
+                        )
                         DropdownMenuItem(text = { Text("Block") }, onClick = { repo.block(peer); menu = false; onBack() })
                     }
                     DropdownMenuItem(text = { Text("Report", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onReport() })

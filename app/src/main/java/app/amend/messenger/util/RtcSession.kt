@@ -70,9 +70,14 @@ object Rtc {
 class RtcSession(
     private val context: Context,
     val video: Boolean,
-    iceServers: List<IceServerConfig>,
+    allServers: List<IceServerConfig>,
+    /** Only TURN relay candidates: the other phone never sees this phone's IP address. */
+    private val relayOnly: Boolean = false,
     private val listener: Listener,
 ) {
+    // With relayOnly, STUN servers aren't asked either (they'd see the address too).
+    private val iceServers = if (relayOnly) allServers.filter { it.url.startsWith("turn") } else allServers
+
     interface Listener {
         fun onConnectionState(state: PeerConnection.PeerConnectionState)
         fun onRemoteVideo(track: VideoTrack)
@@ -119,6 +124,7 @@ class RtcSession(
             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
             tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
+            if (relayOnly) iceTransportsType = PeerConnection.IceTransportsType.RELAY
         },
         observer,
     ) ?: throw IllegalStateException("WebRTC is not available on this phone")

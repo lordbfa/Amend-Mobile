@@ -95,6 +95,15 @@ class CallPrefs(context: Context) {
         get() = p.getString("turnService", null)?.ifBlank { null } ?: DEFAULT_TURN_SERVICE
         set(v) = put("turnService", v)
 
+    /**
+     * Relay every call through TURN, so the person you call (and Google's STUN servers) never
+     * learn your IP address. If no relay can be reached the call fails instead of falling back
+     * to a direct connection.
+     */
+    var hideIp: Boolean
+        get() = p.getBoolean("hideIp", false)
+        set(v) { p.edit().putBoolean("hideIp", v).apply() }
+
     val hasTurn: Boolean get() = turnService.isNotBlank() || meteredLink.isNotBlank() || cloudflareKeyId.isNotBlank() || turnUrl.isNotBlank()
 
     private fun stun() = listOf(
@@ -396,7 +405,7 @@ object CallManager {
 
     private fun newSession(video: Boolean, servers: List<IceServerConfig>): RtcSession {
         session?.close()
-        val s = RtcSession(context, video, servers, object : RtcSession.Listener {
+        val s = RtcSession(context, video, servers, relayOnly = CallPrefs(context).hideIp, listener = object : RtcSession.Listener {
             override fun onConnectionState(state: PeerConnection.PeerConnectionState) {
                 scope.launch { onConnection(state) }
             }

@@ -78,13 +78,22 @@ to make it even more independent (in Bangla).
 
 ## Security notes
 
-- This is a young app and hasn't had an independent security audit.
+- **Report a security problem privately:** see [SECURITY.md](SECURITY.md).
+- **What amend protects and what it can't hide:** see the [threat model](docs/THREAT_MODEL.md).
+  In short: messages, calls and media are end-to-end encrypted and relays can't see who sent a
+  message, but relays see the recipient's public key and your IP address (use Tor/Orbot), and
+  there is no forward secrecy yet.
+- amend hasn't had an independent security audit yet. We welcome one and will publish the
+  results.
+- Optional protections in the app: screen lock, screenshot protection, hidden notification
+  content, relay-only calls that hide your IP address, Tor through Orbot, and security codes
+  to verify contacts.
+- Every build shows the source commit it came from (Settings → App info). Tagged releases come
+  with `SHA256SUMS.txt` and a signed build provenance attestation.
 - `app/amend-dev.keystore` is public in this repo, so it only signs debug builds
   (`app.amend.messenger.debug`). Release builds are signed only with a private key supplied
   from outside the repository (CI secrets, or `amend.release.*` in `~/.gradle/gradle.properties`);
   without it they are unsigned.
-- Gift-wrapped messages hide metadata from relays, but your IP address is visible to the
-  relays you connect to (use a VPN or Tor/Orbot if that matters to you).
 
 ## Licences
 

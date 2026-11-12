@@ -167,9 +167,25 @@ object Notifications {
 
     private fun idFor(peer: String) = peer.hashCode()
 
+    const val PREVIEW_FULL = "full"
+    const val PREVIEW_NAME = "name"
+    const val PREVIEW_NONE = "none"
+
+    /** Settings → Privacy & security → Notification content. */
+    fun preview(context: Context): String =
+        context.getSharedPreferences("amend_notif_privacy", Context.MODE_PRIVATE).getString("preview", PREVIEW_FULL) ?: PREVIEW_FULL
+
+    fun setPreview(context: Context, mode: String) {
+        context.getSharedPreferences("amend_notif_privacy", Context.MODE_PRIVATE).edit().putString("preview", mode).apply()
+    }
+
     /** One notification per chat; it updates with the unread count instead of stacking up. */
-    fun message(context: Context, peer: String, sender: String, text: String, unread: Int) {
+    fun message(context: Context, peer: String, senderName: String, messageText: String, unread: Int) {
         if (!areEnabled(context)) return
+        // other apps that can read notifications (and anyone glancing at the phone) see only what you allow
+        val mode = preview(context)
+        val sender = if (mode == PREVIEW_NONE) tr(context.getString(R.string.app_name)) else senderName
+        val text = if (mode == PREVIEW_FULL) messageText else tr(context.getString(R.string.notif_hidden))
         val title = if (unread > 1) tr("$sender · $unread new messages") else sender
         val n = NotificationCompat.Builder(context, channelFor(context, CHANNEL_MESSAGES))
             .setSmallIcon(R.drawable.ic_notification)
@@ -425,8 +441,10 @@ object Notifications {
         )
 
     /** Full-screen ringing notification (shows over the lock screen). */
-    fun incomingCall(context: Context, peer: String, name: String, video: Boolean) {
-        val person = androidx.core.app.Person.Builder().setName(name).setKey(peer).setImportant(true).build()
+    fun incomingCall(context: Context, peer: String, callerName: String, video: Boolean) {
+        val hidden = preview(context) == PREVIEW_NONE
+        val name = if (hidden) tr(context.getString(R.string.app_name)) else callerName
+        val person = androidx.core.app.Person.Builder().setName(name).apply { if (!hidden) setKey(peer) }.setImportant(true).build()
         val n = NotificationCompat.Builder(context, CHANNEL_CALLS)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(name)

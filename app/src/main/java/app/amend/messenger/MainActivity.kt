@@ -12,12 +12,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import app.amend.messenger.ui.AmendRoot
+import app.amend.messenger.ui.screens.LockScreen
 import app.amend.messenger.ui.theme.AmendTheme
+import app.amend.messenger.util.AppLock
 import app.amend.messenger.util.AppVisibility
 import app.amend.messenger.util.LiveService
 import app.amend.messenger.util.StepTracker
@@ -42,6 +47,12 @@ class MainActivity : ComponentActivity() {
     val pendingPeer = mutableStateOf<String?>(null)
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Android 8.0–8.1: the phone's own PIN screen (no BiometricPrompt yet). */
+    private val confirmCredential = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        AppLock.authInProgress = false
+        if (r.resultCode == RESULT_OK) AppLock.unlock()
+    }
     private var offlineJob: Job? = null
 
     /** True while amend is a small floating window (picture-in-picture) during a video call. */
@@ -63,8 +74,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             val repo by app.repository.collectAsStateWithLifecycle()
             val eco = repo?.eco?.collectAsStateWithLifecycle()
+            val locked by AppLock.locked.collectAsStateWithLifecycle()
+            val call by CallManager.state.collectAsStateWithLifecycle()
             AmendTheme(efficiency = eco?.value?.efficiencyMode == true, liteMotion = Performance.liteMotion) {
-                AmendRoot(app = app, repository = repo, pendingPeer = pendingPeer)
+                Box(Modifier.fillMaxSize()) {
+                    AmendRoot(app = app, repository = repo, pendingPeer = pendingPeer)
+                    // an incoming or ongoing call can still be answered and ended while locked
+                    if (locked && !call.active) {
+                        LockScreen(onUnlock = ::requestUnlock, onLeave = { moveTaskToBack(true) })
+                    }
+                }
             }
         }
         lifecycleScope.launch {
@@ -178,6 +197,45 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** Shows the phone's unlock prompt: fingerprint, face, or the phone's PIN/pattern/password. */
+    fun requestUnlock() {
+        if (!AppLock.locked.value || AppLock.authInProgress) return
+        if (!AppLock.deviceSecure(this)) { AppLock.setEnabled(this, false); return }
+        AppLock.authInProgress = true
+        val title = app.amend.messenger.ui.tr("Unlock amend")
+        if (Build.VERSION.SDK_INT >= 28) {
+            val builder = android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle(title)
+            if (Build.VERSION.SDK_INT >= 30) {
+                builder.setAllowedAuthenticators(
+                    android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                        android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                builder.setDeviceCredentialAllowed(true)
+            }
+            runCatching {
+                builder.build().authenticate(
+                    android.os.CancellationSignal(), mainExecutor,
+                    object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?) {
+                            AppLock.unlock()
+                        }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                            AppLock.authInProgress = false
+                        }
+                    },
+                )
+            }.onFailure { AppLock.authInProgress = false }
+        } else {
+            val km = getSystemService(android.app.KeyguardManager::class.java)
+            @Suppress("DEPRECATION")
+            val intent = km?.createConfirmDeviceCredentialIntent(title, null)
+            if (intent == null) { AppLock.authInProgress = false; return }
+            runCatching { confirmCredential.launch(intent) }.onFailure { AppLock.authInProgress = false }
+        }
+    }
+
     fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
@@ -185,6 +243,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         AppVisibility.isForeground = true
+        AppLock.onStart(this)
         offlineJob?.cancel()
         val app = application as AmendApp
         SosManager.restoreIfNeeded(this)
@@ -200,6 +259,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         AppVisibility.isForeground = false
+        AppLock.onStop()
         StepTracker.stop("ui")
         // switch the launcher icon while amend is leaving the screen (least disruptive moment)
         runCatching { app.amend.messenger.util.DynamicIcon.update(this) }

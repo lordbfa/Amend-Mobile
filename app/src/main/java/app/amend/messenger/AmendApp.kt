@@ -52,6 +52,7 @@ class AmendApp : Application() {
         app.amend.messenger.util.WearSync.load(this)
         app.amend.messenger.util.AgeCheck.load(this)
         app.amend.messenger.net.TorProxy.enabled = getSharedPreferences("amend_net", MODE_PRIVATE).getBoolean("tor", false)
+        app.amend.messenger.util.AppLock.init(this)
         Notifications.createChannels(this)
         StepTracker.init(this)
         app.amend.messenger.util.DynamicIcon.schedule(this)
@@ -98,6 +99,7 @@ class AmendApp : Application() {
         notifySince = notifySinceFor(repo.me)
         eventsJob?.cancel()
         eventsJob = appScope.launch(start = CoroutineStart.UNDISPATCHED) { repo.events.collect { notifyFor(repo, it) } }
+        app.amend.messenger.util.Verified.load(this, repo.me)
         repo.start()
         _repository.value = repo
         app.amend.messenger.util.CallManager.attach(this, repo)
@@ -244,7 +246,8 @@ class AmendApp : Application() {
      * who you are (language, theme, steps) stay.
      */
     private fun wipeIdentityTraces() {
-        listOf("amend_notify", "amend_live_share", "amend_checkin", "amend_eco_map", "amend_fakecall")
+        app.amend.messenger.util.Verified.clear()
+        listOf("amend_notify", "amend_live_share", "amend_checkin", "amend_eco_map", "amend_fakecall", app.amend.messenger.util.Verified.PREFS)
             .forEach { runCatching { getSharedPreferences(it, MODE_PRIVATE).edit().clear().apply() } }
         runCatching {
             val sos = app.amend.messenger.util.SosPrefs(this)

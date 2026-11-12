@@ -2,6 +2,8 @@ package app.amend.messenger.ui.screens
 
 import app.amend.messenger.net.TorProxy
 import app.amend.messenger.util.ScreenProtection
+import app.amend.messenger.util.AppLock
+import app.amend.messenger.util.findActivity
 import app.amend.messenger.util.WearSync
 import android.content.Intent
 import android.net.Uri
@@ -28,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.HealthAndSafety
@@ -49,6 +52,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -90,6 +94,11 @@ const val SUPPORT_EMAIL = "lordbfa@getamend.app"
 const val SUPPORT_NAME = "Ahmed Bhuiyan Faisal"
 const val SUPPORT_ADDRESS = "40700, Jyväskylä, Finland"
 
+/** amend's public source code, security policy and threat model. */
+const val SOURCE_URL = "https://github.com/lordbfa/Amend-Mobile"
+const val THREAT_MODEL_URL = "$SOURCE_URL/blob/main/docs/THREAT_MODEL.md"
+const val SECURITY_POLICY_URL = "$SOURCE_URL/blob/main/SECURITY.md"
+
 private enum class Section(val id: String, val title: String, val icon: ImageVector, val color: Long) {
     NOTIFICATIONS("notifications", "Notifications", Icons.Rounded.Notifications, 0xFFE53935),
     SOUNDS("sounds", "Sounds", Icons.Rounded.MusicNote, 0xFF6D4C9F),
@@ -101,6 +110,7 @@ private enum class Section(val id: String, val title: String, val icon: ImageVec
     LANGUAGE("language", "Language", Icons.Rounded.Language, 0xFF0097A7),
     APPEARANCE("appearance", "Appearance", Icons.Rounded.Palette, 0xFFFB8C00),
     ABOUT("about", "About amend", Icons.Rounded.Spa, 0xFF2E7D32),
+    SECURITY("security", "Security & transparency", Icons.Rounded.VerifiedUser, 0xFF00796B),
     POLICY("policy", "Privacy policy", Icons.Rounded.Policy, 0xFF546E7A),
     CONTACT("contact", "Contact us", Icons.Rounded.Email, 0xFF3949AB),
     INFO("info", "App info", Icons.Rounded.Info, 0xFF757575);
@@ -152,7 +162,7 @@ private fun SettingsList(repo: AmendRepository, onOpen: (Section) -> Unit) {
     Group(listOf(Section.NOTIFICATIONS, Section.SOUNDS, Section.PRIVACY, Section.SAFETY), ::status, onOpen)
     Group(listOf(Section.CALLS, Section.MESH, Section.NETWORK), ::status, onOpen)
     Group(listOf(Section.LANGUAGE, Section.APPEARANCE), ::status, onOpen)
-    Group(listOf(Section.ABOUT, Section.POLICY, Section.CONTACT, Section.INFO), ::status, onOpen)
+    Group(listOf(Section.ABOUT, Section.SECURITY, Section.POLICY, Section.CONTACT, Section.INFO), ::status, onOpen)
 }
 
 @Composable
@@ -194,7 +204,10 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
             NearbySosCard()
             FakeCallCard()
         }
-        Section.CALLS -> CallsCard()
+        Section.CALLS -> Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            HideIpCallsCard()
+            CallsCard()
+        }
         Section.MESH -> MeshCard()
         Section.NETWORK -> {
             TorCard(repo)
@@ -206,6 +219,7 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
         Section.SOUNDS -> SoundsPage()
         Section.LANGUAGE -> LanguagePage()
         Section.ABOUT -> AboutPage()
+        Section.SECURITY -> SecurityPage()
         Section.POLICY -> PolicyPage()
         Section.CONTACT -> ContactPage()
         Section.INFO -> AppInfoPage(app, repo)
@@ -261,6 +275,96 @@ private fun AgeCard() {
             confirmButton = { TextButton(onClick = { confirmAdult = false; app.amend.messenger.util.AgeCheck.set(context, app.amend.messenger.util.AgeCheck.Group.ADULT) }) { Text("I'm 18 or older") } },
             dismissButton = { TextButton(onClick = { confirmAdult = false }) { Text("Keep it on") } },
         )
+    }
+}
+
+/** Screen lock: fingerprint, face or the phone's PIN to open amend. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ScreenLockCard() {
+    val context = LocalContext.current
+    val secure = remember { AppLock.deviceSecure(context) }
+    var on by remember { mutableStateOf(AppLock.enabled) }
+    var timeout by remember { mutableStateOf(AppLock.timeoutMs) }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Screen lock", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (on) "On: amend asks for your fingerprint, face or phone PIN before anyone can see your chats. Recent apps shows a blank preview."
+                        else "Off: anyone holding your unlocked phone can open amend.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = on, enabled = secure || on, onCheckedChange = {
+                    AppLock.setEnabled(context, it)
+                    on = AppLock.enabled
+                    context.findActivity()?.let { a -> ScreenProtection.applyRecents(a) }
+                })
+            }
+            if (!secure) {
+                Text(
+                    "Set up a screen lock on your phone first (PIN, pattern, password or fingerprint).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (on) {
+                Text("Lock again after", style = MaterialTheme.typography.titleSmall)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppLock.TIMEOUTS.forEach { ms ->
+                        androidx.compose.material3.FilterChip(
+                            selected = timeout == ms,
+                            onClick = { timeout = ms; AppLock.setTimeout(context, ms) },
+                            label = {
+                                Text(
+                                    when (ms) {
+                                        0L -> "Immediately"
+                                        60_000L -> "1 minute"
+                                        5 * 60_000L -> "5 minutes"
+                                        else -> "30 minutes"
+                                    },
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** How much a message notification shows: name and text, name only, or nothing. */
+@Composable
+private fun NotificationPreviewCard() {
+    val context = LocalContext.current
+    var mode by remember { mutableStateOf(app.amend.messenger.util.Notifications.preview(context)) }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Notification content", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "What other people and other apps can see in your notifications. On the lock screen, the text is always hidden.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            listOf(
+                app.amend.messenger.util.Notifications.PREVIEW_FULL to "Name and message",
+                app.amend.messenger.util.Notifications.PREVIEW_NAME to "Name only",
+                app.amend.messenger.util.Notifications.PREVIEW_NONE to "No name or message",
+            ).forEach { (value, label) ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
+                        mode = value; app.amend.messenger.util.Notifications.setPreview(context, value)
+                    }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.RadioButton(selected = mode == value, onClick = {
+                        mode = value; app.amend.messenger.util.Notifications.setPreview(context, value)
+                    })
+                    Text(label, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
     }
 }
 
@@ -333,6 +437,8 @@ private fun BurnerCard(app: AmendApp) {
 @Composable
 private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     var confirm by remember { mutableStateOf(false) }
+    ScreenLockCard()
+    NotificationPreviewCard()
     ReadReceiptsCard(repo)
     AgeCard()
     InstantsAudienceCard(repo)
@@ -381,6 +487,46 @@ private fun AboutPage() {
     MadeWithLove(Modifier.fillMaxWidth())
 }
 
+/** What amend protects, what it can't hide, and how to check it yourself. No overclaiming. */
+@Composable
+private fun SecurityPage() {
+    val context = LocalContext.current
+    val commit = BuildConfig.GIT_COMMIT
+    Text("How amend protects you", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    TextCard(
+        "End-to-end encryption" to "Messages are encrypted on your phone (NIP-44) and sealed in an envelope signed by a throwaway key (NIP-17/59), so relays can't read them or see who sent them. Calls are encrypted with DTLS-SRTP; photos, videos and voice notes with AES-256-GCM before they are uploaded.",
+        "On your phone" to "Your key is kept in Android's hardware-backed keystore. Messages and settings are stored encrypted. Nothing is backed up off the phone, and amend writes nothing about you to the system log.",
+        "No account, no tracking" to "No phone number, email or real name is needed. amend has no servers that store your messages, no ads and no analytics.",
+    )
+    Text("What amend can't hide", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    TextCard(
+        "Relays see some metadata" to "A relay can see the recipient's public key, a rough time (shifted by up to two days) and the IP address that connects to it. Turn on Tor (Orbot) under Your network & relays to hide your IP address from relays.",
+        "Calls" to "By default calls connect phone to phone, so the other person can see your IP address. Turn on Hide my IP address in calls under Calls to always use the relay.",
+        "No forward secrecy yet" to "Messages are encrypted with your long-term key. If someone ever steals that key, they could read old messages that relays still store. Disappearing messages limit this: relays that honour the expiry delete them.",
+        "Not audited yet" to "amend hasn't had an independent security audit. We welcome one and will publish the results.",
+    )
+    Text("Check it yourself", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    TextCard(
+        "Open source" to ("All of amend's code is public under GPL-3.0. " +
+            (if (commit.length == 40) "This copy was built from commit ${commit.take(12)}." else "")).trim(),
+        "Verify your contacts" to "Open a chat, tap the name and choose Verify security code. If the codes match on both phones, nobody is in between.",
+        "Found a problem?" to "Please tell us privately first, so we can fix it before anyone misuses it.",
+    )
+    fun open(url: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { open(if (commit.length == 40) "$SOURCE_URL/tree/$commit" else SOURCE_URL) }, shape = RoundedCornerShape(16.dp)) { Text("Source code") }
+        OutlinedButton(onClick = { open(THREAT_MODEL_URL) }, shape = RoundedCornerShape(16.dp)) { Text("Threat model") }
+    }
+    Button(
+        onClick = {
+            val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$SUPPORT_EMAIL"))
+                .putExtra(Intent.EXTRA_SUBJECT, "amend security report")
+            runCatching { context.startActivity(i) }.onFailure { open(SECURITY_POLICY_URL) }
+        },
+        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+    ) { Text("Report a security problem") }
+}
+
 @Composable
 private fun PolicyPage() {
     TextCard(
@@ -397,6 +543,7 @@ private fun PolicyPage() {
         "On your phone only" to "Steps, walking reports, check-ins, fake calls, scheduled messages, your forest, points and settings never leave the device.",
         "Services amend talks to" to "Nostr relays (messages), Blossom file servers (encrypted media), Cloudflare TURN (relaying encrypted calls on strict networks), Open-Meteo (weather), OpenStreetMap (map tiles), Google STUN (finding a call path), and the website behind a name@domain address when you look one up. Each sees your IP address, like any website, unless you use Tor.",
         "Tor (optional)" to "With Orbot running, amend can route everything except calls through Tor.",
+        "Limits" to "What amend can and can't hide is explained in Settings → Security & transparency.",
         "Translate & transcribe" to "Done on your phone. The first time you translate a language, its model is downloaded once from Google; your messages and voice notes are never sent.",
         "Deleting everything" to "Settings → Privacy & security → Remove identity deletes your key and all messages from this phone.",
         "Reports" to "When you report someone, your email app opens with the report and, only if you tick it, the last 10 messages of that chat as text. You decide whether to send it.",
@@ -467,7 +614,8 @@ private fun AppInfoPage(app: AmendApp, repo: AmendRepository) {
         "Version" to "${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
         "Encryption" to if (app.nativeCrypto) "Native secp256k1 (fast)" else "Portable Kotlin crypto",
         "Built with" to "Kotlin & Jetpack Compose · Nostr (NIP-01/17/44/59) · WebRTC · Nearby Connections · osmdroid / OpenStreetMap · Open-Meteo · ZXing",
-        "Licence" to "Open source.",
+        "Source" to (if (BuildConfig.GIT_COMMIT.length == 40) "Built from commit ${BuildConfig.GIT_COMMIT.take(12)}" else "Built from local source"),
+        "Licence" to "Open source (GPL-3.0).",
     )
     OutlinedButton(onClick = {
         runCatching {

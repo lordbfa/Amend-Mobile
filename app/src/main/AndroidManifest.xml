@@ -40,6 +40,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- optional screen lock: fingerprint/face/PIN through the system unlock prompt -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Optional Tor routing: see whether Orbot is installed and ask it to start -->

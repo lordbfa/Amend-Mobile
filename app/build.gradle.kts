@@ -16,6 +16,15 @@ android {
         versionCode = (project.property("amend.versionCode") as String).toInt()
         versionName = project.property("amend.versionName") as String
         vectorDrawables.useSupportLibrary = true
+        // The exact source commit this build came from, shown in Settings so anyone can check
+        // the published code matches the app (CI sets GITHUB_SHA; locally it is read from git).
+        val gitCommit = System.getenv("GITHUB_SHA")?.takeIf { it.isNotBlank() }
+            ?: runCatching {
+                providers.exec { commandLine("git", "rev-parse", "HEAD"); isIgnoreExitValue = true }
+                    .standardOutput.asText.get().trim()
+            }.getOrNull()?.takeIf { it.length == 40 }
+            ?: "unknown"
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
     }
 
     signingConfigs {

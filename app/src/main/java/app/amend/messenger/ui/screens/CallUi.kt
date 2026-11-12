@@ -918,6 +918,19 @@ fun CallLogContent(message: ChatMessage, textColor: Color, onCall: (Boolean) -> 
  * Finland ↔ Bangladesh on mobile data). Paste a Metered link, a Cloudflare key, or type one in.
  */
 @Composable
+fun HideIpCallsCard() {
+    val context = LocalContext.current
+    val prefs = remember { CallPrefs(context) }
+    var on by remember { mutableStateOf(prefs.hideIp) }
+    SettingSwitch(
+        "Hide my IP address in calls",
+        if (on) "On: every call goes through the encrypted relay, so the person you call never sees your IP address. Calls may be a little slower. If the relay can't be reached, the call won't connect rather than reveal your address."
+        else "Off: calls connect directly when they can. That is fastest, but the other phone can see your IP address.",
+        on,
+    ) { on = it; prefs.hideIp = it }
+}
+
+@Composable
 fun CallsCard() {
     val context = LocalContext.current
     val prefs = remember { CallPrefs(context) }

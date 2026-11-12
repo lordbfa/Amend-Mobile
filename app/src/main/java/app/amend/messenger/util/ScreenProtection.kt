@@ -40,9 +40,10 @@ object ScreenProtection {
         context.findActivity()?.let { applyRecents(it) }
     }
 
-    /** Blank preview in Recent apps while protection is on (Android 13+). */
+    /** Blank preview in Recent apps while protection or the screen lock is on (Android 13+). */
     fun applyRecents(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= 33) activity.setRecentsScreenshotEnabled(!enabled)
+        // with the screen lock on, Recent apps mustn't show what's behind it either
+        if (Build.VERSION.SDK_INT >= 33) activity.setRecentsScreenshotEnabled(!(enabled || AppLock.enabled))
     }
 
     private val holders = HashMap<Activity, Int>()
