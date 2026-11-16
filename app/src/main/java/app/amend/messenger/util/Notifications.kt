@@ -354,8 +354,14 @@ object Notifications {
         )
         return NotificationCompat.Builder(context, CHANNEL_SOS_ACTIVE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(tr("🆘 SOS active — sharing live location"))
-            .setContentText(if (total > 0) tr("Reached $reached of $total contacts. Open amend to stop.") else tr("Open amend to see status or stop."))
+            .setContentTitle(if (SosService.running) tr("🆘 SOS active — sharing live location") else tr("🆘 SOS sent — tap to share live location"))
+            .setContentText(
+                when {
+                    !SosService.running -> tr("Your contacts got your last known location. Tap to open amend and share your live location.")
+                    total > 0 -> tr("Reached $reached of $total contacts. Open amend to stop.")
+                    else -> tr("Open amend to see status or stop.")
+                },
+            )
             .setColor(0xFFE53935.toInt())
             .setColorized(true)
             .setOngoing(true)

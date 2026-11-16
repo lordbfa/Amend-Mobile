@@ -59,6 +59,7 @@ class SosService : Service() {
     private fun goForeground() {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
         try {
+            running = true
             if (SosManager.isActive || !LiveShareManager.sharing) {
                 ServiceCompat.startForeground(
                     this, Notifications.SOS_ACTIVE_ID,
@@ -69,7 +70,10 @@ class SosService : Service() {
             }
         } catch (e: Exception) {
             // Location foreground service not allowed right now (no permission or background start).
-            // The SOS still runs with the last known location and periodic updates.
+            // Stop rather than leave a service that never went foreground; the SOS keeps sending
+            // the last known location, and live tracking starts when amend is opened.
+            running = false
+            stopSelf()
         }
     }
 
@@ -86,14 +90,25 @@ class SosService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         lm?.removeUpdates(listener)
         super.onDestroy()
     }
 
     companion object {
+        /** Whether live location is being tracked right now. */
+        @Volatile
+        var running = false
+            private set
+
         fun start(context: Context) {
             // Without location permission Android would stop the app for starting a location service.
             if (!SosManager.hasLocationPermission(context)) return
+            // amend only has location while it is in use (no "all the time" access), so live tracking
+            // can only start while amend is open. From the background (power-button SOS with amend
+            // closed) the alert goes out with the last known location, and tracking starts as soon
+            // as the SOS notification is tapped.
+            if (Build.VERSION.SDK_INT >= 29 && !AppVisibility.isForeground) return
             try {
                 ContextCompat.startForegroundService(context, Intent(context, SosService::class.java))
             } catch (e: Exception) {
