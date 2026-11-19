@@ -373,8 +373,8 @@ internal fun BackupCard(nsec: String) {
 }
 
 /**
- * "made with 💚 by Ahmed Bhuiyan Faisal" — a tappable credit that opens the maker's
- * website (getamend.app). The heart beats (lub-dub) and the pill gently glows to invite a tap.
+ * "made with 💚 by BFA Oy" — a tappable credit that opens the company's founder page
+ * (bfa.fi/founder). The heart beats (lub-dub) and the pill gently glows to invite a tap.
  */
 @Composable
 internal fun MadeWithLove(modifier: Modifier = Modifier) {
@@ -414,7 +414,7 @@ internal fun MadeWithLove(modifier: Modifier = Modifier) {
                 .background(primary.copy(alpha = 0.05f + 0.06f * glow))
                 .clickable {
                     runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://getamend.app")))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://bfa.fi/founder")))
                     }
                 }
                 .padding(horizontal = 16.dp, vertical = 9.dp),
@@ -423,7 +423,8 @@ internal fun MadeWithLove(modifier: Modifier = Modifier) {
         ) {
             Text("made with ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("💚", fontSize = 14.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
-            Text(" by Ahmed Bhuiyan Faisal", style = MaterialTheme.typography.bodySmall, color = primary)
+            Text(" by ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("BFA Oy", style = MaterialTheme.typography.bodySmall, color = primary, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
             Text(
                 " ↗",
                 style = MaterialTheme.typography.bodySmall,
