@@ -145,6 +145,8 @@ dependencies {
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     // the full emoji picker for reacting to a message with any emoji
     implementation("androidx.emoji2:emoji2-emojipicker:1.4.0")
+    // Ecosia search results open in a Custom Tab (the phone's browser engine)
+    implementation("androidx.browser:browser:1.8.0")
     // installs the Baseline Profile (ours + Compose's) so code is pre-compiled: no first-scroll jank
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")

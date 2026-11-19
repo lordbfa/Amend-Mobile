@@ -54,11 +54,6 @@ import app.amend.messenger.ui.components.MyceliumNetwork
 import app.amend.messenger.ui.components.rememberHaptics
 
 /** Independent reforestation charities. amend has no partnership with them; links open their own sites. */
-private val TREE_ORGS = listOf(
-    Triple("One Tree Planted", "Global reforestation charity", "https://onetreeplanted.org/"),
-    Triple("Eden: People+Planet", "Community-led forest restoration", "https://www.edenprojects.org/"),
-    Triple("Trees for the Future", "Agroforestry with farming communities", "https://trees.org/"),
-)
 
 @Composable
 fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
@@ -159,31 +154,6 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
             haptics.tick()
             repo.setCarbonAwareSync(it)
             (context.applicationContext as AmendApp).rescheduleBackground(repo)
-        }
-
-        // Real trees
-        Text("Plant a real tree 🌳", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 6.dp))
-        Text(
-            "Your forest in amend is virtual. If you'd like to plant real trees, these independent charities do it — donations go directly to them. amend isn't affiliated and receives nothing.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TREE_ORGS.forEach { (name, blurb, url) ->
-            GlassCard(Modifier.fillMaxWidth().clickable {
-                haptics.tap()
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            }) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF2BB673)), contentAlignment = Alignment.Center) {
-                        Text("🌱", fontSize = 20.sp)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(name, style = MaterialTheme.typography.titleMedium)
-                        Text(blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text("↗", style = MaterialTheme.typography.titleLarge)
-                }
-            }
         }
 
         Spacer(Modifier.height(24.dp))

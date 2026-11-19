@@ -425,6 +425,7 @@ private fun ChatsTab(repo: AmendRepository, openChat: (String) -> Unit, onScan: 
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
         item { ChatsHeader(repo, profiles[repo.me], eco.forest.currentProgress, eco.trees.size, onScan, onGrove = { openChat(GROVE_ROUTE) }, onInstant = { showInstant = true }) }
+        item { EcosiaSearchBar() }
         item { StoriesTray(repo) }
         // Friends who need help right now — always on top
         val activeSos = incomingSos.values.filter { it.active }.sortedByDescending { it.updatedAt }
