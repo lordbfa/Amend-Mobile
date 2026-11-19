@@ -393,7 +393,7 @@ object AchievementShare {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, "I unlocked ${a.emoji} ${a.title} (${t.label}) on amend — ${a.describe(t)}. Private chats that grow a forest 🌱 https://getamend.app")
+            putExtra(Intent.EXTRA_TEXT, "I unlocked ${a.emoji} ${a.title} (${t.label}) on amend — ${a.describe(t)}. Private chats that grow a forest 🌱 $PLAY_STORE_URL")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         runCatching { context.startActivity(Intent.createChooser(send, "Share achievement").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }

@@ -7,6 +7,8 @@ environmental heart. Every conversation grows a shared garden, your activity
 grows a personal forest, and the app is honest about its own carbon footprint
 — then helps you offset far more of it with small real-world actions.
 
+**[Get amend on Google Play](https://play.google.com/store/apps/details?id=app.amend.messenger)** · [getamend.app](https://getamend.app)
+
 amend is written from scratch. It is built on the open [Nostr](https://nostr.com)
 protocol, so there are no accounts, phone numbers or company servers.
 
@@ -44,7 +46,9 @@ protocol, so there are no accounts, phone numbers or company servers.
 
 ## Download
 
-Every push to `main` builds APKs with GitHub Actions:
+**amend is available on Google Play:** https://play.google.com/store/apps/details?id=app.amend.messenger
+
+For developers, every push to `main` also builds APKs with GitHub Actions:
 **Actions → Build amend → amend-apk**. `amend-debug.apk` is a test build (installs beside the
 real app as `app.amend.messenger.debug`). `amend-release.apk` is only there when the release
 key is configured (repository secrets `AMEND_RELEASE_KEYSTORE_B64`, `AMEND_RELEASE_STORE_PASSWORD`,

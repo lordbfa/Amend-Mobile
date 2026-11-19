@@ -142,7 +142,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                             haptics.tap()
                             val send = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "Chat with me privately on amend 🌱 — my ID: $npub")
+                                putExtra(Intent.EXTRA_TEXT, "Chat with me privately on amend 🌱 — my ID: $npub\nGet amend: $PLAY_STORE_URL")
                             }
                             context.startActivity(Intent.createChooser(send, "Share your amend ID"))
                         }, shape = RoundedCornerShape(14.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Text("Share") }

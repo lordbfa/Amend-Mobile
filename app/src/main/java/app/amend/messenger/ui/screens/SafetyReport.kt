@@ -56,6 +56,8 @@ import app.amend.messenger.util.AgeCheck
 import kotlinx.coroutines.launch
 
 const val TERMS_URL = "https://getamend.app/terms/"
+/** amend on Google Play, for invites and shares. */
+const val PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=app.amend.messenger"
 const val CHILD_SAFETY_URL = "https://getamend.app/child-safety/"
 private const val INHOPE_URL = "https://www.inhope.org/EN"
 
