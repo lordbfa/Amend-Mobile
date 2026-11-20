@@ -169,6 +169,12 @@ object SosManager {
             .firstOrNull { !it.isNullOrBlank() }?.uppercase() ?: ""
     }
 
+    /** Location "all the time": lets an SOS share live location while amend is closed or the phone is locked. */
+    fun hasBackgroundLocation(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 29 || androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     fun hasLocationPermission(context: Context) =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
