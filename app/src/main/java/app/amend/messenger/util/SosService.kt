@@ -104,11 +104,11 @@ class SosService : Service() {
         fun start(context: Context) {
             // Without location permission Android would stop the app for starting a location service.
             if (!SosManager.hasLocationPermission(context)) return
-            // From the background (power-button SOS with amend closed or the phone locked) live
-            // tracking needs location "all the time", which the person can allow for SOS in
-            // Settings → Safety · SOS. Without it the alert goes out with the last known location,
-            // and tracking starts as soon as amend is opened (the SOS alert does that).
-            if (Build.VERSION.SDK_INT >= 29 && !AppVisibility.isForeground && !SosManager.hasBackgroundLocation(context)) return
+            // amend only has location while it is in use (no "all the time" access), so live tracking
+            // can only start while amend is open. From the background (power-button SOS with amend
+            // closed) the alert goes out with the last known location, and tracking starts as soon
+            // as the SOS notification is tapped.
+            if (Build.VERSION.SDK_INT >= 29 && !AppVisibility.isForeground) return
             try {
                 ContextCompat.startForegroundService(context, Intent(context, SosService::class.java))
             } catch (e: Exception) {

@@ -79,12 +79,8 @@ fun SafetyCard(repo: AmendRepository) {
     }
     fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
     val hasLocation = remember(refresh) { SosManager.hasLocationPermission(context) }
-    val hasBackground = remember(refresh) { SosManager.hasBackgroundLocation(context) }
-    var bgDisclosure by remember { mutableStateOf(false) }
 
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
-    // Android 11+ shows its settings page with "Allow all the time"; older versions show a dialog
-    val backgroundLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
 
     var enabled by remember { mutableStateOf(prefs.enabled) }
     var volume by remember { mutableStateOf(prefs.volumeTrigger) }
@@ -104,8 +100,7 @@ fun SafetyCard(repo: AmendRepository) {
                     Text(
                         "In danger? Press a volume button 4 times while amend is open, the power button 4 times (even when locked), or tap the red SOS button 4 times. " +
                             "After a 5-second countdown your live location goes to your contacts until you stop it, and the emergency dialer opens. " +
-                            "To share live location when amend is closed or your phone is locked, allow location \"all the time\" below. " +
-                            "Without it your contacts get your last known location at once, and live location starts when amend opens.",
+                            "If amend is closed, your contacts get your last known location at once, and live location starts when you tap the SOS notification.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -121,16 +116,6 @@ fun SafetyCard(repo: AmendRepository) {
                     // Readiness checklist
                     CheckRow("Location access", hasLocation, "Allow") {
                         locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                    }
-                    if (Build.VERSION.SDK_INT >= 29) {
-                        CheckRow("Location \"all the time\" (live location in an SOS while amend is closed or the phone is locked)", hasBackground, "Allow") {
-                            if (!hasLocation) {
-                                locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                            } else {
-                                // Prominent disclosure first (Google Play policy), then Android's own choice
-                                bgDisclosure = true
-                            }
-                        }
                     }
                     CheckRow("Instant notifications on (needed for the power-button trigger)", eco.instantNotifications, null) {}
 
@@ -204,30 +189,6 @@ fun SafetyCard(repo: AmendRepository) {
         }
     }
 
-
-    if (bgDisclosure) {
-        AlertDialog(
-            onDismissRequest = { bgDisclosure = false },
-            icon = { Text("📍") },
-            title = { Text("Location in the background, for SOS only") },
-            text = {
-                Text(
-                    "amend uses your location in the background only for SOS: when you start an SOS while amend is closed or your phone is locked, " +
-                        "it shares your live location with the SOS contacts you chose, until you stop the SOS.\n\n" +
-                        "It is used for nothing else. Your location is never collected for ads or analytics, never sold, and only sent, end-to-end encrypted, to the contacts you picked.\n\n" +
-                        "On the next screen choose \"Allow all the time\".",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    bgDisclosure = false
-                    backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                }) { Text("Continue") }
-            },
-            dismissButton = { TextButton(onClick = { bgDisclosure = false }) { Text("Not now") } },
-        )
-    }
 }
 
 @Composable
