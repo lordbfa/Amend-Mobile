@@ -8,7 +8,8 @@ import java.util.Locale
  * design): a photo, a place and what's wrong — or a tree someone planted.
  *
  *   kind 30419 (addressable)  d = report id
- *     ["l", category, "amend.eco"]   trash · plastic · spit · water · air · trees_cut · other · planted
+ *     ["l", category, "amend.eco"]   trash · plastic · spit · bottles · drain · medical · debris · butts · snus ·
+ *                                    takeaway · scooter · dog · water · air · trees_cut · other · planted
  *                                    (the first is the main one; more "l" tags = other things seen there)
  *     ["g", geohash…]                 at 4, 5, 6 and 7 characters, so phones can ask for "reports near me"
  *     ["location", "lat,lon"]
@@ -22,6 +23,15 @@ enum class EcoCategory(val tag: String, val emoji: String, val label: String, va
     PLASTIC("plastic", "🧴", "Plastic waste", 0xFFEF6C00, "Bottles, bags, wrappers"),
     TRASH("trash", "🗑️", "Garbage dump", 0xFFE65100, "A pile or dumping spot"),
     SPIT("spit", "🔴", "Betel / paan spit", 0xFFC62828, "Spit stains on roads or walls"),
+    BOTTLES("bottles", "🍾", "Plastic bottles", 0xFF0277BD, "PET bottles and caps"),
+    DRAIN("drain", "🚧", "Blocked drain", 0xFF4E342E, "Rubbish blocking a drain or canal"),
+    MEDICAL("medical", "💉", "Medical waste", 0xFFAD1457, "Syringes, masks, medicine packs"),
+    DEBRIS("debris", "🧱", "Construction debris", 0xFF757575, "Bricks, sand, rubble on the road"),
+    BUTTS("butts", "🚬", "Cigarette butts", 0xFF8D6E63, "Butts on streets, stops and beaches"),
+    SNUS("snus", "⚪", "Snus / nicotine pouches", 0xFF90A4AE, "Used pouches on the ground"),
+    TAKEAWAY("takeaway", "🥡", "Takeaway packaging", 0xFFFF8F00, "Cups, boxes, wrappers"),
+    SCOOTER("scooter", "🛴", "Dumped scooter or bike", 0xFF00897B, "Blocking a path or thrown in water"),
+    DOG("dog", "🐕", "Dog waste", 0xFF6D4C41, "Bags or mess left behind"),
     WATER("water", "💧", "Water pollution", 0xFF1565C0, "Dirty canal, river or pond"),
     AIR("air", "🏭", "Air pollution / burning", 0xFF616161, "Smoke, burning rubbish"),
     TREES_CUT("trees_cut", "🪓", "Trees cut down", 0xFF6D4C41, "Felled or damaged trees"),

@@ -15,7 +15,7 @@ import kotlin.math.abs
  *
  * Seasons are country-aware, because they don't line up around the world. Finland runs
  * the four northern seasons; Bangladesh and other monsoon countries get a rainy season
- * instead of a spring. The live weather (Open-Meteo, already fetched for the eco alerts)
+ * instead of a spring. The live weather (MET Norway, already fetched for the eco alerts)
  * then overrides the default: if it is actually raining or snowing where you are, the
  * forest rains or gets covered in snow, whatever the month.
  */

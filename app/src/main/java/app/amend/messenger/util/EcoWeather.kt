@@ -25,8 +25,9 @@ import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 
 /**
- * Weather, air quality and river levels around you, from the free Open-Meteo
- * service (no account, no tracking; only your position rounded to ~1 km is sent).
+ * Weather around you, from MET Norway's free Locationforecast service (no account,
+ * no tracking; only your position rounded to ~1 km is sent). The country of that same
+ * place picks the eco map's local rubbish list.
  */
 object EcoWeather {
     private const val PREFS = "amend_weather"
@@ -53,7 +54,9 @@ object EcoWeather {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val lat = p.getString("lat", null)?.toDoubleOrNull() ?: return
         val lon = p.getString("lon", null)?.toDoubleOrNull() ?: return
-        _state.value = EcoAlerts.parse(lat, lon, p.getString("f", null), p.getString("a", null), p.getString("fl", null), p.getLong("at", 0), p.getString("place", "") ?: "")
+        // readings saved by older versions (another service) are dropped
+        val f = if (p.getString("src", null) == "met") p.getString("f", null) else null
+        _state.value = EcoAlerts.parseMet(lat, lon, f, p.getLong("at", 0), p.getString("place", "") ?: "", p.getString("country", "") ?: "")
     }
 
     /** Fetches fresh data (at most every 20 minutes unless [force]). Returns the reading, or null without location. */
@@ -64,16 +67,16 @@ object EcoWeather {
         val loc = lastLocation(context) ?: return@withContext last
         _loading.value = true
         try {
-            val f = get(EcoAlerts.forecastUrl(loc.latitude, loc.longitude))
-            val a = get(EcoAlerts.airUrl(loc.latitude, loc.longitude))
-            val fl = get(EcoAlerts.floodUrl(loc.latitude, loc.longitude))
-            if (f == null && a == null) return@withContext last
-            val place = placeName(context, loc) ?: last?.place ?: ""
+            val f = get(EcoAlerts.metUrl(loc.latitude, loc.longitude)) ?: return@withContext last
+            val (placeFound, countryFound) = placeName(context, loc)
+            val place = placeFound ?: last?.place ?: ""
+            val country = countryFound ?: last?.country?.ifBlank { null } ?: ""
             val now = System.currentTimeMillis()
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("lat", loc.latitude.toString()).putString("lon", loc.longitude.toString())
-                .putString("f", f).putString("a", a).putString("fl", fl).putLong("at", now).putString("place", place).apply()
-            val snap = EcoAlerts.parse(loc.latitude, loc.longitude, f, a, fl, now, place)
+                .putString("src", "met").putString("f", f).remove("a").remove("fl")
+                .putLong("at", now).putString("place", place).putString("country", country).apply()
+            val snap = EcoAlerts.parseMet(loc.latitude, loc.longitude, f, now, place, country)
             _state.value = snap
             snap
         } finally {
@@ -82,7 +85,8 @@ object EcoWeather {
     }
 
     private fun get(url: String): String? = runCatching {
-        http.newCall(Request.Builder().url(url).header("User-Agent", "amend-android").build()).execute().use { if (it.isSuccessful) it.body?.string() else null }
+        http.newCall(Request.Builder().url(url).header("User-Agent", EcoAlerts.metUserAgent(app.amend.messenger.BuildConfig.VERSION_NAME)).build())
+            .execute().use { if (it.isSuccessful) it.body?.string() else null }
     }.getOrNull()
 
     @SuppressLint("MissingPermission")
@@ -94,13 +98,22 @@ object EcoWeather {
             .maxByOrNull { it.time }
     }
 
+    /** Place name and ISO country code for the weather location, from the phone's geocoder. */
     @Suppress("DEPRECATION")
-    private fun placeName(context: Context, loc: Location): String? {
-        if (!android.location.Geocoder.isPresent()) return null
+    private fun placeName(context: Context, loc: Location): Pair<String?, String?> {
+        if (!android.location.Geocoder.isPresent()) return null to null
         return runCatching {
             val a = android.location.Geocoder(context).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
-            a?.locality ?: a?.subAdminArea ?: a?.adminArea
-        }.getOrNull()
+            (a?.locality ?: a?.subAdminArea ?: a?.adminArea) to a?.countryCode?.uppercase()
+        }.getOrDefault(null to null)
+    }
+
+    /** Country of the last weather location; falls back to the phone's network / SIM country. */
+    fun country(context: Context): String {
+        restore(context)
+        _state.value?.country?.takeIf { it.isNotBlank() }?.let { return it }
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("country", null)?.takeIf { it.isNotBlank() }
+            ?: SosManager.countryIso(context).uppercase()
     }
 
     /** Notifies about new warnings (once per alert per day). */

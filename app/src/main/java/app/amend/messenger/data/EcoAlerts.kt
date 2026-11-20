@@ -24,6 +24,8 @@ data class WeatherSnapshot(
     val pm25: Double? = null,
     val riverNow: Double? = null,
     val riverPeak7d: Double? = null,
+    /** ISO country code of the weather location (from the phone's geocoder), e.g. "BD", "FI". */
+    val country: String = "",
 )
 
 enum class AlertLevel { INFO, WARNING, DANGER }
@@ -31,7 +33,7 @@ enum class AlertLevel { INFO, WARNING, DANGER }
 data class EcoAlert(val id: String, val level: AlertLevel, val emoji: String, val title: String, val advice: String)
 
 /**
- * Turns Open-Meteo data into plain-language alerts. The thresholds follow common
+ * Turns MET Norway forecasts into plain-language alerts. The thresholds follow common
  * public-health guidance (heat index, US EPA AQI bands, WMO wind scale). They are
  * an early nudge, not an official warning service.
  */
@@ -112,54 +114,100 @@ object EcoAlerts {
         else "💚 I'm safe and okay$where. How are you?"
     }
 
-    // ------------------------------------------------------------------ Open-Meteo parsing
+    // ------------------------------------------------------------------ MET Norway parsing
 
+    /**
+     * Reads MET Norway's Locationforecast 2.0 "complete" JSON. Wind comes in m/s and is
+     * shown in km/h. "Feels like" uses MET's apparent_air_temperature when it is there,
+     * otherwise Steadman's apparent temperature (temperature, humidity, wind).
+     */
     @Suppress("UNCHECKED_CAST")
-    fun parse(lat: Double, lon: Double, forecast: String?, air: String?, flood: String?, now: Long, place: String = ""): WeatherSnapshot {
-        var w = WeatherSnapshot(lat, lon, place, now)
+    fun parseMet(lat: Double, lon: Double, json: String?, now: Long, place: String = "", country: String = ""): WeatherSnapshot {
+        var w = WeatherSnapshot(lat, lon, place, now, country = country)
         runCatching {
-            val f = Json.parseObject(forecast ?: "")
-            val cur = f["current"] as? Map<String, Any?> ?: emptyMap()
-            val daily = f["daily"] as? Map<String, Any?> ?: emptyMap()
-            fun d(key: String, i: Int) = ((daily[key] as? List<Any?>)?.getOrNull(i) as? Number)?.toDouble()
+            val root = Json.parseObject(json ?: "")
+            val props = root["properties"] as? Map<String, Any?> ?: return w
+            val series = (props["timeseries"] as? List<Any?>).orEmpty().mapNotNull { it as? Map<String, Any?> }
+            if (series.isEmpty()) return w
+            fun timeOf(e: Map<String, Any?>) = runCatching { java.time.Instant.parse(e["time"] as String).toEpochMilli() }.getOrNull()
+            fun data(e: Map<String, Any?>) = e["data"] as? Map<String, Any?> ?: emptyMap()
+            fun instant(e: Map<String, Any?>) = (data(e)["instant"] as? Map<String, Any?>)?.get("details") as? Map<String, Any?> ?: emptyMap()
+            fun period(e: Map<String, Any?>, key: String) = data(e)[key] as? Map<String, Any?>
+            fun num(m: Map<String, Any?>?, k: String) = (m?.get(k) as? Number)?.toDouble()
+            fun feels(d: Map<String, Any?>): Double? {
+                num(d, "apparent_air_temperature")?.let { return it }
+                val t = num(d, "air_temperature") ?: return null
+                val rh = num(d, "relative_humidity") ?: return t
+                val ws = num(d, "wind_speed") ?: 0.0
+                val e = rh / 100.0 * 6.105 * kotlin.math.exp(17.27 * t / (237.7 + t))
+                return t + 0.33 * e - 0.70 * ws - 4.00
+            }
+            // the entry closest to now
+            val first = series.minByOrNull { kotlin.math.abs((timeOf(it) ?: Long.MAX_VALUE / 2) - now) } ?: series.first()
+            val cur = instant(first)
+            val symbol = (period(first, "next_1_hours") ?: period(first, "next_6_hours"))
+                ?.let { (it["summary"] as? Map<String, Any?>)?.get("symbol_code") as? String }
+            val day = 24 * 3_600_000L
+            val next24 = series.filter { val t = timeOf(it); t != null && t >= now - 3_600_000 && t < now + day }
+            val next48 = series.filter { val t = timeOf(it); t != null && t >= now - 3_600_000 && t < now + 2 * day }
+            // precipitation per day without counting hours twice (hourly steps first, 6-hourly later)
+            fun rain(from: Long, to: Long): Double? {
+                var sum = 0.0
+                var covered = from
+                var any = false
+                series.forEach { e ->
+                    val t = timeOf(e) ?: return@forEach
+                    if (t < covered || t >= to) return@forEach
+                    val one = num(period(e, "next_1_hours")?.get("details") as? Map<String, Any?>, "precipitation_amount")
+                    val six = num(period(e, "next_6_hours")?.get("details") as? Map<String, Any?>, "precipitation_amount")
+                    when {
+                        one != null -> { sum += one; covered = t + 3_600_000; any = true }
+                        six != null -> { sum += six; covered = t + 6 * 3_600_000; any = true }
+                    }
+                }
+                return if (any) sum else null
+            }
+            val gusts = next48.mapNotNull { num(instant(it), "wind_speed_of_gust") }
             w = w.copy(
-                tempC = (cur["temperature_2m"] as? Number)?.toDouble(),
-                feelsLikeC = (cur["apparent_temperature"] as? Number)?.toDouble(),
-                humidity = (cur["relative_humidity_2m"] as? Number)?.toDouble(),
-                windKmh = (cur["wind_speed_10m"] as? Number)?.toDouble(),
-                gustKmh = (cur["wind_gusts_10m"] as? Number)?.toDouble(),
-                weatherCode = (cur["weather_code"] as? Number)?.toInt(),
-                todayMaxFeelsC = d("apparent_temperature_max", 0),
-                rainTodayMm = d("precipitation_sum", 0),
-                rainTomorrowMm = d("precipitation_sum", 1),
-                maxGustKmh = listOfNotNull(d("wind_gusts_10m_max", 0), d("wind_gusts_10m_max", 1)).maxOrNull(),
-                uvMax = d("uv_index_max", 0),
+                tempC = num(cur, "air_temperature"),
+                feelsLikeC = feels(cur),
+                humidity = num(cur, "relative_humidity"),
+                windKmh = num(cur, "wind_speed")?.times(3.6),
+                gustKmh = num(cur, "wind_speed_of_gust")?.times(3.6),
+                weatherCode = symbolToCode(symbol),
+                todayMaxFeelsC = next24.mapNotNull { feels(instant(it)) }.maxOrNull(),
+                rainTodayMm = rain(now, now + day),
+                rainTomorrowMm = rain(now + day, now + 2 * day),
+                maxGustKmh = gusts.maxOrNull()?.times(3.6),
+                uvMax = next24.mapNotNull { num(instant(it), "ultraviolet_index_clear_sky") }.maxOrNull(),
             )
-        }
-        runCatching {
-            val a = Json.parseObject(air ?: "")
-            val cur = a["current"] as? Map<String, Any?> ?: emptyMap()
-            w = w.copy(usAqi = (cur["us_aqi"] as? Number)?.toInt(), pm25 = (cur["pm2_5"] as? Number)?.toDouble())
-        }
-        runCatching {
-            val fl = Json.parseObject(flood ?: "")
-            val daily = fl["daily"] as? Map<String, Any?> ?: emptyMap()
-            val q = (daily["river_discharge"] as? List<Any?>).orEmpty().mapNotNull { (it as? Number)?.toDouble() }
-            if (q.isNotEmpty()) w = w.copy(riverNow = q.first(), riverPeak7d = q.take(7).maxOrNull())
         }
         return w
     }
 
-    fun forecastUrl(lat: Double, lon: Double) =
-        "https://api.open-meteo.com/v1/forecast?latitude=${lat.f()}&longitude=${lon.f()}" +
-            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m" +
-            "&daily=apparent_temperature_max,precipitation_sum,wind_gusts_10m_max,uv_index_max&forecast_days=2&timezone=auto"
+    /** MET Norway symbol_code (e.g. "lightrainshowers_day") → the WMO-style code [describe] understands. */
+    fun symbolToCode(symbol: String?): Int? {
+        val s = symbol?.substringBefore('_') ?: return null
+        return when {
+            s == "clearsky" -> 0
+            s == "fair" || s == "partlycloudy" -> 2
+            s == "cloudy" -> 3
+            s == "fog" -> 45
+            "thunder" in s -> 95
+            "snow" in s || "sleet" in s -> 73
+            s.startsWith("heavyrain") -> 65
+            "drizzle" in s || s.startsWith("lightrain") -> 53
+            "rain" in s -> 63
+            else -> null
+        }
+    }
 
-    fun airUrl(lat: Double, lon: Double) =
-        "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.f()}&longitude=${lon.f()}&current=us_aqi,pm2_5,pm10"
+    /** MET Norway asks every app to identify itself with a contact. */
+    fun metUserAgent(version: String) = "amend/$version (https://getamend.app; lordbfa@getamend.app)"
 
-    fun floodUrl(lat: Double, lon: Double) =
-        "https://flood-api.open-meteo.com/v1/flood?latitude=${lat.f()}&longitude=${lon.f()}&daily=river_discharge&forecast_days=8"
+    /** Locationforecast 2.0, complete set (gusts, UV, humidity). */
+    fun metUrl(lat: Double, lon: Double) =
+        "https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=${lat.f()}&lon=${lon.f()}"
 
     /** Rounded to ~1 km: enough for weather, and it doesn't send your exact position. */
     private fun Double.f() = String.format(Locale.US, "%.2f", this)

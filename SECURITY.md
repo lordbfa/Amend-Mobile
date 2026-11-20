@@ -45,7 +45,7 @@ We won't take legal action against research done in good faith that:
 - The website plugins in `site/`.
 - The build and release workflows in `.github/`.
 
-Third-party services amend talks to (Nostr relays, Blossom file servers, Cloudflare, Open-Meteo,
+Third-party services amend talks to (Nostr relays, Blossom file servers, Cloudflare, MET Norway,
 OpenStreetMap) are run by other people. Report problems in them to their operators. If a flaw
 in one of them puts amend users at risk, tell us too.
 

@@ -54,7 +54,7 @@
     <li><strong>SOS:</strong> your location is sent, encrypted, only to the emergency contacts you chose, and only while SOS is active.</li>
     <li><strong>Live location:</strong> only when you start it, only to that chat, and it stops automatically at the time you choose.</li>
     <li><strong>Nearby SOS</strong> (optional, off by default): an approximate location (about 100 m) is sent to amend phones close by over Bluetooth/Wi-Fi, signed with a one-time key that is not linked to your identity.</li>
-    <li><strong>Weather:</strong> your location is rounded to about 1 km and sent to Open-Meteo.</li>
+    <li><strong>Weather:</strong> your location is rounded to about 1 km and sent to MET Norway.</li>
     <li><strong>Eco map:</strong> a location is published only for spots you choose to post.</li>
   </ul>
   <p>amend uses a foreground service for location only while SOS or live location is active, and shows a notification while it runs.</p>
@@ -67,7 +67,7 @@
   <p>Translating a message and transcribing a voice note happen entirely on your phone (Google ML Kit and Android's on-device speech recogniser). The first time you translate a language, its model is downloaded once from Google. Your messages and voice notes are never uploaded.</p>
 
   <h2>8. Services amend connects to</h2>
-  <p>Nostr relays (messages), Blossom servers (encrypted files), Cloudflare TURN (call relay), Google STUN (finding a call path), Open-Meteo (weather), OpenStreetMap (map tiles), Google Nearby Connections (offline mesh, on-device), Google ML Kit model downloads (translation), and the website behind a name@domain address when you look one up.
+  <p>Nostr relays (messages), Blossom servers (encrypted files), Cloudflare TURN (call relay), Google STUN (finding a call path), MET Norway (weather), OpenStreetMap (map tiles), Google Nearby Connections (offline mesh, on-device), Google ML Kit model downloads (translation), and the website behind a name@domain address when you look one up.
   Like any website, these services can see your IP address. If you enable Tor in amend (with the Orbot app running), all traffic except calls is routed through Tor instead.</p>
 
   <h2>9. Permissions</h2>

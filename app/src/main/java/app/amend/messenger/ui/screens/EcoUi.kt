@@ -207,7 +207,7 @@ fun WeatherCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Weather & air near you", style = MaterialTheme.typography.titleMedium)
+                    Text("Weather near you", style = MaterialTheme.typography.titleMedium)
                     snap?.place?.takeIf { it.isNotBlank() }?.let { Text("📍 $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -215,7 +215,7 @@ fun WeatherCard(repo: AmendRepository) {
             }
             if (!hasPermission) {
                 Text(
-                    "Allow location to get heatwave, heavy-rain, river-flood, storm and air-quality alerts for where you are. Only your area (rounded to ~1 km) is sent to Open-Meteo.",
+                    "Allow location to get heatwave, heavy-rain, storm and cold alerts for where you are. Only your area (rounded to ~1 km) is sent to MET Norway.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Button(onClick = { launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) }, shape = RoundedCornerShape(16.dp)) {
@@ -262,7 +262,7 @@ fun WeatherCard(repo: AmendRepository) {
                 Switch(checked = alertsOn, onCheckedChange = { alertsOn = it; EcoWeather.setAlertsOn(context, it) })
             }
             Text(
-                "Data: Open-Meteo.com (CC BY 4.0). An early nudge — always follow official warnings (e.g. BMD, FFWC, FMI).",
+                "Weather data: MET Norway (CC BY 4.0). An early nudge — always follow official warnings (e.g. BMD, FFWC, FMI).",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -586,6 +586,11 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
         if (r.also.isNotEmpty()) {
             Text("Also seen: " + r.also.joinToString(" · ") { it.label }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        val tipContext = LocalContext.current
+        val tip = remember(r.category) { app.amend.messenger.data.EcoRegions.forCountry(EcoWeather.country(tipContext)).tipFor(r.category) }
+        if (tip != null && r.category.isProblem && !r.cleaned) {
+            Text(tip, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
         if (r.imageUrl != null) RemoteImage(r.imageUrl, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)))
         if (r.note.isNotBlank()) Text(r.note, style = MaterialTheme.typography.bodyMedium)
         Text(
@@ -652,6 +657,8 @@ private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center:
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
     val planting = initial == EcoCategory.PLANTED
+    // the local rubbish list, from the country of the weather location
+    val region = remember { app.amend.messenger.data.EcoRegions.forCountry(EcoWeather.country(context)) }
     // problems picked, in the order they were ticked (the first is the main one)
     var picked by remember { mutableStateOf(emptyList<EcoCategory>()) }
     var step by remember { mutableStateOf(if (planting) 2 else 1) }
@@ -726,7 +733,7 @@ private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center:
                             "Tick everything you see here. The first one you tick is the main problem.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        EcoCategory.problems.forEach { c ->
+                        region.items.map { it.category }.forEach { c ->
                             val on = c in picked
                             val main = picked.firstOrNull() == c
                             Row(
@@ -740,7 +747,8 @@ private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center:
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(c.label, style = MaterialTheme.typography.titleSmall)
-                                    if (c.hint.isNotBlank()) Text(c.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val hint = region.hintFor(c)
+                                    if (hint.isNotBlank()) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (main) Text("Main", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp))
                                 Checkbox(checked = on, onCheckedChange = { haptics.tick(); picked = if (on) picked - c else picked + c })
@@ -768,6 +776,12 @@ private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center:
                     else -> {
                         if (!planting && picked.isNotEmpty()) {
                             Text(picked.joinToString(" · ") { it.label }, style = MaterialTheme.typography.titleSmall)
+                            region.tipFor(picked.first())?.let { tip ->
+                                Text(
+                                    tip, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)).padding(10.dp),
+                                )
+                            }
                         }
                         OutlinedTextField(
                             note, { if (it.length <= 300) note = it }, modifier = Modifier.fillMaxWidth(), minLines = 2,
