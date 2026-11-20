@@ -120,10 +120,10 @@ fun CheckInCard() {
     LaunchedEffect(deadline) { while (deadline != null) { now = System.currentTimeMillis(); delay(15_000) } }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Safety check-in 🛡️", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Walking home late, meeting someone new, hiking alone? Set a timer. If you don't tap “I'm safe” in time, amend starts your SOS and your SOS contacts get your live location. A reminder comes 5 minutes before.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Safety check-in",
+                info = "Walking home late, meeting someone new, hiking alone? Set a timer. If you don't tap “I'm safe” in time, amend starts your SOS and your SOS contacts get your live location. A reminder comes 5 minutes before.",
+                style = MaterialTheme.typography.titleMedium,
             )
             val d = deadline
             if (d != null) {
@@ -156,10 +156,10 @@ fun FakeCallCard() {
     val scheduled by FakeCall.scheduledAt.collectAsStateWithLifecycle()
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Fake call 📞", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Need a polite way out? Your phone will ring with a normal-looking call from the name below. Nothing is sent to anyone.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Fake call",
+                info = "Need a polite way out? Your phone will ring with a normal-looking call from the name below. Nothing is sent to anyone.",
+                style = MaterialTheme.typography.titleMedium,
             )
             OutlinedTextField(
                 value = name, onValueChange = { name = it.take(40); FakeCall.setCallerName(context, name) },
@@ -191,10 +191,10 @@ fun NearbySosCard() {
     var alerts by remember { mutableStateOf(prefs.nearbyAlerts) }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("SOS without internet 📡", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "With the offline mesh on, your SOS hops phone to phone to your contacts even when there's no network — floods, cyclones, shutdowns.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "SOS without internet 📡",
+                info = "With the offline mesh on, your SOS hops phone to phone to your contacts even when there's no network — floods, cyclones, shutdowns.",
+                style = MaterialTheme.typography.titleMedium,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

@@ -63,8 +63,7 @@ private fun SoundPicker(kind: SoundKind, title: String, subtitle: String) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                app.amend.messenger.ui.components.InfoTitle(title, info = subtitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
             options.forEachIndexed { i, option ->
                 SoundRow(option, selected == option.id) {

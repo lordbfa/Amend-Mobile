@@ -150,6 +150,9 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                 }
             }
         }
+        // all achievements live here, on your own page
+        AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.FOREST)
+        AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.IMPACT)
         InstantArchiveCard(repo)
         Text(
             "Friends scan your code or paste your ID to start a private chat.",
@@ -269,10 +272,10 @@ internal fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit)
     val haptics = rememberHaptics()
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("Relays 🍄", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Independent servers that pass on your encrypted messages. Use several so no single one matters. You can run your own.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Relays",
+                info = "Independent servers that pass on your encrypted messages. Use several so no single one matters. You can run your own.",
+                style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(8.dp))
             relays.forEach { url ->
@@ -305,10 +308,10 @@ internal fun BackupCard(nsec: String) {
     app.amend.messenger.util.SecureScreen(always = true)
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("Backup key 🔑", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "This is the only way to restore your identity. Anyone with it can read your messages — never share it.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Backup key",
+                info = "This is the only way to restore your identity. Anyone with it can read your messages — never share it.",
+                style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(10.dp))
             Box(
@@ -335,7 +338,7 @@ internal fun BackupCard(nsec: String) {
                     haptics.success()
                 }) { Text(if (copied) "Copied — store it somewhere safe and clear your clipboard" else "Copy backup key") }
             }
-            TextButton(onClick = { haptics.tap(); linking = true }) { Text("📱 Link another phone") }
+            TextButton(onClick = { haptics.tap(); linking = true }) { Text("Link another phone") }
         }
     }
     if (linking) {
@@ -459,7 +462,7 @@ internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Notifications 🔔", style = MaterialTheme.typography.titleMedium)
+            Text("Notifications", style = MaterialTheme.typography.titleMedium)
             if (!enabled) {
                 Text(
                     "Notifications are turned off for amend, so new messages can't appear in your notification panel.",
@@ -474,13 +477,13 @@ internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Instant notifications", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        if (eco.instantNotifications)
+                    app.amend.messenger.ui.components.InfoTitle(
+                        "Instant notifications",
+                        info = if (eco.instantNotifications)
                             "amend keeps one small connection open so messages arrive right away — no Google servers involved. A quiet \"listening\" notification shows while it runs; you can hide it in system settings."
                         else
                             "amend checks for messages every 15–60 minutes instead. Uses less battery and data, but notifications can be late.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleSmall,
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -528,11 +531,11 @@ private fun LiteMotionCard() {
     GlassCard(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Lite animations", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (lowEnd) "Recommended on this phone: keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer."
+                app.amend.messenger.ui.components.InfoTitle(
+                    "Lite animations",
+                    info = if (lowEnd) "Recommended on this phone: keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer."
                     else "Keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleMedium,
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -554,10 +557,10 @@ private fun ThemeCard() {
     val current = app.amend.messenger.ui.theme.AppThemes.current
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("Theme", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Pick a colour mood — the layout stays the same. Perfect for festivals.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Theme",
+                info = "Pick a colour mood — the layout stays the same. Perfect for festivals.",
+                style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(14.dp))
             FlowRow(
@@ -608,11 +611,11 @@ internal fun IconStyleCard() {
     GlassCard(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Icon follows the sun ☀️🌙", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "amend's icon is white by day, turns light grey before sunset, grey at dusk and dark at night — timed to sunrise and sunset where you are. " +
+                app.amend.messenger.ui.components.InfoTitle(
+                    "Icon follows the sun",
+                    info = "amend's icon is white by day, turns light grey before sunset, grey at dusk and dark at night — timed to sunrise and sunset where you are. " +
                         "Some launchers briefly refresh the home-screen icon when it changes.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleMedium,
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -632,11 +635,11 @@ internal fun ReadReceiptsCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Read receipts", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Your little message tree turns 🌱 green when sent, 🌳 deep green when it reaches your friend's phone, and 🌸 blue with blossoms when they've seen it. " +
+                    app.amend.messenger.ui.components.InfoTitle(
+                        "Read receipts",
+                        info = "Your little message tree turns 🌱 green when sent, 🌳 deep green when it reaches your friend's phone, and 🌸 blue with blossoms when they've seen it. " +
                             if (eco.readReceipts) "Friends also see when you've read theirs." else "Off: friends won't see when you read their messages.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleSmall,
                     )
                 }
                 Spacer(Modifier.width(12.dp))

@@ -48,7 +48,7 @@ fun MeshCard() {
                 Radar(ui.running, ui.peers)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Offline mesh 📡", style = MaterialTheme.typography.titleMedium)
+                    Text("Offline mesh", style = MaterialTheme.typography.titleMedium)
                     Text(
                         when {
                             !ui.enabled -> "Off"

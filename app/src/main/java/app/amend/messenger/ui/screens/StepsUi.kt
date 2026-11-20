@@ -121,7 +121,7 @@ fun StepsCard(onOpenReports: () -> Unit) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("👣 Walking", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text("Walking", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { haptics.tap(); onOpenReports() }) {
                     Text(if (ui.unreadReports > 0) "Reports · ${ui.unreadReports} new" else "Reports")
                 }
@@ -351,7 +351,7 @@ fun WalkingReportsScreen(onBack: () -> Unit) {
             if (ui.reports.isEmpty()) {
                 item {
                     ReportBubble(
-                        "👋 Hi! I'm counting your steps quietly on this phone. At the end of the month I'll send you a full walking report here.",
+                        "Hi! I'm counting your steps quietly on this phone. At the end of the month I'll send you a full walking report here.",
                         null, null, dark,
                     )
                 }

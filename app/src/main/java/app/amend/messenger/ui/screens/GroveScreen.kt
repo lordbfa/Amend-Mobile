@@ -78,8 +78,7 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back") }
             Column(Modifier.weight(1f)) {
-                Text("🌿 The Grove", style = MaterialTheme.typography.titleLarge)
-                Text("Public notes from you and your contacts", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                app.amend.messenger.ui.components.InfoTitle("The Grove", info = "Public notes from you and your contacts", style = MaterialTheme.typography.titleLarge)
             }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -97,7 +96,7 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                status ?: "🌍 Public — anyone on Nostr can read this. Chats stay private.",
+                                status ?: "Public — anyone on Nostr can read this. Chats stay private.",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                             )

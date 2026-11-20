@@ -239,7 +239,7 @@ fun InstantBubble(repo: AmendRepository, message: ChatMessage, textColor: Color)
     val haptics = rememberHaptics()
     if (message.fromMe) {
         Column {
-            Text("📸 Instant", color = textColor, style = MaterialTheme.typography.titleSmall)
+            Text("Instant", color = textColor, style = MaterialTheme.typography.titleSmall)
             Text(
                 when {
                     message.cardId == AmendRepository.INSTANT_OPENED_MARK -> "Opened"
@@ -334,11 +334,11 @@ fun InstantArchiveCard(repo: AmendRepository) {
             Text("📸", fontSize = 26.sp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Your Instants", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (archive.isEmpty()) "Instants you send are kept here, only on this phone, for a year."
+                app.amend.messenger.ui.components.InfoTitle(
+                    "Your Instants",
+                    info = if (archive.isEmpty()) "Instants you send are kept here, only on this phone, for a year."
                     else "${archive.size} kept privately on this phone",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleMedium,
                 )
             }
             Text("›", style = MaterialTheme.typography.titleLarge)

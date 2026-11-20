@@ -233,7 +233,7 @@ private fun InstantsAudienceCard(repo: AmendRepository) {
     var edit by remember { mutableStateOf(false) }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("📸 Who sees your Instants", style = MaterialTheme.typography.titleMedium)
+            Text("Who sees your Instants", style = MaterialTheme.typography.titleMedium)
             listOf(true to "Everyone in my chats", false to "Only people I choose (${repo.closeFriends.size})").forEach { (v, label) ->
                 Row(
                     Modifier.fillMaxWidth().clickable { all = v; repo.setInstantsToAll(v) },
@@ -290,11 +290,11 @@ private fun ScreenLockCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Screen lock", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (on) "On: amend asks for your fingerprint, face or phone PIN before anyone can see your chats. Recent apps shows a blank preview."
+                    app.amend.messenger.ui.components.InfoTitle(
+                        "Screen lock",
+                        info = if (on) "On: amend asks for your fingerprint, face or phone PIN before anyone can see your chats. Recent apps shows a blank preview."
                         else "Off: anyone holding your unlocked phone can open amend.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -342,10 +342,10 @@ private fun NotificationPreviewCard() {
     var mode by remember { mutableStateOf(app.amend.messenger.util.Notifications.preview(context)) }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Notification content", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "What other people and other apps can see in your notifications. On the lock screen, the text is always hidden.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Notification content",
+                info = "What other people and other apps can see in your notifications. On the lock screen, the text is always hidden.",
+                style = MaterialTheme.typography.titleMedium,
             )
             listOf(
                 app.amend.messenger.util.Notifications.PREVIEW_FULL to "Name and message",
@@ -402,15 +402,15 @@ private fun BurnerCard(app: AmendApp) {
     val expires = remember { app.burnerExpiresAt() }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("🔥 Burner identity", style = MaterialTheme.typography.titleMedium)
-            Text(
-                when {
+            app.amend.messenger.ui.components.InfoTitle(
+                "Burner identity",
+                info = when {
                     expires > 0 -> "You're using a burner. It deletes itself " +
                         java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(expires * 1000)) + "."
                     app.isBurner() -> "You're using a burner identity."
                     else -> "Start over with a brand-new identity nobody can link to this one — for a trip, a sale or a one-off chat."
                 },
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
             )
             OutlinedButton(onClick = { ask = true }, shape = RoundedCornerShape(16.dp)) { Text("Start a burner identity") }
         }
@@ -478,7 +478,7 @@ private fun TextCard(vararg blocks: Pair<String?, String>) {
 @Composable
 private fun AboutPage() {
     TextCard(
-        "🌱 amend" to "A private messenger that helps you and the people you talk to take better care of the planet — and of each other.",
+        "amend" to "A private messenger that helps you and the people you talk to take better care of the planet — and of each other.",
         "Private by design" to "No phone number, no email. Messages are end-to-end encrypted and travel through independent Nostr relays, so no single company holds your conversations.",
         "Kinder to the planet" to "amend measures its own data footprint, grows a forest from mindful use, and turns real actions — walking, clean-ups, planting trees — into points.",
         "Safe when it matters" to "SOS with live location, weather and air alerts, and an offline mesh that keeps messages moving when the internet goes down.",
@@ -676,10 +676,10 @@ private fun TorCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Route through Tor (Orbot) 🧅", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Relays, file servers and the weather service see a Tor address instead of yours. Slower, but nobody can link your messages to your IP. If Orbot isn't running, amend stays offline rather than connecting without Tor. Calls still connect directly.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    app.amend.messenger.ui.components.InfoTitle(
+                        "Route through Tor (Orbot)",
+                        info = "Relays, file servers and the weather service see a Tor address instead of yours. Slower, but nobody can link your messages to your IP. If Orbot isn't running, amend stays offline rather than connecting without Tor. Calls still connect directly.",
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -705,7 +705,7 @@ private fun TorCard(repo: AmendRepository) {
                             }
                         }, shape = RoundedCornerShape(16.dp)) { Text("Get Orbot") }
                     }
-                    running == true -> Text("✅ Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    running == true -> Text("Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                     else -> {
                         Text("Orbot isn't running yet — amend is waiting offline.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                         OutlinedButton(onClick = {

@@ -8,7 +8,8 @@ import java.util.Locale
  * design): a photo, a place and what's wrong — or a tree someone planted.
  *
  *   kind 30419 (addressable)  d = report id
- *     ["l", category, "amend.eco"]   trash · water · air · trees_cut · other · planted
+ *     ["l", category, "amend.eco"]   trash · plastic · spit · water · air · trees_cut · other · planted
+ *                                    (the first is the main one; more "l" tags = other things seen there)
  *     ["g", geohash…]                 at 4, 5, 6 and 7 characters, so phones can ask for "reports near me"
  *     ["location", "lat,lon"]
  *     ["image", url] + ["imeta", "url …", "m image/jpeg", "x sha256"]
@@ -17,12 +18,14 @@ import java.util.Locale
  *
  * Others react with kind 7: "✅" = "I checked, it's real", "🧹" = "it's been cleaned up".
  */
-enum class EcoCategory(val tag: String, val emoji: String, val label: String, val color: Long) {
-    TRASH("trash", "🗑️", "Rubbish dump", 0xFFE65100),
-    WATER("water", "💧", "Water pollution", 0xFF1565C0),
-    AIR("air", "🏭", "Air pollution / burning", 0xFF616161),
-    TREES_CUT("trees_cut", "🪓", "Trees cut down", 0xFF6D4C41),
-    OTHER("other", "⚠️", "Other problem", 0xFFF9A825),
+enum class EcoCategory(val tag: String, val emoji: String, val label: String, val color: Long, val hint: String = "") {
+    PLASTIC("plastic", "🧴", "Plastic waste", 0xFFEF6C00, "Bottles, bags, wrappers"),
+    TRASH("trash", "🗑️", "Garbage dump", 0xFFE65100, "A pile or dumping spot"),
+    SPIT("spit", "🔴", "Betel / paan spit", 0xFFC62828, "Spit stains on roads or walls"),
+    WATER("water", "💧", "Water pollution", 0xFF1565C0, "Dirty canal, river or pond"),
+    AIR("air", "🏭", "Air pollution / burning", 0xFF616161, "Smoke, burning rubbish"),
+    TREES_CUT("trees_cut", "🪓", "Trees cut down", 0xFF6D4C41, "Felled or damaged trees"),
+    OTHER("other", "⚠️", "Other problem", 0xFFF9A825, "Something else"),
     PLANTED("planted", "🌳", "Tree planted", 0xFF2E7D32);
 
     val isProblem: Boolean get() = this != PLANTED
@@ -44,6 +47,8 @@ data class EcoReport(
     val imageUrl: String?,
     val createdAt: Long,
     val authorCleaned: Boolean,
+    /** Other things the reporter saw at the same place. */
+    val also: List<EcoCategory> = emptyList(),
     val verifiedBy: Set<String> = emptySet(),
     val cleanedBy: Set<String> = emptySet(),
 ) {
@@ -65,13 +70,17 @@ object EcoReports {
     const val CLEANED = "🧹"
     const val CONFIRMATIONS = 2
 
-    fun build(id: String, category: EcoCategory, note: String, lat: Double, lon: Double, imageUrl: String?, imageSha: String?, cleaned: Boolean = false): Pair<String, List<List<String>>> {
+    fun build(
+        id: String, category: EcoCategory, note: String, lat: Double, lon: Double, imageUrl: String?, imageSha: String?,
+        cleaned: Boolean = false, also: List<EcoCategory> = emptyList(),
+    ): Pair<String, List<List<String>>> {
         val gh = Geohash.encode(lat, lon, 7)
         val tags = buildList {
             add(listOf("d", id))
             add(listOf("t", "amend-eco"))
             add(listOf("L", "amend.eco"))
             add(listOf("l", category.tag, "amend.eco"))
+            also.filter { it != category && it.isProblem }.distinct().forEach { add(listOf("l", it.tag, "amend.eco")) }
             listOf(4, 5, 6, 7).forEach { add(listOf("g", gh.take(it))) }
             add(listOf("location", String.format(Locale.US, "%.5f,%.5f", lat, lon)))
             if (imageUrl != null) {
@@ -91,11 +100,14 @@ object EcoReports {
         val (lat, lon) = if (loc != null && loc.size == 2) loc[0] to loc[1]
         else ev.tagValues("g").maxByOrNull { it.length }?.let { Geohash.decode(it) } ?: return null
         if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
-        val cat = ev.tags.firstOrNull { it.size >= 2 && it[0] == "l" && (it.size < 3 || it[2] == "amend.eco") }?.get(1)
+        val cats = ev.tags.filter { it.size >= 2 && it[0] == "l" && (it.size < 3 || it[2] == "amend.eco") }.map { it[1] }
+        val cat = cats.firstOrNull()
+        val main = EcoCategory.of(cat)
+        val also = cats.drop(1).map { EcoCategory.of(it) }.filter { it.isProblem && it != main }.distinct().take(6)
         return EcoReport(
-            id = d, eventId = ev.id, author = ev.pubkey, category = EcoCategory.of(cat), note = ev.content.take(500),
+            id = d, eventId = ev.id, author = ev.pubkey, category = main, note = ev.content.take(500),
             lat = lat, lon = lon, imageUrl = ev.firstTag("image")?.takeIf { it.startsWith("https://") },
-            createdAt = ev.createdAt, authorCleaned = ev.firstTag("status") == "cleaned",
+            createdAt = ev.createdAt, authorCleaned = ev.firstTag("status") == "cleaned", also = if (main.isProblem) also else emptyList(),
         )
     }
 

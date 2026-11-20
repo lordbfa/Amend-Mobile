@@ -96,12 +96,12 @@ fun SafetyCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Safety · SOS 🆘", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "In danger? Press a volume button 4 times while amend is open, the power button 4 times (even when locked), or tap the red SOS button 4 times. " +
+                    app.amend.messenger.ui.components.InfoTitle(
+                        "Safety · SOS 🆘",
+                        info = "In danger? Press a volume button 4 times while amend is open, the power button 4 times (even when locked), or tap the red SOS button 4 times. " +
                             "After a 5-second countdown your live location goes to your contacts until you stop it, and the emergency dialer opens. " +
                             "If amend is closed, your contacts get your last known location at once, and live location starts when you tap the SOS notification.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Spacer(Modifier.width(8.dp))

@@ -957,19 +957,19 @@ fun CallsCard() {
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Calls 📞", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Calls go straight from phone to phone, end-to-end encrypted. Between countries or on mobile data " +
+            app.amend.messenger.ui.components.InfoTitle(
+                "Calls",
+                info = "Calls go straight from phone to phone, end-to-end encrypted. Between countries or on mobile data " +
                     "(carriers like Grameenphone, Robi or Banglalink share one address among many users) the phones often can't reach each other directly. " +
                     "A TURN server relays the encrypted call — it can't listen in. Only one of you needs one.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
             )
-            Text("amend TURN service (Cloudflare)", style = MaterialTheme.typography.titleSmall)
-            Text(
-                if (CallPrefs.DEFAULT_TURN_SERVICE.isNotBlank() && service == CallPrefs.DEFAULT_TURN_SERVICE)
+            app.amend.messenger.ui.components.InfoTitle(
+                "amend TURN service (Cloudflare)",
+                info = if (CallPrefs.DEFAULT_TURN_SERVICE.isNotBlank() && service == CallPrefs.DEFAULT_TURN_SERVICE)
                     "Built in ✓ — calls use Cloudflare's global TURN network automatically. Nothing to set up."
                 else "The address of an amend TURN worker (https://…workers.dev). Leave empty to use one of the options below.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleSmall,
             )
             OutlinedTextField(service, { service = it; ok = null }, label = { Text("TURN service address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Text("Or: free Metered TURN (20 GB/month)", style = MaterialTheme.typography.titleSmall)

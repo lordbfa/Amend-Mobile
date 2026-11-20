@@ -185,7 +185,7 @@ fun AchievementsCard(repo: AmendRepository, tab: AchievementTab) {
         Column(Modifier.padding(vertical = 14.dp)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("🏆 Achievements", style = MaterialTheme.typography.titleMedium)
+                    Text(if (tab == AchievementTab.FOREST) "Forest achievements" else "Impact achievements", style = MaterialTheme.typography.titleMedium)
                     Text("$unlockedCount of $total unlocked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = { showAll = true }) { Text("See all") }

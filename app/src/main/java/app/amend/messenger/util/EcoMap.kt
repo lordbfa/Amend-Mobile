@@ -135,13 +135,13 @@ object EcoMap {
     }
 
     /** Publishes a new report (photo optional). Returns it, or null if no relay took it. */
-    suspend fun submit(category: EcoCategory, note: String, lat: Double, lon: Double, jpeg: ByteArray?): EcoReport? {
+    suspend fun submit(category: EcoCategory, note: String, lat: Double, lon: Double, jpeg: ByteArray?, also: List<EcoCategory> = emptyList()): EcoReport? {
         val r = repo ?: return null
         val urls = if (jpeg != null) runCatching { r.uploadPublicImage(jpeg) }.getOrNull() else null
         if (jpeg != null && urls.isNullOrEmpty()) throw IllegalStateException("Photo upload failed")
         val sha = jpeg?.let { app.amend.messenger.core.crypto.Hashes.sha256(it).toHex() }
         val id = Rand.bytes(8).toHex()
-        val (content, tags) = EcoReports.build(id, category, note, lat, lon, urls?.firstOrNull(), sha)
+        val (content, tags) = EcoReports.build(id, category, note, lat, lon, urls?.firstOrNull(), sha, also = also)
         val (ev, accepted) = r.publishPublic(EcoReports.KIND, content, tags)
         if (accepted == 0) return null
         // points: up to three reports a day count
@@ -174,7 +174,7 @@ object EcoMap {
     suspend fun markCleanedByAuthor(report: EcoReport): Boolean {
         val r = repo ?: return false
         if (report.author != r.me) return false
-        val (content, tags) = EcoReports.build(report.id, report.category, report.note, report.lat, report.lon, report.imageUrl, null, cleaned = true)
+        val (content, tags) = EcoReports.build(report.id, report.category, report.note, report.lat, report.lon, report.imageUrl, null, cleaned = true, also = report.also)
         return r.publishPublic(EcoReports.KIND, content, tags).second > 0
     }
 

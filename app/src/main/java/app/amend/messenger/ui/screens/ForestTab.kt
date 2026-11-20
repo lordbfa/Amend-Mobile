@@ -104,8 +104,6 @@ fun ForestTab(repo: AmendRepository, openChat: (String) -> Unit) {
         }
         item { ChallengeDeck(repo, openChat) }
         item { Spacer(Modifier.height(12.dp)) }
-        item { Box(Modifier.padding(horizontal = 16.dp)) { AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.FOREST) } }
-        item { Spacer(Modifier.height(12.dp)) }
         item { FriendsLeaderboardCard(repo, openChat) }
         item { Spacer(Modifier.height(12.dp)) }
         item { WeatherCard(repo) }
@@ -382,11 +380,11 @@ private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> 
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("🏆 Friends' forests", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (eco.shareStats) "Sharing your forest with your contacts (encrypted). Tap a friend to visit their forest."
+                    app.amend.messenger.ui.components.InfoTitle(
+                        "Friends' forests",
+                        info = if (eco.shareStats) "Sharing your forest with your contacts (encrypted). Tap a friend to visit their forest."
                         else "Share your trees, points and streak with your contacts — encrypted, never public.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 androidx.compose.material3.Switch(checked = eco.shareStats, onCheckedChange = { repo.setShareStats(it) })

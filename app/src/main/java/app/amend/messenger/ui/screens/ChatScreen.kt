@@ -383,7 +383,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
                                 else mediaPermissions.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
                             },
                         )
-                        DropdownMenuItem(text = { Text("📸 Instant (disappears after viewing)") }, onClick = { attachMenu = false; showInstantCamera = true })
+                        DropdownMenuItem(text = { Text("Instant (disappears after viewing)") }, onClick = { attachMenu = false; showInstantCamera = true })
                     }
                 }
                 Spacer(Modifier.size(8.dp))
@@ -516,7 +516,7 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
     if (showLive) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showLive = false },
-            title = { Text("📍 Share live location") },
+            title = { Text("Share live location") },
             text = {
                 Column {
                     Text(
@@ -835,7 +835,7 @@ private fun RequestBanner(onAccept: () -> Unit, onBlock: () -> Unit, onReport: (
         Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp)
     ) {
-        Text(if (invitedBy != null) "🌳 Shared garden invitation" else "New message request", style = MaterialTheme.typography.titleMedium)
+        Text(if (invitedBy != null) "Shared garden invitation" else "New message request", style = MaterialTheme.typography.titleMedium)
         Text(
             if (invitedBy != null) "$invitedBy added you to a group you haven't joined yet. Accept to chat, block to never hear from it again, or report if it's abusive."
             else "You haven't chatted with this person before. Accept to reply, block to never hear from them again, or report if it's abusive.",
@@ -985,14 +985,14 @@ private fun MessageBubble(
                 }
                 if (unsent) {
                     Text(
-                        if (mine) "🚫 You unsent a message" else "🚫 This message was unsent",
+                        if (mine) "You unsent a message" else "This message was unsent",
                         color = textColor, style = MaterialTheme.typography.bodyMedium,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                     )
                 } else if (fromStranger && !strangerRevealed && message.type in STRANGER_HIDDEN) {
                     // Media, files and locations from someone you haven't accepted stay covered until you choose to look
                     Column(Modifier.clickable { strangerRevealed = true }) {
-                        Text("🙈 Hidden " + when (message.type) {
+                        Text("Hidden " + when (message.type) {
                             MessageType.VOICE -> "voice message"; MessageType.VIDEO -> "video"; MessageType.LIVE -> "location"; else -> "photo or file"
                         }, color = textColor, style = MaterialTheme.typography.bodyMedium)
                         Text("From someone you haven't accepted · tap to show", color = textColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
@@ -1315,7 +1315,7 @@ fun GroupAvatar(members: List<String>, profiles: Map<String, app.amend.messenger
 private fun DisappearDialog(current: Long, onPick: (Long) -> Unit, onDismiss: () -> Unit) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("⏳ Disappearing messages") },
+        title = { Text("Disappearing messages") },
         text = {
             Column {
                 Text(
@@ -1353,7 +1353,7 @@ private fun ScheduleDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
     )
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("🕒 Send later") },
+        title = { Text("Send later") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!custom) {
@@ -1452,7 +1452,7 @@ private fun LiveMessageContent(message: ChatMessage, share: app.amend.messenger.
     val loc = (if (active) share?.location else null) ?: stored
     val until = Instant.ofEpochSecond(message.scheduledAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))
     Column {
-        Text(if (message.fromMe) "📍 You're sharing your live location" else "📍 Live location", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text(if (message.fromMe) "You're sharing your live location" else "Live location", color = Color.White, style = MaterialTheme.typography.titleMedium)
         if (loc != null) {
             Spacer(Modifier.height(8.dp))
             app.amend.messenger.ui.components.LiveMap(loc, Modifier.size(width = 260.dp, height = 170.dp), live = active)

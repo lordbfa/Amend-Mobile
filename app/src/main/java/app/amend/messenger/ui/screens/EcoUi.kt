@@ -247,14 +247,14 @@ fun WeatherCard(repo: AmendRepository) {
                 s.riverNow?.let { MiniStat("🏞️", "%.0f m³/s".format(Locale.US, it), "river") }
             }
             if (alerts.isEmpty()) {
-                Text("✅ No warnings for your area right now.", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF2BB673))
+                Text("No warnings for your area right now.", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF2BB673))
             } else {
                 alerts.forEach { AlertRow(it) }
                 Button(
                     onClick = { tellPeople = true },
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("💚 Tell my people I'm safe") }
+                ) { Text("Tell my people I'm safe") }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Notify me about new warnings", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
@@ -366,10 +366,10 @@ fun EcoMapCard(onOpen: () -> Unit, onPlant: () -> Unit) {
     val trees = nearby.count { it.category == EcoCategory.PLANTED }
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("🗺️ Community eco map", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Report rubbish dumps, polluted water, burning or trees cut down — with a photo and the place. Neighbours check it (✅), and when it's cleaned up (🧹) everyone involved earns points.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Community eco map",
+                info = "Report rubbish dumps, polluted water, burning or trees cut down — with a photo and the place. Neighbours check it (✅), and when it's cleaned up (🧹) everyone involved earns points.",
+                style = MaterialTheme.typography.titleMedium,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 MiniStat("⚠️", "$open", "open nearby")
@@ -378,7 +378,7 @@ fun EcoMapCard(onOpen: () -> Unit, onPlant: () -> Unit) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = onOpen, shape = RoundedCornerShape(16.dp)) { Text("Open map") }
-                OutlinedButton(onClick = onPlant, shape = RoundedCornerShape(16.dp)) { Text("🌱 I planted a tree") }
+                OutlinedButton(onClick = onPlant, shape = RoundedCornerShape(16.dp)) { Text("I planted a tree") }
             }
         }
     }
@@ -391,13 +391,13 @@ fun RealTreesCard(onPlant: () -> Unit) {
     val mine = remember(reports) { EcoMap.myPlanted() }
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("🌳 Real trees you planted", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Plant a real tree, take a photo where it stands, and ask friends to check it. With ${EcoReports.CONFIRMATIONS} checks it becomes a confirmed tree: +${app.amend.messenger.eco.EcoPoints.PER_TREE} points — a whole new tree in your forest.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            app.amend.messenger.ui.components.InfoTitle(
+                "Real trees you planted",
+                info = "Plant a real tree, take a photo where it stands, and ask friends to check it. With ${EcoReports.CONFIRMATIONS} checks it becomes a confirmed tree: +${app.amend.messenger.eco.EcoPoints.PER_TREE} points — a whole new tree in your forest.",
+                style = MaterialTheme.typography.titleMedium,
             )
             if (mine.isEmpty()) {
-                Button(onClick = onPlant, shape = RoundedCornerShape(16.dp)) { Text("🌱 Add a tree I planted") }
+                Button(onClick = onPlant, shape = RoundedCornerShape(16.dp)) { Text("Add a tree I planted") }
             } else {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     mine.forEach { t ->
@@ -407,7 +407,7 @@ fun RealTreesCard(onPlant: () -> Unit) {
                                 if (t.treeConfirmed) Text("✅", fontSize = 20.sp, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
                             }
                             Text(
-                                if (t.treeConfirmed) "Confirmed 🌳" else "${t.verifiedBy.size}/${EcoReports.CONFIRMATIONS} checks",
+                                if (t.treeConfirmed) "Confirmed" else "${t.verifiedBy.size}/${EcoReports.CONFIRMATIONS} checks",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (t.treeConfirmed) Color(0xFF2BB673) else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -579,8 +579,11 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(r.category.emoji + " " + r.category.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(r.category.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             TextButton(onClick = onClose) { Text("Close") }
+        }
+        if (r.also.isNotEmpty()) {
+            Text("Also seen: " + r.also.joinToString(" · ") { it.label }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (r.imageUrl != null) RemoteImage(r.imageUrl, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)))
         if (r.note.isNotBlank()) Text(r.note, style = MaterialTheme.typography.bodyMedium)
@@ -591,8 +594,8 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         when {
-            r.cleaned -> Text("🧹 Cleaned up — thank you, everyone!", color = Color(0xFF2BB673), fontWeight = FontWeight.SemiBold)
-            r.treeConfirmed -> Text("🌳 Confirmed real tree", color = Color(0xFF2BB673), fontWeight = FontWeight.SemiBold)
+            r.cleaned -> Text("Cleaned up — thank you, everyone!", color = Color(0xFF2BB673), fontWeight = FontWeight.SemiBold)
+            r.treeConfirmed -> Text("Confirmed real tree", color = Color(0xFF2BB673), fontWeight = FontWeight.SemiBold)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!mine) {
@@ -600,18 +603,18 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
                 Button(enabled = !busy && !iVerified, onClick = {
                     busy = true
                     scope.launch { if (EcoMap.react(r, EcoReports.VERIFY)) haptics.success(); busy = false }
-                }, shape = RoundedCornerShape(16.dp)) { Text(if (iVerified) "✅ Checked" else "✅ It's real") }
+                }, shape = RoundedCornerShape(16.dp)) { Text(if (iVerified) "Checked" else "It's real") }
                 if (r.category.isProblem && !r.cleaned) {
                     OutlinedButton(enabled = !busy && repo.me !in r.cleanedBy, onClick = {
                         busy = true
                         scope.launch { if (EcoMap.react(r, EcoReports.CLEANED)) haptics.success(); busy = false }
-                    }, shape = RoundedCornerShape(16.dp)) { Text("🧹 Cleaned") }
+                    }, shape = RoundedCornerShape(16.dp)) { Text("Cleaned") }
                 }
             } else if (r.category.isProblem && !r.cleaned) {
                 Button(enabled = !busy, onClick = {
                     busy = true
                     scope.launch { if (EcoMap.markCleanedByAuthor(r)) haptics.success(); busy = false }
-                }, shape = RoundedCornerShape(16.dp)) { Text("🧹 It's cleaned up") }
+                }, shape = RoundedCornerShape(16.dp)) { Text("It's cleaned up") }
             }
             TextButton(onClick = {
                 val uri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f", r.lat, r.lon, r.lat, r.lon))
@@ -638,15 +641,19 @@ private fun ReportSheet(repo: AmendRepository, r: EcoReport, onClose: () -> Unit
 }
 
 /**
- * New report: photo (camera or gallery), what kind, a note, and the place — the
- * map's centre (move the map under the cross-hair to adjust).
+ * New report, step by step: (1) what do you see — tick everything that applies, the first
+ * one is the main problem; (2) a photo; (3) a short note and the place (the map's centre).
+ * A planted tree skips step 1.
  */
 @Composable
 private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center: () -> Pair<Double, Double>?, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
-    var category by remember { mutableStateOf(initial) }
+    val planting = initial == EcoCategory.PLANTED
+    // problems picked, in the order they were ticked (the first is the main one)
+    var picked by remember { mutableStateOf(emptyList<EcoCategory>()) }
+    var step by remember { mutableStateOf(if (planting) 2 else 1) }
     var note by remember { mutableStateOf("") }
     var photo by remember { mutableStateOf<ByteArray?>(null) }
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -655,6 +662,8 @@ private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center:
     var askFriends by remember { mutableStateOf<EcoReport?>(null) }
     val photoFile = remember { File(context.cacheDir, "eco/photo.jpg").also { it.parentFile?.mkdirs() } }
     val photoUri = remember { FileProvider.getUriForFile(context, context.packageName + ".files", photoFile) }
+    val category = if (planting) EcoCategory.PLANTED else picked.firstOrNull() ?: initial
+    val firstStep = if (planting) 2 else 1
 
     fun take(uri: Uri) {
         scope.launch {
@@ -672,64 +681,128 @@ private fun NewReportDialog(repo: AmendRepository, initial: EcoCategory, center:
         return
     }
 
+    fun publish() {
+        val c = center()
+        if (c == null) { error = "Turn on location (or move the map) to set the place."; return }
+        busy = true
+        error = null
+        scope.launch {
+            val r = runCatching { EcoMap.submit(category, note.trim(), c.first, c.second, photo, also = picked.drop(1)) }
+            busy = false
+            val rep = r.getOrNull()
+            when {
+                rep == null -> error = r.exceptionOrNull()?.message ?: "No relay accepted the report — try again."
+                rep.category == EcoCategory.PLANTED -> { haptics.success(); askFriends = rep }
+                else -> { haptics.success(); onDone() }
+            }
+        }
+    }
+
+    val totalSteps = if (planting) 2 else 3
+    val shownStep = step - firstStep + 1
     AlertDialog(
         onDismissRequest = { if (!busy) onDone() },
-        title = { Text(if (category == EcoCategory.PLANTED) "🌱 A tree you planted" else "Report a problem") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(16.dp)).background(Color(0x22000000)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val p = preview
-                    if (p != null) Image(p, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    else Text("📷 Add a photo", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) camera.launch(photoUri)
-                        else cameraPermission.launch(Manifest.permission.CAMERA)
-                    }, shape = RoundedCornerShape(14.dp)) { Text("Camera") }
-                    OutlinedButton(onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, shape = RoundedCornerShape(14.dp)) { Text("Gallery") }
-                }
-                if (category != EcoCategory.PLANTED) {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        EcoCategory.problems.forEach { c ->
-                            FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c.emoji + " " + c.label) })
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    note, { if (it.length <= 300) note = it }, modifier = Modifier.fillMaxWidth(), minLines = 2,
-                    label = { Text(if (category == EcoCategory.PLANTED) "What tree? (e.g. mango sapling)" else "What did you see?") },
+        title = {
+            Column {
+                Text(
+                    "Step $shownStep of $totalSteps", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    "📍 The place is the centre of the map behind this window — close it and move the map first if needed. " +
-                        "Reports are public: everyone can see the photo and the place.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    when (step) {
+                        1 -> "What do you see?"
+                        2 -> if (planting) "A tree you planted" else "Add a photo"
+                        else -> "Anything to add?"
+                    },
                 )
+            }
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                when (step) {
+                    1 -> {
+                        Text(
+                            "Tick everything you see here. The first one you tick is the main problem.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        EcoCategory.problems.forEach { c ->
+                            val on = c in picked
+                            val main = picked.firstOrNull() == c
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                    .background(if (on) Color(c.color).copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .clickable { haptics.tick(); picked = if (on) picked - c else picked + c }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(Color(c.color)))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(c.label, style = MaterialTheme.typography.titleSmall)
+                                    if (c.hint.isNotBlank()) Text(c.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (main) Text("Main", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp))
+                                Checkbox(checked = on, onCheckedChange = { haptics.tick(); picked = if (on) picked - c else picked + c })
+                            }
+                        }
+                    }
+                    2 -> {
+                        Box(
+                            Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(16.dp)).background(Color(0x22000000)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val p = preview
+                            if (p != null) Image(p, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            else Text(if (planting) "Add a photo of the tree" else "A photo helps others find and check it", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) camera.launch(photoUri)
+                                else cameraPermission.launch(Manifest.permission.CAMERA)
+                            }, shape = RoundedCornerShape(14.dp)) { Text("Camera") }
+                            OutlinedButton(onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, shape = RoundedCornerShape(14.dp)) { Text("Gallery") }
+                        }
+                        if (!planting) Text("Optional, but reports with a photo are easier to verify.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    else -> {
+                        if (!planting && picked.isNotEmpty()) {
+                            Text(picked.joinToString(" · ") { it.label }, style = MaterialTheme.typography.titleSmall)
+                        }
+                        OutlinedTextField(
+                            note, { if (it.length <= 300) note = it }, modifier = Modifier.fillMaxWidth(), minLines = 2,
+                            label = { Text(if (planting) "What tree? (e.g. mango sapling)" else "A short note (optional)") },
+                        )
+                        Text(
+                            "The place is the centre of the map behind this window. Close it and move the map first if needed. " +
+                                "Reports are public: everyone can see the photo and the place.",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy && (photo != null || category != EcoCategory.PLANTED), onClick = {
-                val c = center()
-                if (c == null) { error = "Turn on location (or move the map) to set the place."; return@TextButton }
-                busy = true
-                error = null
-                scope.launch {
-                    val r = runCatching { EcoMap.submit(category, note.trim(), c.first, c.second, photo) }
-                    busy = false
-                    val rep = r.getOrNull()
-                    when {
-                        rep == null -> error = r.exceptionOrNull()?.message ?: "No relay accepted the report — try again."
-                        rep.category == EcoCategory.PLANTED -> { haptics.success(); askFriends = rep }
-                        else -> { haptics.success(); onDone() }
-                    }
-                }
-            }) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Publish") }
+            val last = step == 3 || (planting && step == 2)
+            val canGo = when (step) {
+                1 -> picked.isNotEmpty()
+                2 -> !planting || photo != null
+                else -> true
+            }
+            TextButton(enabled = !busy && canGo, onClick = {
+                if (planting && step == 2) publish()
+                else if (step < 3) step++
+                else publish()
+            }) {
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text(if (last) "Publish" else "Next")
+            }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDone) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = { if (step > firstStep) step-- else onDone() }) {
+                Text(if (step > firstStep) "Back" else "Cancel")
+            }
+        },
     )
 }
 
@@ -742,7 +815,7 @@ private fun AskFriendsDialog(repo: AmendRepository, report: EcoReport, onDone: (
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDone,
-        title = { Text("🌳 Tree added! Ask friends to check it") },
+        title = { Text("Tree added! Ask friends to check it") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
@@ -787,13 +860,13 @@ fun EcoProofContent(repo: AmendRepository, message: ChatMessage, textColor: Colo
         Text(message.text, color = textColor, style = MaterialTheme.typography.bodyMedium)
         val checks = report?.verifiedBy?.size ?: 0
         Text(
-            if (report?.treeConfirmed == true) "🌳 Confirmed real tree" else "✅ $checks/${EcoReports.CONFIRMATIONS} checks",
+            if (report?.treeConfirmed == true) "Confirmed real tree" else "✅ $checks/${EcoReports.CONFIRMATIONS} checks",
             color = textColor.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium,
         )
         if (!message.fromMe && report != null) {
             val done = repo.me in report.verifiedBy
             Text(
-                if (done) "✅ You verified it" else "✅ Verify this tree",
+                if (done) "You verified it" else "Verify this tree",
                 color = textColor, fontWeight = FontWeight.Bold, fontSize = 13.sp,
                 modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(textColor.copy(alpha = 0.15f))
                     .clickable(enabled = !done && !busy) {

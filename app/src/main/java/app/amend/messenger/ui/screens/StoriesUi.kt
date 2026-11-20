@@ -207,7 +207,7 @@ fun StoryComposer(repo: AmendRepository, onClose: () -> Unit, presetPhoto: File?
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(STORY_BACKGROUNDS[bg]))) {
             when {
                 preview != null -> Image(preview!!, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                isVideo -> Text("🎬 Video ready", color = Color.White, fontSize = 22.sp, modifier = Modifier.align(Alignment.Center))
+                isVideo -> Text("Video ready", color = Color.White, fontSize = 22.sp, modifier = Modifier.align(Alignment.Center))
                 else -> TextField(
                     text, { text = it.take(Story.MAX_TEXT) },
                     modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(24.dp),
@@ -320,7 +320,7 @@ fun CloseFriendsDialog(repo: AmendRepository, onDismiss: () -> Unit) {
     var chosen by remember { mutableStateOf(repo.closeFriends) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("⭐ Chosen people") },
+        title = { Text("Chosen people") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (contacts.isEmpty()) Text("Accept a chat first — close friends are picked from your contacts.")
@@ -436,7 +436,7 @@ fun StoryViewer(repo: AmendRepository, authors: List<String>, startAuthor: Int, 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StoryChip("👁 ${story.viewers.size} of ${story.audience.size}") { showViewers = true }
                         Spacer(Modifier.weight(1f))
-                        StoryChip("🗑 Delete") { confirmDelete = true }
+                        StoryChip("Delete") { confirmDelete = true }
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

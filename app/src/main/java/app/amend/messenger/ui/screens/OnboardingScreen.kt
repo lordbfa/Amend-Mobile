@@ -145,7 +145,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                             interactionSource = source,
                             shape = RoundedCornerShape(29.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2BB673), contentColor = Color.White),
-                        ) { Text("🌱  Plant my seed", style = MaterialTheme.typography.titleMedium) }
+                        ) { Text("Plant my seed", style = MaterialTheme.typography.titleMedium) }
                         TextButton(onClick = { step = Step.RESTORE }) {
                             Text("I already have a key", color = Color.White)
                         }
@@ -163,7 +163,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                         var name by remember { mutableStateOf("") }
                         var picture by remember { mutableStateOf("") }
                         Spacer(Modifier.height(40.dp))
-                        Text("It sprouted! 🌿", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                        Text("It sprouted!", style = MaterialTheme.typography.headlineMedium, color = Color.White)
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "Every conversation grows its own shared garden, and your activity grows your personal forest.",
@@ -233,7 +233,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                             shape = RoundedCornerShape(18.dp),
                         )
                         androidx.compose.material3.TextButton(onClick = { scanning = true }) {
-                            Text("📱 Scan from my other phone", color = Color.White)
+                            Text("Scan from my other phone", color = Color.White)
                         }
                         Spacer(Modifier.weight(1f))
                         Button(

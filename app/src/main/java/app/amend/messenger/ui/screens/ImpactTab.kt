@@ -114,8 +114,6 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
 
         WeeklyCarbonCard(eco)
 
-        AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.IMPACT)
-
         // Walking: every km on foot is a km not driven
         StepsCard(onOpenReports = openReports)
 
@@ -137,7 +135,7 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
         // Eco settings
         Text("Greener settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 6.dp))
         SettingSwitch(
-            "🔋 Efficiency mode",
+            "Efficiency mode",
             "Dark theme, calmer animations and less frequent background checks. Earns ${app.amend.messenger.eco.EcoPoints.EFFICIENT_DAY} points a day.",
             eco.efficiencyMode,
         ) {
@@ -146,7 +144,7 @@ fun ImpactTab(repo: AmendRepository, openReports: () -> Unit = {}) {
             (context.applicationContext as AmendApp).rescheduleBackground(repo)
         }
         SettingSwitch(
-            "⚡ Carbon-aware sync",
+            "Carbon-aware sync",
             if (eco.instantNotifications) "Applies when Instant notifications (Settings → Notifications) are off: background checks then only run while charging on Wi-Fi — like carbon-aware system updates."
             else "Background checks only while charging on Wi-Fi — like carbon-aware system updates. Messages still arrive instantly while amend is open.",
             eco.carbonAwareSync,
@@ -230,8 +228,7 @@ fun SettingSwitch(title: String, subtitle: String, checked: Boolean, onChange: (
     GlassCard(Modifier.fillMaxWidth().clickable { onChange(!checked) }) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                app.amend.messenger.ui.components.InfoTitle(title, info = subtitle, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.width(12.dp))
             Switch(checked = checked, onCheckedChange = onChange)
