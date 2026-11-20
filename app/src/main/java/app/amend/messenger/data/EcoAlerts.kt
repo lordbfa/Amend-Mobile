@@ -202,6 +202,30 @@ object EcoAlerts {
         }
     }
 
+    /** Adds air quality and river flow from Open-Meteo (MET Norway has neither outside Norway). */
+    @Suppress("UNCHECKED_CAST")
+    fun withAirAndFlood(w: WeatherSnapshot, air: String?, flood: String?): WeatherSnapshot {
+        var out = w
+        runCatching {
+            val a = Json.parseObject(air ?: "")
+            val cur = a["current"] as? Map<String, Any?> ?: emptyMap()
+            out = out.copy(usAqi = (cur["us_aqi"] as? Number)?.toInt(), pm25 = (cur["pm2_5"] as? Number)?.toDouble())
+        }
+        runCatching {
+            val fl = Json.parseObject(flood ?: "")
+            val daily = fl["daily"] as? Map<String, Any?> ?: emptyMap()
+            val q = (daily["river_discharge"] as? List<Any?>).orEmpty().mapNotNull { (it as? Number)?.toDouble() }
+            if (q.isNotEmpty()) out = out.copy(riverNow = q.first(), riverPeak7d = q.take(7).maxOrNull())
+        }
+        return out
+    }
+
+    fun airUrl(lat: Double, lon: Double) =
+        "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.f()}&longitude=${lon.f()}&current=us_aqi,pm2_5,pm10"
+
+    fun floodUrl(lat: Double, lon: Double) =
+        "https://flood-api.open-meteo.com/v1/flood?latitude=${lat.f()}&longitude=${lon.f()}&daily=river_discharge&forecast_days=8"
+
     /** MET Norway asks every app to identify itself with a contact. */
     fun metUserAgent(version: String) = "amend/$version (https://getamend.app; lordbfa@getamend.app)"
 

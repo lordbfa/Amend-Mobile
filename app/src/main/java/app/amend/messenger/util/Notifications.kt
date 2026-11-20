@@ -125,7 +125,7 @@ object Notifications {
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ECO_ALERTS, tr("Weather & air alerts"), NotificationManager.IMPORTANCE_HIGH).apply {
-                description = tr("Heatwaves, heavy rain, storms and cold near you")
+                description = tr("Heatwaves, heavy rain, rising rivers, storms and unhealthy air near you")
             }
         )
         nm.createNotificationChannel(

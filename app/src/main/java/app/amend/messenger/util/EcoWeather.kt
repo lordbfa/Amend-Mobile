@@ -25,8 +25,9 @@ import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 
 /**
- * Weather around you, from MET Norway's free Locationforecast service (no account,
- * no tracking; only your position rounded to ~1 km is sent). The country of that same
+ * Weather around you from MET Norway's free Locationforecast service, plus air quality
+ * and river flow from Open-Meteo (no accounts, no tracking; only your position rounded
+ * to ~1 km is sent). The country of that same
  * place picks the eco map's local rubbish list.
  */
 object EcoWeather {
@@ -56,7 +57,10 @@ object EcoWeather {
         val lon = p.getString("lon", null)?.toDoubleOrNull() ?: return
         // readings saved by older versions (another service) are dropped
         val f = if (p.getString("src", null) == "met") p.getString("f", null) else null
-        _state.value = EcoAlerts.parseMet(lat, lon, f, p.getLong("at", 0), p.getString("place", "") ?: "", p.getString("country", "") ?: "")
+        _state.value = EcoAlerts.withAirAndFlood(
+            EcoAlerts.parseMet(lat, lon, f, p.getLong("at", 0), p.getString("place", "") ?: "", p.getString("country", "") ?: ""),
+            p.getString("a", null), p.getString("fl", null),
+        )
     }
 
     /** Fetches fresh data (at most every 20 minutes unless [force]). Returns the reading, or null without location. */
@@ -68,15 +72,17 @@ object EcoWeather {
         _loading.value = true
         try {
             val f = get(EcoAlerts.metUrl(loc.latitude, loc.longitude)) ?: return@withContext last
+            val a = get(EcoAlerts.airUrl(loc.latitude, loc.longitude))
+            val fl = get(EcoAlerts.floodUrl(loc.latitude, loc.longitude))
             val (placeFound, countryFound) = placeName(context, loc)
             val place = placeFound ?: last?.place ?: ""
             val country = countryFound ?: last?.country?.ifBlank { null } ?: ""
             val now = System.currentTimeMillis()
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("lat", loc.latitude.toString()).putString("lon", loc.longitude.toString())
-                .putString("src", "met").putString("f", f).remove("a").remove("fl")
+                .putString("src", "met").putString("f", f).putString("a", a).putString("fl", fl)
                 .putLong("at", now).putString("place", place).putString("country", country).apply()
-            val snap = EcoAlerts.parseMet(loc.latitude, loc.longitude, f, now, place, country)
+            val snap = EcoAlerts.withAirAndFlood(EcoAlerts.parseMet(loc.latitude, loc.longitude, f, now, place, country), a, fl)
             _state.value = snap
             snap
         } finally {

@@ -804,5 +804,7 @@
 "Weather near you",
 "Allow location to get heatwave, heavy-rain, storm and cold alerts for where you are. Only your area (rounded to ~1 km) is sent to MET Norway.",
 "Weather data: MET Norway (CC BY 4.0). An early nudge — always follow official warnings (e.g. BMD, FFWC, FMI).",
-"Heatwaves, heavy rain, storms and cold near you"
+"Heatwaves, heavy rain, storms and cold near you",
+"Allow location to get heatwave, heavy-rain, river-flood, storm and air-quality alerts for where you are. Only your area (rounded to ~1 km) is sent to MET Norway and Open-Meteo.",
+"Weather: MET Norway. Air and rivers: Open-Meteo.com (both CC BY 4.0). An early nudge — always follow official warnings (e.g. BMD, FFWC, FMI)."
 ]

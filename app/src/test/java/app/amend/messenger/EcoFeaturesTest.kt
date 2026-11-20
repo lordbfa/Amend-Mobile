@@ -77,6 +77,11 @@ class EcoFeaturesTest {
         assertTrue("wind2" in ids)                     // 97 km/h
         assertTrue("uv" in ids)
         assertTrue(EcoAlerts.safeMessage(EcoAlerts.alerts(w), "Dhaka").contains("Dhaka"))
+        val withAir = EcoAlerts.withAirAndFlood(w, """{"current":{"us_aqi":168,"pm2_5":88.0}}""", """{"daily":{"river_discharge":[120,150,260,400,380,300,250,200]}}""")
+        assertEquals(168, withAir.usAqi)
+        val airIds = EcoAlerts.alerts(withAir).map { it.id }
+        assertTrue("air2" in airIds)
+        assertTrue("river" in airIds)
         assertEquals(65, EcoAlerts.symbolToCode("heavyrainshowers_night"))
         assertEquals(0, EcoAlerts.symbolToCode("clearsky_day"))
         assertEquals(app.amend.messenger.data.EcoRegions.nordics, app.amend.messenger.data.EcoRegions.forCountry("fi"))

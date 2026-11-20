@@ -207,7 +207,7 @@ fun WeatherCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Weather near you", style = MaterialTheme.typography.titleMedium)
+                    Text("Weather & air near you", style = MaterialTheme.typography.titleMedium)
                     snap?.place?.takeIf { it.isNotBlank() }?.let { Text("📍 $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -215,7 +215,7 @@ fun WeatherCard(repo: AmendRepository) {
             }
             if (!hasPermission) {
                 Text(
-                    "Allow location to get heatwave, heavy-rain, storm and cold alerts for where you are. Only your area (rounded to ~1 km) is sent to MET Norway.",
+                    "Allow location to get heatwave, heavy-rain, river-flood, storm and air-quality alerts for where you are. Only your area (rounded to ~1 km) is sent to MET Norway and Open-Meteo.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Button(onClick = { launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) }, shape = RoundedCornerShape(16.dp)) {
@@ -262,7 +262,7 @@ fun WeatherCard(repo: AmendRepository) {
                 Switch(checked = alertsOn, onCheckedChange = { alertsOn = it; EcoWeather.setAlertsOn(context, it) })
             }
             Text(
-                "Weather data: MET Norway (CC BY 4.0). An early nudge — always follow official warnings (e.g. BMD, FFWC, FMI).",
+                "Weather: MET Norway. Air and rivers: Open-Meteo.com (both CC BY 4.0). An early nudge — always follow official warnings (e.g. BMD, FFWC, FMI).",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
