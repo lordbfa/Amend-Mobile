@@ -51,22 +51,36 @@ class EcoFeaturesTest {
     }
 
     @Test
-    fun alertsFromOpenMeteo() {
-        val forecast = """{"current":{"temperature_2m":36.5,"apparent_temperature":44.2,"relative_humidity_2m":70,"weather_code":2,"wind_speed_10m":12,"wind_gusts_10m":30},
-            "daily":{"apparent_temperature_max":[45.0,43.0],"precipitation_sum":[2.0,75.0],"wind_gusts_10m_max":[40,95],"uv_index_max":[11.5,10]}}"""
-        val air = """{"current":{"us_aqi":168,"pm2_5":88.0}}"""
-        val flood = """{"daily":{"river_discharge":[120,150,260,400,380,300,250,200]}}"""
-        val w = EcoAlerts.parse(23.8, 90.4, forecast, air, flood, 0, "Dhaka")
+    fun alertsFromMetNorway() {
+        // now = 2026-06-01T06:00Z; hourly steps today, a 6-hour step tomorrow
+        val now = java.time.Instant.parse("2026-06-01T06:00:00Z").toEpochMilli()
+        fun hour(t: String, temp: Double, rh: Double, wind: Double, gust: Double, uv: Double, rain1: Double, symbol: String) = """
+            {"time":"$t","data":{"instant":{"details":{"air_temperature":$temp,"relative_humidity":$rh,"wind_speed":$wind,"wind_speed_of_gust":$gust,"ultraviolet_index_clear_sky":$uv}},
+             "next_1_hours":{"summary":{"symbol_code":"$symbol"},"details":{"precipitation_amount":$rain1}}}}"""
+        val series = listOf(
+            hour("2026-06-01T06:00:00Z", 36.5, 70.0, 3.3, 8.0, 5.0, 0.5, "partlycloudy_day"),
+            hour("2026-06-01T09:00:00Z", 39.0, 70.0, 3.0, 10.0, 11.5, 1.0, "partlycloudy_day"),
+            hour("2026-06-01T12:00:00Z", 40.0, 65.0, 3.0, 11.0, 10.0, 0.5, "fair_day"),
+        ) + """{"time":"2026-06-02T07:00:00Z","data":{"instant":{"details":{"air_temperature":30,"relative_humidity":90,"wind_speed":10,"wind_speed_of_gust":27}},
+             "next_6_hours":{"summary":{"symbol_code":"heavyrain"},"details":{"precipitation_amount":75.0}}}}"""
+        val json = """{"type":"Feature","properties":{"timeseries":[${series.joinToString(",")}]}}"""
+        val w = EcoAlerts.parseMet(23.8, 90.4, json, now, "Dhaka", "BD")
         assertEquals(36.5, w.tempC!!, 0.01)
-        assertEquals(168, w.usAqi)
+        assertEquals("BD", w.country)
+        assertEquals(2, w.weatherCode)
+        assertEquals(2.0, w.rainTodayMm!!, 0.01)
+        assertEquals(75.0, w.rainTomorrowMm!!, 0.01)
+        assertEquals(97.2, w.maxGustKmh!!, 0.1)       // 27 m/s
         val ids = EcoAlerts.alerts(w).map { it.id }
-        assertTrue(ids.toString(), "heat2" in ids)   // feels 45
+        assertTrue(ids.toString(), ids.any { it.startsWith("heat") })   // hot and humid
         assertTrue("rain2" in ids)                     // 75 mm tomorrow
-        assertTrue("wind2" in ids)                     // 95 km/h
-        assertTrue("air2" in ids)                      // AQI 168
-        assertTrue("river" in ids)                     // 120 → 400
+        assertTrue("wind2" in ids)                     // 97 km/h
         assertTrue("uv" in ids)
         assertTrue(EcoAlerts.safeMessage(EcoAlerts.alerts(w), "Dhaka").contains("Dhaka"))
+        assertEquals(65, EcoAlerts.symbolToCode("heavyrainshowers_night"))
+        assertEquals(0, EcoAlerts.symbolToCode("clearsky_day"))
+        assertEquals(app.amend.messenger.data.EcoRegions.nordics, app.amend.messenger.data.EcoRegions.forCountry("fi"))
+        assertEquals(app.amend.messenger.data.EcoRegions.southAsia, app.amend.messenger.data.EcoRegions.forCountry("BD"))
         val calm = EcoAlerts.alerts(WeatherSnapshot(60.0, 25.0, todayMaxFeelsC = 18.0, usAqi = 20, rainTodayMm = 1.0))
         assertTrue(calm.isEmpty())
         assertNotNull(EcoAlerts.describe(95))
