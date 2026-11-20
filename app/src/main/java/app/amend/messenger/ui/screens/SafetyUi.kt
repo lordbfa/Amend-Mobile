@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import androidx.compose.animation.core.RepeatMode
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -120,7 +121,7 @@ fun CheckInCard() {
     LaunchedEffect(deadline) { while (deadline != null) { now = System.currentTimeMillis(); delay(15_000) } }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Safety check-in",
                 info = "Walking home late, meeting someone new, hiking alone? Set a timer. If you don't tap “I'm safe” in time, amend starts your SOS and your SOS contacts get your live location. A reminder comes 5 minutes before.",
                 style = MaterialTheme.typography.titleMedium,
@@ -156,7 +157,7 @@ fun FakeCallCard() {
     val scheduled by FakeCall.scheduledAt.collectAsStateWithLifecycle()
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Fake call",
                 info = "Need a polite way out? Your phone will ring with a normal-looking call from the name below. Nothing is sent to anyone.",
                 style = MaterialTheme.typography.titleMedium,
@@ -191,7 +192,7 @@ fun NearbySosCard() {
     var alerts by remember { mutableStateOf(prefs.nearbyAlerts) }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "SOS without internet 📡",
                 info = "With the offline mesh on, your SOS hops phone to phone to your contacts even when there's no network — floods, cyclones, shutdowns.",
                 style = MaterialTheme.typography.titleMedium,

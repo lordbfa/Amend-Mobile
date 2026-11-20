@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import android.Manifest
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -957,14 +958,14 @@ fun CallsCard() {
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Calls",
                 info = "Calls go straight from phone to phone, end-to-end encrypted. Between countries or on mobile data " +
                     "(carriers like Grameenphone, Robi or Banglalink share one address among many users) the phones often can't reach each other directly. " +
                     "A TURN server relays the encrypted call — it can't listen in. Only one of you needs one.",
                 style = MaterialTheme.typography.titleMedium,
             )
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "amend TURN service (Cloudflare)",
                 info = if (CallPrefs.DEFAULT_TURN_SERVICE.isNotBlank() && service == CallPrefs.DEFAULT_TURN_SERVICE)
                     "Built in ✓ — calls use Cloudflare's global TURN network automatically. Nothing to set up."

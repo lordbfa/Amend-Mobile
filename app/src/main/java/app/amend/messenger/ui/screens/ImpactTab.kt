@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import android.content.Intent
+import app.amend.messenger.ui.components.InfoTitle
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -228,7 +229,7 @@ fun SettingSwitch(title: String, subtitle: String, checked: Boolean, onChange: (
     GlassCard(Modifier.fillMaxWidth().clickable { onChange(!checked) }) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                app.amend.messenger.ui.components.InfoTitle(title, info = subtitle, style = MaterialTheme.typography.titleMedium)
+                InfoTitle(title, info = subtitle, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.width(12.dp))
             Switch(checked = checked, onCheckedChange = onChange)

@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import androidx.compose.material.icons.Icons
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.material.icons.rounded.Close
 import android.Manifest
 import android.content.pm.PackageManager
@@ -334,7 +335,7 @@ fun InstantArchiveCard(repo: AmendRepository) {
             Text("📸", fontSize = 26.sp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                app.amend.messenger.ui.components.InfoTitle(
+                InfoTitle(
                     "Your Instants",
                     info = if (archive.isEmpty()) "Instants you send are kept here, only on this phone, for a year."
                     else "${archive.size} kept privately on this phone",

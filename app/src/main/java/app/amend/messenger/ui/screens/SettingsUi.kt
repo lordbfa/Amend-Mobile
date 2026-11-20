@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import app.amend.messenger.net.TorProxy
+import app.amend.messenger.ui.components.InfoTitle
 import app.amend.messenger.util.ScreenProtection
 import app.amend.messenger.util.AppLock
 import app.amend.messenger.util.findActivity
@@ -290,7 +291,7 @@ private fun ScreenLockCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    app.amend.messenger.ui.components.InfoTitle(
+                    InfoTitle(
                         "Screen lock",
                         info = if (on) "On: amend asks for your fingerprint, face or phone PIN before anyone can see your chats. Recent apps shows a blank preview."
                         else "Off: anyone holding your unlocked phone can open amend.",
@@ -342,7 +343,7 @@ private fun NotificationPreviewCard() {
     var mode by remember { mutableStateOf(app.amend.messenger.util.Notifications.preview(context)) }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Notification content",
                 info = "What other people and other apps can see in your notifications. On the lock screen, the text is always hidden.",
                 style = MaterialTheme.typography.titleMedium,
@@ -402,7 +403,7 @@ private fun BurnerCard(app: AmendApp) {
     val expires = remember { app.burnerExpiresAt() }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Burner identity",
                 info = when {
                     expires > 0 -> "You're using a burner. It deletes itself " +
@@ -676,7 +677,7 @@ private fun TorCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    app.amend.messenger.ui.components.InfoTitle(
+                    InfoTitle(
                         "Route through Tor (Orbot)",
                         info = "Relays, file servers and the weather service see a Tor address instead of yours. Slower, but nobody can link your messages to your IP. If Orbot isn't running, amend stays offline rather than connecting without Tor. Calls still connect directly.",
                         style = MaterialTheme.typography.titleMedium,

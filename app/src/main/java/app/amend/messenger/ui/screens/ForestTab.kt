@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -95,11 +96,11 @@ fun ForestTab(repo: AmendRepository, openChat: (String) -> Unit) {
             }
         }
         item {
-            Text("Today's challenges", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp))
-            Text(
-                "Swipe through, do one, and grow your forest by ${EcoPoints.CHALLENGE} points.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp),
+            InfoTitle(
+                "Today's challenges",
+                info = "Swipe through, do one, and grow your forest by ${EcoPoints.CHALLENGE} points.",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp),
             )
         }
         item { ChallengeDeck(repo, openChat) }
@@ -380,7 +381,7 @@ private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> 
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    app.amend.messenger.ui.components.InfoTitle(
+                    InfoTitle(
                         "Friends' forests",
                         info = if (eco.shareStats) "Sharing your forest with your contacts (encrypted). Tap a friend to visit their forest."
                         else "Share your trees, points and streak with your contacts — encrypted, never public.",

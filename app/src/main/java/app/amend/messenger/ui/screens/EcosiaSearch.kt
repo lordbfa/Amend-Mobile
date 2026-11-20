@@ -110,6 +110,11 @@ fun EcosiaSearchBar(modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            if (query.isBlank()) {
+                app.amend.messenger.ui.components.InfoTitle(
+                    "Search with Ecosia", showTitle = false, info = "Ecosia uses its ad income to plant trees. Results open in your phone's browser engine; amend never sees your searches.",
+                )
+            }
             if (query.isNotBlank()) {
                 Box(
                     Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xFF2BB673))
@@ -119,9 +124,5 @@ fun EcosiaSearchBar(modifier: Modifier = Modifier) {
                 }
             }
         }
-        Text(
-            "Ecosia uses its ad income to plant trees. Results open in your phone's browser engine; amend never sees your searches.",
-            color = colors.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(start = 14.dp, top = 4.dp, end = 8.dp),
-        )
     }
 }

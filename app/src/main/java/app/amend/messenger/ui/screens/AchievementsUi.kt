@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import android.content.Context
+import app.amend.messenger.ui.components.InfoTitle
 import android.content.Intent
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -185,8 +186,10 @@ fun AchievementsCard(repo: AmendRepository, tab: AchievementTab) {
         Column(Modifier.padding(vertical = 14.dp)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (tab == AchievementTab.FOREST) "Forest achievements" else "Impact achievements", style = MaterialTheme.typography.titleMedium)
-                    Text("$unlockedCount of $total unlocked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    InfoTitle(
+                        if (tab == AchievementTab.FOREST) "Forest achievements" else "Impact achievements",
+                        info = "$unlockedCount of $total unlocked. Tap a badge to see what it takes to reach the next level.",
+                    )
                 }
                 TextButton(onClick = { showAll = true }) { Text("See all") }
             }

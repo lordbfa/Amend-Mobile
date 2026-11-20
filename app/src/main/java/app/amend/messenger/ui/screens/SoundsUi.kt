@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import androidx.compose.animation.animateColorAsState
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,7 +64,7 @@ private fun SoundPicker(kind: SoundKind, title: String, subtitle: String) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                app.amend.messenger.ui.components.InfoTitle(title, info = subtitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                InfoTitle(title, info = subtitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
             options.forEachIndexed { i, option ->
                 SoundRow(option, selected == option.id) {

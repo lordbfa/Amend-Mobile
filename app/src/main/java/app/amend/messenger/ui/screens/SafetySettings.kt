@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import android.Manifest
+import app.amend.messenger.ui.components.InfoTitle
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -96,11 +97,13 @@ fun SafetyCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    app.amend.messenger.ui.components.InfoTitle(
-                        "Safety · SOS 🆘",
+                    InfoTitle(
+                        "Safety · SOS",
                         info = "In danger? Press a volume button 4 times while amend is open, the power button 4 times (even when locked), or tap the red SOS button 4 times. " +
                             "After a 5-second countdown your live location goes to your contacts until you stop it, and the emergency dialer opens. " +
-                            "If amend is closed, your contacts get your last known location at once, and live location starts when you tap the SOS notification.",
+                            "If amend is closed, your contacts get your last known location at once, and live location starts when you tap the SOS notification.\n\n" +
+                            "The button triggers are off until you turn them on. They are ignored during calls and while sound is playing. " +
+                            "After turning one on, try the practice run so you know how it feels.",
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -136,11 +139,6 @@ fun SafetyCard(repo: AmendRepository) {
                     ToggleRow("Open emergency dialer automatically", autoDial) { autoDial = it; prefs.autoDial = it }
                     ToggleRow("Volume button ×4 (amend open)", volume) { volume = it; prefs.volumeTrigger = it }
                     ToggleRow("Power button ×4 (works when locked)", power) { power = it; prefs.powerTrigger = it }
-                    Text(
-                        "The button triggers are off until you turn them on. They are ignored during calls and while sound is playing. " +
-                            "After turning one on, try the practice run so you know how it feels.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
 
                     // Who gets the SOS
                     val people = conversations.values.filter { repo.isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }.map { it.peer }

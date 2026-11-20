@@ -1,6 +1,8 @@
 package app.amend.messenger.ui.screens
 
 import androidx.compose.material.icons.Icons
+import app.amend.messenger.eco.AchievementTab
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.material.icons.rounded.Settings
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
@@ -129,7 +131,7 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Your amend ID", style = MaterialTheme.typography.titleMedium)
+                    InfoTitle("Your amend ID", info = "Friends scan your code or paste your ID to start a private chat. Tap the code to show it bigger.")
                     Text(
                         npub.take(14) + "…" + npub.takeLast(6), fontFamily = FontFamily.Monospace, fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -151,14 +153,9 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
             }
         }
         // all achievements live here, on your own page
-        AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.FOREST)
-        AchievementsCard(repo, app.amend.messenger.eco.AchievementTab.IMPACT)
+        AchievementsCard(repo, AchievementTab.FOREST)
+        AchievementsCard(repo, AchievementTab.IMPACT)
         InstantArchiveCard(repo)
-        Text(
-            "Friends scan your code or paste your ID to start a private chat.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
         Spacer(Modifier.height(24.dp))
     }
 
@@ -272,7 +269,7 @@ internal fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit)
     val haptics = rememberHaptics()
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Relays",
                 info = "Independent servers that pass on your encrypted messages. Use several so no single one matters. You can run your own.",
                 style = MaterialTheme.typography.titleMedium,
@@ -308,7 +305,7 @@ internal fun BackupCard(nsec: String) {
     app.amend.messenger.util.SecureScreen(always = true)
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Backup key",
                 info = "This is the only way to restore your identity. Anyone with it can read your messages — never share it.",
                 style = MaterialTheme.typography.titleMedium,
@@ -477,7 +474,7 @@ internal fun NotificationsCard(app: AmendApp, repo: AmendRepository) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    app.amend.messenger.ui.components.InfoTitle(
+                    InfoTitle(
                         "Instant notifications",
                         info = if (eco.instantNotifications)
                             "amend keeps one small connection open so messages arrive right away — no Google servers involved. A quiet \"listening\" notification shows while it runs; you can hide it in system settings."
@@ -531,7 +528,7 @@ private fun LiteMotionCard() {
     GlassCard(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                app.amend.messenger.ui.components.InfoTitle(
+                InfoTitle(
                     "Lite animations",
                     info = if (lowEnd) "Recommended on this phone: keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer."
                     else "Keeps the sky, leaves and other moving effects still, so typing and scrolling stay smooth and the battery lasts longer.",
@@ -557,7 +554,7 @@ private fun ThemeCard() {
     val current = app.amend.messenger.ui.theme.AppThemes.current
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Theme",
                 info = "Pick a colour mood — the layout stays the same. Perfect for festivals.",
                 style = MaterialTheme.typography.titleMedium,
@@ -611,7 +608,7 @@ internal fun IconStyleCard() {
     GlassCard(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                app.amend.messenger.ui.components.InfoTitle(
+                InfoTitle(
                     "Icon follows the sun",
                     info = "amend's icon is white by day, turns light grey before sunset, grey at dusk and dark at night — timed to sunrise and sunset where you are. " +
                         "Some launchers briefly refresh the home-screen icon when it changes.",
@@ -635,7 +632,7 @@ internal fun ReadReceiptsCard(repo: AmendRepository) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    app.amend.messenger.ui.components.InfoTitle(
+                    InfoTitle(
                         "Read receipts",
                         info = "Your little message tree turns 🌱 green when sent, 🌳 deep green when it reaches your friend's phone, and 🌸 blue with blossoms when they've seen it. " +
                             if (eco.readReceipts) "Friends also see when you've read theirs." else "Off: friends won't see when you read their messages.",

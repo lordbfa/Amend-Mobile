@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import android.Manifest
+import app.amend.messenger.ui.components.InfoTitle
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -366,9 +367,9 @@ fun EcoMapCard(onOpen: () -> Unit, onPlant: () -> Unit) {
     val trees = nearby.count { it.category == EcoCategory.PLANTED }
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Community eco map",
-                info = "Report rubbish dumps, polluted water, burning or trees cut down — with a photo and the place. Neighbours check it (✅), and when it's cleaned up (🧹) everyone involved earns points.",
+                info = "Report plastic waste, garbage dumps, betel (paan) spit, polluted water, burning or trees cut down, step by step with a photo and the place. Neighbours check it, and when it's cleaned up everyone involved earns points.",
                 style = MaterialTheme.typography.titleMedium,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -391,7 +392,7 @@ fun RealTreesCard(onPlant: () -> Unit) {
     val mine = remember(reports) { EcoMap.myPlanted() }
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            app.amend.messenger.ui.components.InfoTitle(
+            InfoTitle(
                 "Real trees you planted",
                 info = "Plant a real tree, take a photo where it stands, and ask friends to check it. With ${EcoReports.CONFIRMATIONS} checks it becomes a confirmed tree: +${app.amend.messenger.eco.EcoPoints.PER_TREE} points — a whole new tree in your forest.",
                 style = MaterialTheme.typography.titleMedium,

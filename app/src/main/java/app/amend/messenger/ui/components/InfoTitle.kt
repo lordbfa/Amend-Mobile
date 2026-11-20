@@ -1,12 +1,16 @@
 package app.amend.messenger.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,13 +37,18 @@ fun InfoTitle(
     modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.titleMedium,
     fontWeight: FontWeight? = null,
+    /** false: only the ⓘ button (the title still heads the dialog). */
+    showTitle: Boolean = true,
 ) {
     var open by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = style, fontWeight = fontWeight, modifier = Modifier.weight(1f, fill = false))
+        if (showTitle) Text(title, style = style, fontWeight = fontWeight, modifier = Modifier.weight(1f, fill = false))
         if (info.isNotBlank()) {
-            IconButton(onClick = { haptics.tap(); open = true }, modifier = Modifier.size(32.dp)) {
+            Box(
+                Modifier.padding(start = 4.dp).size(28.dp).clip(CircleShape).clickable { haptics.tap(); open = true },
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     Icons.Outlined.Info, contentDescription = tr("More about this"),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp),

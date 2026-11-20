@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import androidx.compose.foundation.background
+import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,7 +79,7 @@ fun GroveScreen(repo: AmendRepository, onBack: () -> Unit, openChat: (String) ->
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back") }
             Column(Modifier.weight(1f)) {
-                app.amend.messenger.ui.components.InfoTitle("The Grove", info = "Public notes from you and your contacts", style = MaterialTheme.typography.titleLarge)
+                InfoTitle("The Grove", info = "Public notes from you and your contacts", style = MaterialTheme.typography.titleLarge)
             }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
