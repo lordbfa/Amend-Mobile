@@ -11,8 +11,9 @@
     <!-- SOS: live location to trusted contacts -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- amend never asks for location "all the time"; make sure no library adds it either -->
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+    <!-- Only for SOS: live location to the chosen contacts when an SOS starts with amend closed or
+         the phone locked. Asked for separately, after an in-app explanation, and only if the person wants it. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
