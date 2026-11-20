@@ -110,6 +110,13 @@ object SceneMood {
 @Composable
 fun rememberSceneFx(): SceneFx {
     val weather by EcoWeather.state.collectAsStateWithLifecycle()
+    // the rain / snow at the top of the app follows the live weather from the start, even
+    // before the Forest tab (weather card) is opened, and right after an update
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        EcoWeather.restore(context)
+        if (EcoWeather.hasLocationPermission(context)) runCatching { EcoWeather.refresh(context) }
+    }
     val country = remember { SceneMood.country() }
     val month = remember { LocalDate.now().monthValue }
     return SceneMood.fx(weather, country, month)
