@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>amend — Privacy Policy</title>
-<meta name="description" content="How amend, the decentralised encrypted messenger, handles your data.">
+<meta name="description" content="How amend, the decentralised encrypted messenger, handles your data: no accounts, no ads, no analytics, no tracking.">
 <style>
   :root { --bg:#f6faf7; --fg:#14231b; --muted:#4d6157; --accent:#1f8f5a; --card:#ffffff; --line:#dbe7df; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0d1612; --fg:#e7f2ec; --muted:#a3b8ad; --accent:#5be39b; --card:#14211b; --line:#22342b; } }
@@ -23,10 +23,10 @@
 <body>
 <main>
   <h1>🌱 amend — Privacy Policy</h1>
-  <p class="muted">Last updated: 3 November 2026 · Applies to the amend app for Android and Wear OS.</p>
+  <p class="muted">Last updated: 21 November 2026 (amend 4.5.0) · Applies to the amend app for Android (package app.amend.messenger) and its optional Wear OS watch app.</p>
 
   <div class="card">
-    <strong>In short:</strong> amend has no accounts, no ads, no analytics and no trackers. Your messages are end-to-end encrypted on your phone.
+    <strong>In short:</strong> amend has no accounts, no ads, no analytics and no trackers. You don't give us a phone number or email. Your messages, calls and media are end-to-end encrypted on your phone.
     We (the developer) run no message servers and cannot read, sell or hand over your messages.
   </div>
 
@@ -35,55 +35,76 @@
 
   <h2>2. Your identity</h2>
   <p>Your identity is a cryptographic key pair created on your phone and stored in Android's secure storage. There is no sign-up, phone number or email address.
-  We never receive your private key. If you lose it without a backup, nobody — including us — can recover it.</p>
+  We never receive your private key. It leaves your phone only if you copy your backup key yourself or link another phone with it. If you lose it without a backup, nobody — including us — can recover it.</p>
+  <p>Your public key (your amend ID, starting with npub1) identifies you to other people, like a username.</p>
 
   <h2>3. Messages, groups, calls and media</h2>
   <ul>
-    <li>Messages are encrypted on your device (Nostr NIP-17 / NIP-44 / NIP-59) and delivered through independent Nostr relays. Relays see only encrypted data, the recipient's public key and an approximate time.</li>
+    <li>Messages are encrypted on your device (Nostr NIP-17 / NIP-44 / NIP-59) and delivered through independent Nostr relays. Relays and file servers see only encrypted data, the recipient's public key, an approximate time, the size of the data and your IP address (unless you use Tor).</li>
     <li>Shared gardens (group chats) are encrypted separately for each member; relays cannot tell a message belongs to a group.</li>
-    <li>Photos, voice notes and videos are encrypted with AES-256-GCM before upload to Blossom file servers, which store only unreadable data. Hidden camera data (EXIF/location) is removed first.</li>
-    <li>Voice and video calls are encrypted with DTLS-SRTP. When a direct path isn't possible, encrypted call traffic may be relayed by Cloudflare TURN.</li>
+    <li>Photos, voice notes and videos are encrypted with AES-256-GCM before upload to Blossom file servers, which store only unreadable data. Photos are shrunk and saved again first, which removes hidden camera data (EXIF, including GPS); large videos are re-encoded, which also drops their location data.</li>
+    <li>Stories are encrypted separately for each of your contacts (or only your close friends) and disappear after 24 hours. Instants disappear from the recipient's phone once opened, or after 24 hours.</li>
+    <li>Voice and video calls are encrypted with DTLS-SRTP. When a direct path isn't possible, encrypted call traffic may be relayed by Cloudflare TURN, which cannot listen in.</li>
     <li>Unsent messages are deleted on your phone and a deletion request is sent to the recipients' apps. Disappearing messages are deleted on all phones after the time you choose, and relays that support it are asked to delete them too.</li>
   </ul>
 
   <h2>4. What is public</h2>
-  <p>Your profile (name, about, photo and an optional name@domain address) and anything you choose to post on the community eco map (photo, place and note) are public on Nostr.</p>
+  <p>Your profile (name, about, photo and an optional name@domain address), Grove posts, and anything you choose to post on the community eco map (the problems you ticked, a photo, a note and the place) are public on Nostr.</p>
 
   <h2>5. Location</h2>
   <ul>
-    <li><strong>SOS:</strong> your location is sent, encrypted, only to the emergency contacts you chose, and only while SOS is active.</li>
+    <li><strong>SOS:</strong> your location is sent, end-to-end encrypted, only to the emergency contacts you chose, and only while an SOS is active.</li>
+    <li><strong>Location in the background (optional, SOS only):</strong> if you allow location "all the time" in <em>Settings → Safety · SOS</em>, amend can share your live location during an SOS that you start while amend is closed or your phone is locked. amend explains this in the app first, and then Android asks you; you can say "Not now". It is collected only while an SOS you started is running, sent end-to-end encrypted only to your SOS contacts until you stop the SOS, and never used for any other feature, for ads or analytics, or sold or shared. Without it, SOS still works: your contacts get your last known location, and live location starts when amend opens. You can turn it off any time in Android's app settings.</li>
     <li><strong>Live location:</strong> only when you start it, only to that chat, and it stops automatically at the time you choose.</li>
     <li><strong>Nearby SOS</strong> (optional, off by default): an approximate location (about 100 m) is sent to amend phones close by over Bluetooth/Wi-Fi, signed with a one-time key that is not linked to your identity.</li>
-    <li><strong>Weather:</strong> your location is rounded to about 1 km and sent to MET Norway (weather) and Open-Meteo (air quality, river flow).</li>
-    <li><strong>Eco map:</strong> a location is published only for spots you choose to post.</li>
+    <li><strong>Weather:</strong> your location is rounded to about 1 km and sent to MET Norway (weather) and Open-Meteo (air quality, river flow). The readings are saved only on your phone.</li>
+    <li><strong>Eco map:</strong> a location is published only for spots you choose to post. The country of your weather location (or, if it isn't known, your network or SIM country) picks the local rubbish list and stays on your phone.</li>
   </ul>
-  <p>amend uses a foreground service for location only while SOS or live location is active, and shows a notification while it runs.</p>
+  <p>amend uses a foreground service for location only while SOS or live location is active, and shows a notification while it runs. An SOS that is switched off, or more than 12 hours old, is ended and not resumed.</p>
 
   <h2>6. Data that stays on your phone</h2>
-  <p>Steps and walking reports, check-ins, fake calls, scheduled messages, your forest, points, streaks and settings never leave your device.
-  If you turn on <em>Friends' forests</em>, only your tree count, points and streak are sent — encrypted — to your contacts.</p>
+  <p>Steps and walking reports, achievements, check-ins, fake calls, scheduled messages, your age answer, your forest, points, streaks and settings never leave your device unless you choose to share them.
+  If you turn on <em>Friends' forests</em>, only your tree count, points, streak and tree shapes are sent — encrypted — to your contacts.</p>
 
   <h2>7. Translation and transcription</h2>
   <p>Translating a message and transcribing a voice note happen entirely on your phone (Google ML Kit and Android's on-device speech recogniser). The first time you translate a language, its model is downloaded once from Google. Your messages and voice notes are never uploaded.</p>
 
-  <h2>8. Services amend connects to</h2>
-  <p>Nostr relays (messages), Blossom servers (encrypted files), Cloudflare TURN (call relay), Google STUN (finding a call path), MET Norway (weather), Open-Meteo (air quality, rivers), OpenStreetMap (map tiles), Google Nearby Connections (offline mesh, on-device), Google ML Kit model downloads (translation), and the website behind a name@domain address when you look one up.
+  <h2>8. Search with Ecosia</h2>
+  <p>A search from the chat list opens on ecosia.org in a Custom Tab, which uses your phone's own browser. amend never sees what you search or which results you open. Ecosia's own privacy policy applies there. amend is not affiliated with Ecosia.</p>
+
+  <h2>9. Wear OS watch app (optional)</h2>
+  <p>Only when a watch with amend installed is connected, your phone sends it a small summary (recent chats, forest, steps) over the Wear OS data layer. Your private key and all networking stay on the phone; replies from the watch go back to the phone, which encrypts and sends them.</p>
+
+  <h2>10. Services amend connects to</h2>
+  <p>Nostr relays (messages), Blossom servers (encrypted files), Cloudflare TURN (call relay), Google and Cloudflare STUN (finding a call path), MET Norway (weather; amend identifies itself by app name and version, as MET Norway's terms require), Open-Meteo (air quality, rivers), your phone's geocoder (place name and country for the rounded weather location; on most phones provided by Google), OpenStreetMap (map tiles), Ecosia (only when you search), Google Play services (Nearby Connections for the offline mesh, and the Wear OS data layer if you use the watch app), Google ML Kit model downloads (translation), and the website behind a name@domain address when you look one up.
   Like any website, these services can see your IP address. If you enable Tor in amend (with the Orbot app running), all traffic except calls is routed through Tor instead.</p>
 
-  <h2>9. Permissions</h2>
-  <p>Camera, microphone, photos, location, nearby devices, notifications and activity recognition are requested only when you use the feature that needs them, and can be revoked at any time in Android settings.</p>
+  <h2>11. Permissions</h2>
+  <p>Camera, microphone, photos, location, nearby devices, notifications and activity recognition are requested only when you use the feature that needs them, and can be revoked at any time in Android settings. Location "all the time" is asked for separately, only from the SOS settings, after an explanation in the app.</p>
 
-  <h2>10. Children</h2>
-  <p>amend is not directed at children under 13 and does not knowingly collect data from them.</p>
+  <h2>12. What we do not do</h2>
+  <ul>
+    <li>We do not sell, rent or share your personal data for advertising.</li>
+    <li>We do not use analytics, crash-reporting or advertising SDKs.</li>
+    <li>We do not collect your contacts, phone number or email address.</li>
+    <li>We do not track your location in the background for anything other than an SOS you start.</li>
+  </ul>
 
-  <h2>11. Deleting your data</h2>
+  <h2>13. Children</h2>
+  <p>amend is not directed at children under 13 and does not knowingly collect data from them. For people aged 13 to 17 the stranger shield is switched on: only people they accept can message them, and they can't post in public spaces.</p>
+
+  <h2>14. Deleting your data</h2>
   <p>In the app, go to <em>Settings → Privacy &amp; security → Remove identity</em>. This deletes your key and all messages from your phone. Because we hold no account or messages, there is nothing for us to delete on our side.
-  Encrypted copies held by independent relays are unreadable without your key and may expire according to each relay's policy.</p>
+  Encrypted copies held by independent relays are unreadable without your key and may expire according to each relay's policy. Public data you posted may remain on relays we do not control.</p>
 
-  <h2>12. Changes</h2>
-  <p>If this policy changes, the new version will be published on this page with an updated date.</p>
+  <h2>15. Security</h2>
+  <p>Encryption happens on your device with keys only you hold. amend has not yet had an independent security audit. To report a security problem, email <a href="mailto:lordbfa@getamend.app">lordbfa@getamend.app</a>.</p>
 
-  <h2>13. Contact</h2>
+  <h2>16. Changes</h2>
+  <p>If this policy changes, the new version will be published on this page with an updated date. The full policy is also at <a href="https://getamend.app/privacy-policy/">getamend.app/privacy-policy</a>.</p>
+  <p><strong>21 November 2026 (amend 4.5.0):</strong> weather from MET Norway, with air quality and river flow from Open-Meteo; optional background location for SOS only; local eco map rubbish lists based on your country; Search with Ecosia and the Wear OS watch app described.</p>
+
+  <h2>17. Contact</h2>
   <p>Ahmed Bhuiyan Faisal · <a href="mailto:lordbfa@getamend.app">lordbfa@getamend.app</a> · 40700 Jyväskylä, Finland</p>
 </main>
 </body>
