@@ -26,13 +26,35 @@ class LiveService : Service() {
      * SOS trigger that works even with the phone locked: pressing the power button
      * 4 times quickly toggles the screen 4 times within a few seconds.
      */
-    private val powerPattern = PressPattern(presses = 4, windowMs = 5_000)
+    private val powerPattern = PressPattern(presses = 4, windowMs = 3_000)
+    private var lastScreenAction: String? = null
+    private var lastScreenAt = 0L
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != Intent.ACTION_SCREEN_ON && intent.action != Intent.ACTION_SCREEN_OFF) return
-            if (!SosPrefs(context).powerTrigger) return
-            if (powerPattern.press()) SosManager.trigger(context)
+            val action = intent.action
+            if (action != Intent.ACTION_SCREEN_ON && action != Intent.ACTION_SCREEN_OFF) return
+            val now = System.currentTimeMillis()
+            val repeat = action == lastScreenAction
+            val tooFast = now - lastScreenAt < MIN_PRESS_GAP_MS
+            lastScreenAction = action
+            lastScreenAt = now
+            if (!SosPrefs(context).enabled || !SosPrefs(context).powerTrigger) return
+            // During any call (amend, phone, WhatsApp…) the proximity sensor switches the screen
+            // off and on as the phone moves to the ear: never count that as button presses.
+            if (inAnyCall(context)) { powerPattern.reset(); return }
+            // A real power press always flips the screen; the same event twice, or events closer
+            // together than a finger can press, come from something else (sensors, covers).
+            if (repeat || tooFast) { powerPattern.reset(); return }
+            if (powerPattern.press(now)) SosManager.trigger(context)
         }
+    }
+
+    private fun inAnyCall(context: Context): Boolean {
+        if (CallManager.state.value.active) return true
+        val audio = context.getSystemService(android.media.AudioManager::class.java) ?: return false
+        return audio.mode == android.media.AudioManager.MODE_IN_CALL ||
+            audio.mode == android.media.AudioManager.MODE_IN_COMMUNICATION ||
+            audio.mode == android.media.AudioManager.MODE_RINGTONE
     }
 
     override fun onCreate() {
@@ -78,6 +100,9 @@ class LiveService : Service() {
     }
 
     companion object {
+        /** Faster than this between two screen changes can't be a person pressing the button. */
+        private const val MIN_PRESS_GAP_MS = 120L
+
         @Volatile var isRunning = false
             private set
 

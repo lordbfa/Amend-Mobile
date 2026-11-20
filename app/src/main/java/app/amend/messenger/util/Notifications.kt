@@ -42,6 +42,7 @@ object Notifications {
     const val CALL_ONGOING_ID = 5_101
     /** MainActivity extra: "show" (incoming call screen) or "answer". */
     const val EXTRA_CALL = "amend_call"
+    const val EXTRA_SOS = "amend_sos"
     private const val STEP_REPORT_ID = 6_100
     private const val STEP_GOAL_ID = 6_101
 
@@ -166,6 +167,16 @@ object Notifications {
     }
 
     private fun idFor(peer: String) = peer.hashCode()
+
+    /** Opens amend's SOS screen (over the lock screen) during an SOS countdown. */
+    private fun sosScreenIntent(context: Context): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_SOS, true)
+            IntentAuth.sign(context, this)
+        }
+        return PendingIntent.getActivity(context, 7301, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
 
     const val PREVIEW_FULL = "full"
     const val PREVIEW_NAME = "name"
@@ -328,13 +339,16 @@ object Notifications {
         val n = NotificationCompat.Builder(context, CHANNEL_SOS_ACTIVE)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(tr("🆘 Sending SOS in $secondsLeft…"))
-            .setContentText(tr("Your live location will go to your contacts. Cancel if this was a mistake."))
+            .setContentText(tr("Your location will go to your contacts. Tap Cancel if this was a mistake."))
             .setColor(0xFFE53935.toInt())
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .addAction(0, tr("Cancel"), cancel)
-            .setContentIntent(openIntent(context, null))
+            .setContentIntent(sosScreenIntent(context))
+            // shows the countdown full screen, even over the lock screen, where Android allows it
+            .setFullScreenIntent(sosScreenIntent(context), true)
             .build()
         try {
             NotificationManagerCompat.from(context).notify(SOS_COUNTDOWN_ID, n)

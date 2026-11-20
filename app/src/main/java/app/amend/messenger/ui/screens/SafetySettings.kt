@@ -105,7 +105,10 @@ fun SafetyCard(repo: AmendRepository) {
                     )
                 }
                 Spacer(Modifier.width(8.dp))
-                Switch(checked = enabled, onCheckedChange = { enabled = it; prefs.enabled = it; haptics.tick() })
+                Switch(checked = enabled, onCheckedChange = {
+                    enabled = it; prefs.enabled = it; haptics.tick()
+                    if (!it) { SosManager.cancelCountdown(context); if (SosManager.isActive) SosManager.stop(context) }
+                })
             }
 
             AnimatedVisibility(enabled) {
@@ -133,6 +136,11 @@ fun SafetyCard(repo: AmendRepository) {
                     ToggleRow("Open emergency dialer automatically", autoDial) { autoDial = it; prefs.autoDial = it }
                     ToggleRow("Volume button ×4 (amend open)", volume) { volume = it; prefs.volumeTrigger = it }
                     ToggleRow("Power button ×4 (works when locked)", power) { power = it; prefs.powerTrigger = it }
+                    Text(
+                        "The button triggers are off until you turn them on. They are ignored during calls and while sound is playing. " +
+                            "After turning one on, try the practice run so you know how it feels.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
                     // Who gets the SOS
                     val people = conversations.values.filter { repo.isAccepted(it.peer) || it.messages.any { m -> m.fromMe } }.map { it.peer }

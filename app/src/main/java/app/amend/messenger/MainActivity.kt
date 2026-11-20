@@ -144,6 +144,15 @@ class MainActivity : ComponentActivity() {
         intent?.getStringExtra(Notifications.EXTRA_PEER)?.let { pendingPeer.value = it }
         // a fake call rings over the lock screen like a real one
         if (intent?.getBooleanExtra(app.amend.messenger.util.FakeCall.EXTRA, false) == true) showOverLockScreen(true)
+        // the SOS countdown opens amend over the lock screen, so it can be seen and cancelled
+        if (intent?.getBooleanExtra(Notifications.EXTRA_SOS, false) == true) {
+            showOverLockScreen(true)
+            lifecycleScope.launch {
+                SosManager.state.collectLatest { st ->
+                    if (st is app.amend.messenger.util.SosState.Idle && !CallManager.state.value.active) showOverLockScreen(false)
+                }
+            }
+        }
         intent?.getStringExtra(Notifications.EXTRA_CALL)?.let { mode ->
             // an incoming call opens amend over the lock screen
             showOverLockScreen(true)
@@ -190,7 +199,12 @@ class MainActivity : ComponentActivity() {
         val isVolume = event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
         if (isVolume && event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             // during a call the volume keys are for the call volume
-            if (!CallManager.state.value.active && SosPrefs(this).volumeTrigger && volumePattern.press()) {
+            // ...and while something is playing (a voice note, video, story) they are for its volume
+            val audio = getSystemService(android.media.AudioManager::class.java)
+            val busy = CallManager.state.value.active || audio?.isMusicActive == true ||
+                audio?.mode == android.media.AudioManager.MODE_IN_CALL || audio?.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+            if (busy) volumePattern.reset()
+            else if (SosPrefs(this).enabled && SosPrefs(this).volumeTrigger && volumePattern.press()) {
                 SosManager.trigger(this)
             }
         }

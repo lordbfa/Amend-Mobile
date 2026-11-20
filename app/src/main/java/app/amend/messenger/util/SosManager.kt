@@ -37,12 +37,14 @@ class SosPrefs(context: Context) {
         get() = p.getBoolean("enabled", true)
         set(v) = p.edit().putBoolean("enabled", v).apply()
 
+    // The volume and power-button triggers are off until the person turns them on: ordinary
+    // phone use (calls, turning the volume down, a screen waking in a pocket) set them off by mistake.
     var volumeTrigger: Boolean
-        get() = p.getBoolean("volume", true)
+        get() = p.getBoolean("volume", false)
         set(v) = p.edit().putBoolean("volume", v).apply()
 
     var powerTrigger: Boolean
-        get() = p.getBoolean("power", true)
+        get() = p.getBoolean("power", false)
         set(v) = p.edit().putBoolean("power", v).apply()
 
     var autoDial: Boolean
@@ -100,6 +102,9 @@ class PressPattern(private val presses: Int = 4, private val windowMs: Long = 3_
     }
 
     @Synchronized
+    fun reset() = times.clear()
+
+    @Synchronized
     fun count(now: Long = System.currentTimeMillis()): Int {
         while (times.isNotEmpty() && now - times.first() > windowMs) times.removeFirst()
         return times.size
@@ -126,6 +131,10 @@ sealed class SosState {
  */
 object SosManager {
     const val COUNTDOWN_SECONDS = 5
+    /** When amend isn't on screen (pocket, locked phone) people need longer to notice and cancel. */
+    const val BACKGROUND_COUNTDOWN_SECONDS = 10
+    /** An SOS older than this is not resumed by itself after amend restarts. */
+    private const val MAX_RESUME_MS = 12 * 60 * 60_000L
     private const val MIN_UPDATE_INTERVAL_MS = 15_000L
     private const val HEARTBEAT_MS = 60_000L
 
@@ -173,11 +182,14 @@ object SosManager {
         val repo = app(context).repository.value ?: return false
         recipients = repo.sosRecipients(SosPrefs(context).excluded)
         countdownJob?.cancel()
+        val background = !AppVisibility.isForeground && !practice
+        val total = if (background) BACKGROUND_COUNTDOWN_SECONDS else COUNTDOWN_SECONDS
         countdownJob = scope.launch {
-            for (s in COUNTDOWN_SECONDS downTo 1) {
+            for (s in total downTo 1) {
                 _state.value = SosState.Countdown(s, recipients.size, practice)
-                vibrate(context, if (s == COUNTDOWN_SECONDS) 600L else 180L)
-                if (!AppVisibility.isForeground && !practice) Notifications.sosCountdown(context, s)
+                // in the background every second gets a strong buzz, so a pocket trigger is noticed
+                vibrate(context, if (s == total) 900L else if (background) 450L else 180L)
+                if (background) Notifications.sosCountdown(context, s)
                 delay(1_000)
             }
             Notifications.cancelSosCountdown(context)
@@ -282,6 +294,12 @@ object SosManager {
         recipients = prefs.activeRecipients.toList()
         latest = lastKnownLocation(context)
         _state.value = SosState.Active(prefs.activeSince, recipients.size, 0, latest, 0, 0, false)
+        // SOS switched off in settings, or an SOS left running for many hours (amend was closed
+        // without pressing Stop): end it and tell the contacts, instead of resuming it.
+        if (!prefs.enabled || System.currentTimeMillis() - prefs.activeSince > MAX_RESUME_MS) {
+            stop(context)
+            return
+        }
         startTracking(context)
         startHeartbeat(context)
     }

@@ -149,6 +149,7 @@ object CheckIn {
     private const val CODE_REMIND = 7101
     private const val CODE_DUE = 7102
     private const val REMIND_BEFORE_MS = 5 * 60_000L
+    private const val STALE_MS = 24 * 60 * 60_000L
 
     private val _deadline = MutableStateFlow<Long?>(null) // epoch ms
     val deadline: StateFlow<Long?> = _deadline.asStateFlow()
@@ -205,6 +206,9 @@ object CheckIn {
                 // the alarm can be a little early in Doze; only act once the time has really come
                 if (System.currentTimeMillis() < d - 60_000) { SafetyAlarms.set(context, ACTION_DUE, d, CODE_DUE); return }
                 Notifications.checkInMissed(context)
+                // With SOS switched off in settings, or a check-in that ran out more than a day ago
+                // (phone off, amend not opened), only the "missed check-in" notice is shown.
+                if (!SosPrefs(context).enabled || System.currentTimeMillis() - d > STALE_MS) { safe(context); return }
                 // An SOS that is already running covers it. Otherwise keep the deadline until the
                 // SOS really starts (e.g. the identity isn't loaded yet), so the next start retries.
                 if (SosManager.trigger(context, practice = false, force = true) || SosManager.state.value !is SosState.Idle) safe(context)
