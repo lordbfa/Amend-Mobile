@@ -62,8 +62,8 @@ class SosPrefs(context: Context) {
         set(v) = p.edit().putString("number", v.filter { it.isDigit() || it == '+' }.take(15)).apply()
 
     var excluded: Set<String>
-        get() = p.getStringSet("excluded", emptySet()) ?: emptySet()
-        set(v) = p.edit().putStringSet("excluded", v).apply()
+        get() = SealedPrefs.getSet(p, "excluded")
+        set(v) = SealedPrefs.putSet(p, "excluded", v)
 
     /** Persisted so an SOS survives the app process being restarted. */
     var activeSince: Long
@@ -71,8 +71,8 @@ class SosPrefs(context: Context) {
         set(v) = p.edit().putLong("activeSince", v).apply()
 
     var activeRecipients: Set<String>
-        get() = p.getStringSet("recipients", emptySet()) ?: emptySet()
-        set(v) = p.edit().putStringSet("recipients", v).apply()
+        get() = SealedPrefs.getSet(p, "recipients")
+        set(v) = SealedPrefs.putSet(p, "recipients", v)
 
     /** Also alert amend users physically nearby over the offline mesh (anonymous, no internet needed). Off by default. */
     var nearbyBeacon: Boolean

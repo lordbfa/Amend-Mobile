@@ -68,14 +68,16 @@ object LiveShareManager {
     private fun repo(context: Context) = (context.applicationContext as AmendApp).repository.value
 
     private fun save(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putStringSet("shares", _shares.value.map { "${it.key}|${it.value}" }.toSet()).apply()
+        SealedPrefs.putSet(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE), "shares",
+            _shares.value.map { "${it.key}|${it.value}" }.toSet(),
+        )
     }
 
     fun restoreIfNeeded(context: Context) {
         if (_shares.value.isNotEmpty()) return
         val now = System.currentTimeMillis() / 1000
-        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("shares", emptySet()).orEmpty()
+        val saved = SealedPrefs.getSet(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE), "shares")
             .mapNotNull { s -> s.substringBeforeLast("|").takeIf { it.isNotBlank() }?.let { it to (s.substringAfterLast("|").toLongOrNull() ?: 0L) } }
             .filter { it.second > now }.toMap()
         if (saved.isEmpty()) return

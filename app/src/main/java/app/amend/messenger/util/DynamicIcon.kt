@@ -81,7 +81,10 @@ object DynamicIcon {
         // remember the last place, so it works even when the phone has no fresh location
         val lat = loc?.lat ?: p.getString("lat", null)?.toDoubleOrNull()
         val lon = loc?.lon ?: p.getString("lon", null)?.toDoubleOrNull()
-        if (loc != null) p.edit().putString("lat", loc.lat.toString()).putString("lon", loc.lon.toString()).apply()
+        // ~11 km is plenty for sunrise and sunset: no exact position on disk
+        if (loc != null) p.edit()
+            .putString("lat", "%.1f".format(java.util.Locale.US, loc.lat))
+            .putString("lon", "%.1f".format(java.util.Locale.US, loc.lon)).apply()
         if (lat == null || lon == null) return phaseAt(minute, 7 * 60.0, 19 * 60.0)
         val sun = SunTimes.minutes(now.toLocalDate(), lat, lon, now.zone)
             ?: return if (SunTimes.isPolarDay(now.toLocalDate(), lat)) IconPhase.DAY else IconPhase.NIGHT

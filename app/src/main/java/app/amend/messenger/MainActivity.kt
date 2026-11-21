@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        // MainActivity is exported (it's the launcher): only act on extras from amend's own notifications
+        // the launcher aliases are exported and lead here: only act on extras from amend's own notifications
         if (!app.amend.messenger.util.IntentAuth.isOurs(this, intent)) return
         intent?.getStringExtra(Notifications.EXTRA_PEER)?.let { pendingPeer.value = it }
         // a fake call rings over the lock screen like a real one

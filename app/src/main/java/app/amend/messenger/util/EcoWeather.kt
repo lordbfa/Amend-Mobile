@@ -79,7 +79,9 @@ object EcoWeather {
             val country = countryFound ?: last?.country?.ifBlank { null } ?: ""
             val now = System.currentTimeMillis()
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString("lat", loc.latitude.toString()).putString("lon", loc.longitude.toString())
+                // ~1 km, the same precision that is sent to MET Norway: no exact position on disk
+                .putString("lat", "%.2f".format(java.util.Locale.US, loc.latitude))
+                .putString("lon", "%.2f".format(java.util.Locale.US, loc.longitude))
                 .putString("src", "met").putString("f", f).putString("a", a).putString("fl", fl)
                 .putLong("at", now).putString("place", place).putString("country", country).apply()
             val snap = EcoAlerts.withAirAndFlood(EcoAlerts.parseMet(loc.latitude, loc.longitude, f, now, place, country), a, fl)

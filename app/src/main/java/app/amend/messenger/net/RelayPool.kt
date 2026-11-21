@@ -115,7 +115,8 @@ class RelayPool(
         fun normalize(url: String): String {
             var u = url.trim()
             if (u.isEmpty()) return ""
-            if (!u.startsWith("wss://") && !u.startsWith("ws://")) u = "wss://$u"
+            // always TLS: a ws:// address becomes wss://
+            u = "wss://" + u.removePrefix("wss://").removePrefix("ws://")
             return u.trimEnd('/')
         }
 
