@@ -385,45 +385,6 @@ fun EcoMapCard(onOpen: () -> Unit, onPlant: () -> Unit) {
     }
 }
 
-/** Your real trees: each needs two people to check it, then a special tree grows in your forest. */
-@Composable
-fun RealTreesCard(onPlant: () -> Unit) {
-    val reports by EcoMap.reports.collectAsStateWithLifecycle()
-    val mine = remember(reports) { EcoMap.myPlanted() }
-    GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            InfoTitle(
-                "Real trees you planted",
-                info = "Plant a real tree, take a photo where it stands, and ask friends to check it. With ${EcoReports.CONFIRMATIONS} checks it becomes a confirmed tree: +${app.amend.messenger.eco.EcoPoints.PER_TREE} points — a whole new tree in your forest.",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (mine.isEmpty()) {
-                Button(onClick = onPlant, shape = RoundedCornerShape(16.dp)) { Text("Add a tree I planted") }
-            } else {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    mine.forEach { t ->
-                        Column(Modifier.width(120.dp)) {
-                            Box {
-                                RemoteImage(t.imageUrl, Modifier.size(120.dp).clip(RoundedCornerShape(14.dp)))
-                                if (t.treeConfirmed) Text("✅", fontSize = 20.sp, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
-                            }
-                            Text(
-                                if (t.treeConfirmed) "Confirmed" else "${t.verifiedBy.size}/${EcoReports.CONFIRMATIONS} checks",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (t.treeConfirmed) Color(0xFF2BB673) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Box(
-                        Modifier.size(120.dp).clip(RoundedCornerShape(14.dp)).border(2.dp, Color(0xFF2BB673), RoundedCornerShape(14.dp)).clickable { onPlant() },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("＋ Add", color = Color(0xFF2BB673), fontWeight = FontWeight.Bold) }
-                }
-            }
-        }
-    }
-}
-
 // ======================================================================= full-screen map
 
 private fun markerIcon(context: Context, category: EcoCategory, done: Boolean): BitmapDrawable {

@@ -93,6 +93,30 @@ class AmendRepository(
     /** Contacts who share their forest with me (friends' leaderboard). */
     val friendStats: StateFlow<Map<String, FriendStats>> = _friendStats.asStateFlow()
 
+    private val _pets = MutableStateFlow(store.loadPets())
+    /** Your animals and their care notes (animal welfare, in the Welfare tab). Only on this phone. */
+    val pets: StateFlow<List<Pet>> = _pets.asStateFlow()
+
+    /** Adds or updates [pet]. */
+    fun savePet(pet: Pet) {
+        val clean = pet.copy(
+            name = pet.name.trim().take(60), breed = pet.breed.trim().take(60), age = pet.age.trim().take(40),
+            has = pet.has.trim().take(Pet.MAX_TEXT),
+            notes = pet.notes.filter { it.text.isNotBlank() }.map { it.copy(text = it.text.trim().take(Pet.MAX_TEXT)) }.take(Pet.MAX_NOTES),
+        )
+        if (clean.name.isBlank()) return
+        _pets.update { list ->
+            if (list.any { it.id == clean.id }) list.map { if (it.id == clean.id) clean else it }
+            else (list + clean).take(Pet.MAX_PETS)
+        }
+        runCatching { store.savePets(_pets.value) }
+    }
+
+    fun deletePet(id: String) {
+        _pets.update { list -> list.filterNot { it.id == id } }
+        runCatching { store.savePets(_pets.value) }
+    }
+
     private val _relays = MutableStateFlow(settings.relays)
     val relayUrls: StateFlow<List<String>> = _relays.asStateFlow()
 

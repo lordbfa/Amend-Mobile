@@ -274,6 +274,16 @@ class Store(private val dir: File, private val key: ByteArray? = null) {
 
     fun saveEco(e: EcoState) = write("eco.json", Json.write(e.toMap()))
 
+    // --- animal welfare: your pets and their care notes --------------------------
+
+    @Suppress("UNCHECKED_CAST")
+    fun loadPets(): List<Pet> {
+        val list = read("pets.json")?.let { runCatching { Json.parseArray(it) }.getOrNull() } ?: return emptyList()
+        return list.mapNotNull { (it as? Map<String, Any?>)?.let(Pet::fromMap) }.filter { it.id.isNotBlank() }
+    }
+
+    fun savePets(list: List<Pet>) = write("pets.json", Json.write(list.map { it.toMap() }))
+
     fun wipe() {
         dir.deleteRecursively()
         dir.mkdirs()

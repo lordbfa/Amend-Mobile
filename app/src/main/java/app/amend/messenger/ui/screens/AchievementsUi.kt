@@ -172,9 +172,9 @@ private fun DrawScope.shineSweep(hex: Path, c: Offset, r: Float, phase: Float) {
     }
 }
 
-/** Badges row on the Forest or Impact tab. */
+/** A row of badges, Forest or Impact, in the You tab's Achievements section. */
 @Composable
-fun AchievementsCard(repo: AmendRepository, tab: AchievementTab) {
+fun AchievementsCard(repo: AmendRepository, tab: AchievementTab, embedded: Boolean = false) {
     val eco by repo.eco.collectAsStateWithLifecycle()
     val stats = remember(eco) { repo.achievementStats() }
     var showAll by remember { mutableStateOf(false) }
@@ -182,8 +182,8 @@ fun AchievementsCard(repo: AmendRepository, tab: AchievementTab) {
     val list = Achievements.all.filter { it.tab == tab }
     val unlockedCount = list.sumOf { a -> a.tiers.count { Achievements.key(a, it) in eco.achievements } }
     val total = list.sumOf { it.tiers.size }
-    GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 14.dp)) {
+    val body: @Composable () -> Unit = {
+        Column(Modifier.padding(vertical = if (embedded) 2.dp else 14.dp)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     InfoTitle(
@@ -205,6 +205,8 @@ fun AchievementsCard(repo: AmendRepository, tab: AchievementTab) {
             }
         }
     }
+    // inside the You tab's Achievements section it sits without a card of its own
+    if (embedded) body() else GlassCard(Modifier.fillMaxWidth()) { body() }
     if (showAll) AchievementsDialog(repo, tab, onClose = { showAll = false })
     detail?.let { a -> AchievementDetail(repo, a, onClose = { detail = null }) }
 }

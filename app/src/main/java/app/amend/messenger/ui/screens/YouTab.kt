@@ -82,7 +82,7 @@ import kotlinx.coroutines.launch
 private val AVATAR_CHOICES = listOf("🌿", "🍃", "🌸", "🌻", "🌵", "🍄", "🌾", "🌺", "🍀", "🌼", "🌳", "🪴", "🐝", "🦋", "🐢", "🦊")
 
 @Composable
-fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) {
+fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}, openChat: (String) -> Unit = {}) {
     val profiles by repo.profiles.collectAsStateWithLifecycle()
     val me = profiles[repo.me]
     val clipboard = LocalClipboardManager.current
@@ -152,9 +152,25 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}) 
                 }
             }
         }
-        // all achievements live here, on your own page
-        AchievementsCard(repo, AchievementTab.FOREST)
-        AchievementsCard(repo, AchievementTab.IMPACT)
+        // all achievements in one floating section: tap it and Forest and Impact slide down
+        val eco by repo.eco.collectAsStateWithLifecycle()
+        val unlocked = remember(eco) {
+            app.amend.messenger.eco.Achievements.all.sumOf { a -> a.tiers.count { app.amend.messenger.eco.Achievements.key(a, it) in eco.achievements } }
+        }
+        val totalTiers = remember { app.amend.messenger.eco.Achievements.all.sumOf { it.tiers.size } }
+        app.amend.messenger.ui.components.FloatingSection("Achievements", subtitle = "$unlocked of $totalTiers unlocked", icon = "🏆") {
+            AchievementsCard(repo, AchievementTab.FOREST, embedded = true)
+            AchievementsCard(repo, AchievementTab.IMPACT, embedded = true)
+        }
+        // friends' forests, folded the same way
+        val friends by repo.friendStats.collectAsStateWithLifecycle()
+        app.amend.messenger.ui.components.FloatingSection(
+            "Friends' forests",
+            subtitle = if (!eco.shareStats) "Off" else if (friends.isEmpty()) "No friends sharing yet" else "${friends.size} friends sharing",
+            icon = "🌳",
+        ) {
+            FriendsForestsContent(repo, openChat)
+        }
         InstantArchiveCard(repo)
         Spacer(Modifier.height(24.dp))
     }

@@ -105,13 +105,12 @@ fun ForestTab(repo: AmendRepository, openChat: (String) -> Unit) {
         }
         item { ChallengeDeck(repo, openChat) }
         item { Spacer(Modifier.height(12.dp)) }
-        item { FriendsLeaderboardCard(repo, openChat) }
-        item { Spacer(Modifier.height(12.dp)) }
         item { WeatherCard(repo) }
         item { Spacer(Modifier.height(12.dp)) }
         item { EcoMapCard(onOpen = { openChat(ECO_MAP_ROUTE) }, onPlant = { openChat(ECO_MAP_PLANT_ROUTE) }) }
         item { Spacer(Modifier.height(12.dp)) }
-        item { RealTreesCard(onPlant = { openChat(ECO_MAP_PLANT_ROUTE) }) }
+        // animal welfare: your pets and how to care for them
+        item { AnimalWelfareCard(repo) }
     }
 }
 
@@ -360,9 +359,12 @@ private fun ChallengeDeck(repo: AmendRepository, openChat: (String) -> Unit) {
 }
 
 
-/** Friends' forests: contacts who opted in share trees/points/streak, end-to-end encrypted. */
+/**
+ * Friends' forests, in the You tab's fold-out section: contacts who opted in share
+ * trees/points/streak, end-to-end encrypted.
+ */
 @Composable
-private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> Unit) {
+fun FriendsForestsContent(repo: AmendRepository, openChat: (String) -> Unit) {
     val eco by repo.eco.collectAsStateWithLifecycle()
     val friends by repo.friendStats.collectAsStateWithLifecycle()
     val profiles by repo.profiles.collectAsStateWithLifecycle()
@@ -377,15 +379,15 @@ private fun FriendsLeaderboardCard(repo: AmendRepository, openChat: (String) -> 
             Triple(repo.me, "You", app.amend.messenger.data.FriendStats(eco.trees.size, eco.totalPoints, eco.streak, 0)))
             .sortedWith(compareByDescending<Triple<String, String, app.amend.messenger.data.FriendStats>> { it.third.trees }.thenByDescending { it.third.points })
     }
-    app.amend.messenger.ui.components.GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Column(Modifier.padding(16.dp)) {
+    run {
+        Column(Modifier.padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     InfoTitle(
-                        "Friends' forests",
+                        "Share my forest",
                         info = if (eco.shareStats) "Sharing your forest with your contacts (encrypted). Tap a friend to visit their forest."
                         else "Share your trees, points and streak with your contacts — encrypted, never public.",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
                 androidx.compose.material3.Switch(checked = eco.shareStats, onCheckedChange = { repo.setShareStats(it) })

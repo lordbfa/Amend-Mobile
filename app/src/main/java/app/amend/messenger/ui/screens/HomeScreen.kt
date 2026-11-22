@@ -47,7 +47,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.rounded.Eco
-import androidx.compose.material.icons.rounded.Forest
+import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -126,7 +126,8 @@ import java.time.format.DateTimeFormatter
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     CHATS("Chats", Icons.Rounded.Forum),
-    FOREST("Forest", Icons.Rounded.Forest),
+    // forest, eco map and animal welfare live together here
+    FOREST("Welfare", Icons.Rounded.Pets),
     IMPACT("Impact", Icons.Rounded.Eco),
     YOU("You", Icons.Rounded.Person),
 }
@@ -236,7 +237,7 @@ fun HomeScreen(app: AmendApp, repo: AmendRepository, openChat: (String) -> Unit)
                         Tab.CHATS -> ChatsTab(repo, openChat, onScan = { haptics.tap(); showScanner = true })
                         Tab.FOREST -> ForestTab(repo, openChat)
                         Tab.IMPACT -> ImpactTab(repo, openReports = { openChat(StepTracker.REPORTS_PEER) })
-                        Tab.YOU -> YouTab(app, repo, openSettings = { openChat(SETTINGS_ROUTE) })
+                        Tab.YOU -> YouTab(app, repo, openSettings = { openChat(SETTINGS_ROUTE) }, openChat = openChat)
                     }
                 }
             }
