@@ -2,6 +2,8 @@ package app.amend.messenger.ui.screens
 
 import androidx.compose.material.icons.Icons
 import app.amend.messenger.eco.AchievementTab
+import app.amend.messenger.eco.Achievements
+import app.amend.messenger.ui.components.FloatingSection
 import app.amend.messenger.ui.components.InfoTitle
 import androidx.compose.material.icons.rounded.Settings
 import android.content.Intent
@@ -155,16 +157,16 @@ fun YouTab(app: AmendApp, repo: AmendRepository, openSettings: () -> Unit = {}, 
         // all achievements in one floating section: tap it and Forest and Impact slide down
         val eco by repo.eco.collectAsStateWithLifecycle()
         val unlocked = remember(eco) {
-            app.amend.messenger.eco.Achievements.all.sumOf { a -> a.tiers.count { app.amend.messenger.eco.Achievements.key(a, it) in eco.achievements } }
+            Achievements.all.sumOf { a -> a.tiers.count { Achievements.key(a, it) in eco.achievements } }
         }
-        val totalTiers = remember { app.amend.messenger.eco.Achievements.all.sumOf { it.tiers.size } }
-        app.amend.messenger.ui.components.FloatingSection("Achievements", subtitle = "$unlocked of $totalTiers unlocked", icon = "🏆") {
+        val totalTiers = remember { Achievements.all.sumOf { it.tiers.size } }
+        FloatingSection("Achievements", subtitle = "$unlocked of $totalTiers unlocked", icon = "🏆") {
             AchievementsCard(repo, AchievementTab.FOREST, embedded = true)
             AchievementsCard(repo, AchievementTab.IMPACT, embedded = true)
         }
         // friends' forests, folded the same way
         val friends by repo.friendStats.collectAsStateWithLifecycle()
-        app.amend.messenger.ui.components.FloatingSection(
+        FloatingSection(
             "Friends' forests",
             subtitle = if (!eco.shareStats) "Off" else if (friends.isEmpty()) "No friends sharing yet" else "${friends.size} friends sharing",
             icon = "🌳",
