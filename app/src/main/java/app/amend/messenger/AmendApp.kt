@@ -87,7 +87,8 @@ class AmendApp : Application() {
 
     fun openRepository(keys: KeyPair): AmendRepository {
         _repository.value?.let { if (it.me == keys.publicKeyHex) return it }
-        val repo = AmendRepository(dataDir(), keys)
+        // forward-secret chats: sealed with a Keystore key of this identity, never with the nsec
+        val repo = AmendRepository(dataDir(), keys, ratchetSealer = ratchetSealerFor(keys.publicKeyHex))
         repo.blockStrangers = app.amend.messenger.util.AgeCheck.shielded
         repo.externalStats = {
             val mine = app.amend.messenger.util.EcoMap.reports.value.values.count { it.author == repo.me }.toLong()
@@ -141,6 +142,8 @@ class AmendApp : Application() {
                 val name = repo.displayName(e.peer) + if (repo.isAccepted(e.peer)) "" else " (new request)"
                 Notifications.message(this, e.peer, name, text, unread.coerceAtLeast(1))
             }
+            // their ratchet identity changed: a verified contact has to be checked again
+            is AmendEvent.SecurityCodeChanged -> app.amend.messenger.util.Verified.set(e.peer, false)
             is AmendEvent.SosReceived -> {
                 // Always alert for a friend's SOS, even if their chat is open.
                 Notifications.sosAlert(this, e.peer, repo.displayName(e.peer), e.sos, e.phase)
@@ -222,6 +225,8 @@ class AmendApp : Application() {
         }
     }
 
+    private fun ratchetSealerFor(pub: String) = app.amend.messenger.util.KeystoreSealer("amend_ratchet_" + pub.take(16))
+
     /** Removes the identity and all local data from this device. */
     fun signOut() {
         burnerPrefs.edit().clear().apply()
@@ -233,7 +238,10 @@ class AmendApp : Application() {
         eventsJob?.cancel()
         _repository.value?.goOffline()
         _repository.value = null
+        val oldMe = _repository.value?.me ?: keyStore.load()?.publicKeyHex
         keyStore.clear()
+        // the forward-secrecy key goes with the identity: what it sealed can never be opened again
+        oldMe?.let { runCatching { ratchetSealerFor(it).destroy() } }
         dataDir().deleteRecursively()
         wipeIdentityTraces()
         SyncScheduler.cancel(this)

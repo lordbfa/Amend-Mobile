@@ -1,6 +1,9 @@
 package app.amend.messenger.data
 
 import app.amend.messenger.core.RateWindow
+import app.amend.messenger.core.ratchet.Ratchet
+import app.amend.messenger.core.ratchet.RatchetSealer
+import app.amend.messenger.core.ratchet.RatchetStore
 import app.amend.messenger.core.crypto.toHex
 import app.amend.messenger.core.crypto.hexToBytes
 import app.amend.messenger.core.crypto.Nip19
@@ -49,6 +52,8 @@ sealed class AmendEvent {
     data class SosReceived(val peer: String, val sos: IncomingSos, val phase: SosPhase) : AmendEvent()
     /** A new achievement tier ("id:TIER"). */
     data class AchievementUnlocked(val key: String) : AmendEvent()
+    /** A contact's ratchet identity changed (they restored or reinstalled): their security code changed. */
+    data class SecurityCodeChanged(val peer: String) : AmendEvent()
 }
 
 /**
@@ -59,9 +64,16 @@ class AmendRepository(
     private val dir: File,
     val keys: KeyPair,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /** Seals the forward-secrecy state with a key the nsec can't produce (Android Keystore). Null: not available. */
+    ratchetSealer: RatchetSealer? = null,
 ) {
     val me: String = keys.publicKeyHex
     private val store = Store(dir, Store.keyFor(keys.secretKey))
+
+    /** Forward-secret chats (Signal Protocol inside NIP-17, docs/RATCHET.md). */
+    private val ratchet: Ratchet? = ratchetSealer?.let { sealer ->
+        runCatching { Ratchet(me, RatchetStore(File(dir, "ratchet.bin"), sealer)) }.getOrNull()
+    }
     private val mutex = Mutex()
 
     private var settings = store.loadSettings(RelayPool.DEFAULT_RELAYS).let { s ->
@@ -206,6 +218,7 @@ class AmendRepository(
                 runCatching { sendDueScheduled() }
                 runCatching { sendEcoStatsIfDue() }
                 runCatching { checkAchievements() }
+                runCatching { maintainRatchet() }
                 delay(20_000)
             }
         }
@@ -259,7 +272,7 @@ class AmendRepository(
     private fun resubscribeMetadata() {
         val authors = (_conversations.value.keys + settings.accepted + me + _groups.value.values.flatMap { it.members })
             .filter { it.length == 64 }.distinct()
-        pool.subscribe(SUB_META, listOf(linkedMapOf("kinds" to listOf(Kinds.METADATA, Kinds.DM_RELAYS), "authors" to authors)))
+        pool.subscribe(SUB_META, listOf(linkedMapOf("kinds" to listOf(Kinds.METADATA, Kinds.DM_RELAYS, Kinds.PREKEY_BUNDLE), "authors" to authors)))
     }
 
     // ---------------------------------------------------------------- incoming
@@ -277,6 +290,7 @@ class AmendRepository(
                 Kinds.GIFT_WRAP, Kinds.EPHEMERAL_GIFT_WRAP -> handleWrap(msg.event)
                 Kinds.METADATA -> handleMetadata(msg.event)
                 Kinds.DM_RELAYS -> handleInboxRelays(msg.event)
+                Kinds.PREKEY_BUNDLE -> if (msg.event.isValid()) handleBundle(msg.event)
             }
             is RelayIncoming.EndOfStored -> if (msg.subscription == SUB_DM) {
                 eoseFrom.add(msg.relay)
@@ -296,11 +310,38 @@ class AmendRepository(
         mutex.withLock {
             if (!seenWraps.add(wrap.id)) return
         }
-        val rumor = try {
+        val outer = try {
             GiftWrap.unwrap(wrap, keys, wrapVerified = true)
         } catch (e: Exception) {
             return
         }
+        if (outer.kind != Kinds.RATCHET_MESSAGE) {
+            handleRumor(wrap, outer, secure = false)
+            return
+        }
+        // a forward-secret message: the nsec opened only the outside, the ratchet opens the inside
+        val r = ratchet ?: return
+        when (val opened = r.decrypt(outer)) {
+            is Ratchet.Opened.Ignore -> return
+            is Ratchet.Opened.Failed -> {
+                onRatchetFailure(outer)
+                return
+            }
+            is Ratchet.Opened.Message -> {
+                try {
+                    if (opened.identityChanged) onIdentityChanged(outer.pubkey)
+                    handleRumor(wrap, opened.inner, secure = true)
+                } finally {
+                    // only now does the advanced ratchet reach the disk: if anything above failed
+                    // half-way, the re-delivered message can still be opened
+                    r.commit()
+                }
+            }
+        }
+    }
+
+    /** One NIP-17 rumor, from a plain gift wrap or opened by the ratchet ([secure]). */
+    private suspend fun handleRumor(wrap: Event, rumor: Event, secure: Boolean) {
         val fromMe = rumor.pubkey == me
         // NIP-17: the room is the sender plus everyone in the "p" tags. Three or more people = a shared garden.
         // only real keys (64 hex digits): a "p" tag is whatever the sender wrote
@@ -522,12 +563,13 @@ class AmendRepository(
                     )
                 }
                 val accepted = runCatching {
-                    val wrap = GiftWrap.wrap(rumor, keys, peer)
-                    mutex.withLock { seenWraps.add(wrap.id) }
+                    // essential: an SOS goes out even when the protected route is broken
+                    val ws = wrapsFor(rumor, peer, essential = true)
+                    mutex.withLock { ws.forEach { seenWraps.add(it.id) } }
                     // with the offline mesh on, the SOS also hops phone to phone — it can reach a
                     // friend even when there is no internet at all
-                    meshOutbox?.invoke(wrap)
-                    val n = pool.publish(wrap, inboxFor(peer)).count { it.accepted }
+                    ws.forEach { meshOutbox?.invoke(it) }
+                    val n = ws.maxOfOrNull { w -> pool.publish(w, inboxFor(peer)).count { it.accepted } } ?: 0
                     if (n == 0 && meshOutbox != null) 1 else n
                 }.getOrDefault(0)
                 if (phase != SosPhase.UPDATE) {
@@ -710,16 +752,189 @@ class AmendRepository(
      */
     private suspend fun publishRumor(peer: String, rumor: Event, expiration: Long? = null): Int {
         val recipients = recipientsOf(peer).ifEmpty { return 0 }
-        val wraps = recipients.map { it to GiftWrap.wrap(rumor, keys, it, expiration = expiration) }
-        val toSelf = if (peer != me) GiftWrap.wrap(rumor, keys, me, expiration = expiration) else null
+        val perRecipient = recipients.map { who -> who to wrapsFor(rumor, who, expiration) }
+        val toSelf = if (peer != me) wrapsFor(rumor, me, expiration) else emptyList()
+        val wraps = perRecipient.flatMap { (who, ws) -> ws.map { who to it } }
         mutex.withLock {
             wraps.forEach { seenWraps.add(it.second.id) }
-            toSelf?.let { seenWraps.add(it.id) }
+            toSelf.forEach { seenWraps.add(it.id) }
         }
         wraps.forEach { meshOutbox?.invoke(it.second) }
-        val counts = wraps.map { (who, w) -> scope.async { runCatching { pool.publish(w, inboxFor(who)).count { it.accepted } }.getOrDefault(0) } }.awaitAll()
-        toSelf?.let { scope.launch { pool.publish(it) } }
+        // a recipient is reached when every one of their wraps (one per phone) got to a relay
+        val counts = perRecipient.map { (who, ws) ->
+            scope.async {
+                if (ws.isEmpty()) 0
+                else ws.map { w -> runCatching { pool.publish(w, inboxFor(who)).count { it.accepted } }.getOrDefault(0) }.minOrNull() ?: 0
+            }
+        }.awaitAll()
+        toSelf.forEach { w -> scope.launch { runCatching { pool.publish(w) } } }
         return counts.maxOrNull() ?: 0
+    }
+
+    // ---------------------------------------------------------------- forward-secret chats
+
+    /** How a chat's messages travel (shown in the chat). */
+    enum class Protection {
+        /** Signal Protocol to every phone of theirs: the nsec can't open them. */
+        FULL,
+        /** Their app doesn't take protected messages yet: plain NIP-17 (encrypted to the nsec). */
+        BASIC,
+        /** They use protected messages, but no phone of theirs can be reached right now. */
+        UNREACHABLE,
+        /** Protection is off on this phone (or not available). */
+        OFF,
+    }
+
+    val ratchetAvailable: Boolean get() = ratchet != null
+    val ratchetOn: Boolean get() {
+        val r = ratchet ?: return false
+        return r.store.extra["on"] == "1" && !r.superseded
+    }
+    /** Another of my phones made the account's ratchet identity first: link this phone again. */
+    val ratchetNeedsLink: Boolean get() = ratchet?.superseded == true
+
+    private val _ratchetState = MutableStateFlow(0)
+    /** Bumps when protection changes for any chat (bundles, identities, the setting). */
+    val ratchetState: StateFlow<Int> = _ratchetState.asStateFlow()
+
+    fun protectionOf(peer: String): Protection {
+        val r = ratchet ?: return Protection.OFF
+        if (!ratchetOn) return Protection.OFF
+        val people = if (isGroup(peer)) recipientsOf(peer) else listOf(peer)
+        if (people.isEmpty()) return Protection.OFF
+        return when {
+            people.all { r.canReach(it) } -> Protection.FULL
+            people.any { r.isPinned(it) && !r.canReach(it) } -> Protection.UNREACHABLE
+            else -> Protection.BASIC
+        }
+    }
+
+    /** Turns forward-secret chats on or off on this phone. */
+    suspend fun setRatchetOn(on: Boolean, publish: Boolean = true) {
+        val r = ratchet ?: return
+        r.store.extra["on"] = if (on) "1" else "0"
+        r.store.markDirty(); r.store.commit()
+        if (!publish) {
+            if (on) r.maintain()
+        } else if (on) {
+            maintainRatchet(force = true)
+        } else {
+            // tell contacts this phone takes plain messages again (signed with the ratchet identity)
+            runCatching { pool.publish(r.retiredBundle(keys), bundleRelays()) }
+        }
+        _ratchetState.update { it + 1 }
+    }
+
+    private fun bundleRelays(): List<String> = (settings.relays + RelayPool.DEFAULT_RELAYS + inboxFor(me)).distinct()
+
+    /** Makes fresh prekeys when due and publishes this phone's bundle when it changed. */
+    private suspend fun maintainRatchet(force: Boolean = false) {
+        val r = ratchet ?: return
+        if (!ratchetOn) return
+        r.maintain()
+        if (!force && !r.bundleStale) return
+        val ev = r.ownBundle(keys)
+        val ok = runCatching { pool.publish(ev, bundleRelays()).any { it.accepted } }.getOrDefault(false)
+        if (ok) r.bundlePublished()
+    }
+
+    /** The security code with [peer]; covers both ratchet identities once both are known. */
+    fun safetyCode(peer: String): String {
+        val r = ratchet
+        val mine = r?.takeIf { ratchetOn }?.ownIdentity()
+        val theirs = r?.trustedIdentityOf(peer)
+        return app.amend.messenger.core.crypto.SafetyCode.of(me, peer, if (theirs != null) mine else null, if (mine != null) theirs else null)
+    }
+
+    /** For "Link another phone": the account's ratchet identity, to go into the link QR code. */
+    fun ratchetLinkPart(): String? {
+        val r = ratchet?.takeIf { ratchetOn } ?: return null
+        val (id, created) = r.exportIdentity()
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(id) + "." + created
+    }
+
+    /** The other half of [ratchetLinkPart], on the phone being linked. */
+    fun adoptRatchetIdentity(part: String) {
+        val r = ratchet ?: return
+        val id = runCatching { java.util.Base64.getUrlDecoder().decode(part.substringBefore(".")) }.getOrNull() ?: return
+        val created = part.substringAfter(".", "").toLongOrNull() ?: return
+        runCatching {
+            r.store.adoptIdentity(id, created)
+            r.store.extra.remove("superseded")
+            r.store.extra["on"] = "1"
+            r.store.markDirty(); r.store.commit()
+        }
+        _ratchetState.update { it + 1 }
+    }
+
+    /** This phone's current bundle (for tests and for handing to a nearby phone). */
+    fun ratchetBundle(): Event? = ratchet?.takeIf { ratchetOn }?.let { it.maintain(); it.ownBundle(keys) }
+
+    /** A kind-30443 prekey bundle from a relay (or a test). */
+    fun handleBundle(ev: Event) {
+        val r = ratchet ?: return
+        when (r.acceptBundle(ev)) {
+            Ratchet.BundleResult.IdentityChanged -> onIdentityChanged(ev.pubkey)
+            Ratchet.BundleResult.Superseded -> Unit
+            else -> Unit
+        }
+        _ratchetState.update { it + 1 }
+    }
+
+    /** A contact's ratchet identity changed: a notice in the chat, and the app un-verifies them. */
+    private fun onIdentityChanged(peer: String) {
+        if (peer == me) return
+        scope.launch {
+            val now = Event.nowSeconds()
+            upsertMessage(
+                ChatMessage(
+                    id = "fs-change-$peer-$now", peer = peer, fromMe = false,
+                    text = "Security code changed: they set up amend again or on a new phone. Compare security codes if you're unsure.",
+                    createdAt = now, type = MessageType.NOTICE, status = MessageStatus.RECEIVED, receipt = 2,
+                ),
+                countUnread = false,
+            )
+        }
+        _events.tryEmit(AmendEvent.SecurityCodeChanged(peer))
+    }
+
+    /** A protected message that couldn't be opened: a placeholder, and a fresh start with that phone. */
+    private fun onRatchetFailure(envelope: Event) {
+        val r = ratchet ?: return
+        val from = envelope.firstTag("from")?.toIntOrNull() ?: return
+        if (!r.resetSession(envelope.pubkey, from)) return
+        if (envelope.pubkey == me) return
+        scope.launch {
+            upsertMessage(
+                ChatMessage(
+                    id = "fs-fail-${envelope.id}", peer = envelope.pubkey, fromMe = false,
+                    text = "A message couldn't be decrypted on this phone. Ask them to send it again.",
+                    createdAt = envelope.createdAt, type = MessageType.NOTICE, status = MessageStatus.RECEIVED, receipt = 2,
+                ),
+                countUnread = false,
+            )
+        }
+    }
+
+    /**
+     * The one place a rumor becomes gift wraps for [who] (a contact, or [me] for my other phones).
+     * Protected: one wrap per phone, the rumor encrypted with the Signal Protocol inside.
+     * Plain NIP-17 only for people who never used protection, or for an [essential] message
+     * (SOS) that would otherwise not go out at all. Empty: nobody to send to right now.
+     */
+    private fun wrapsFor(rumor: Event, who: String, expiration: Long? = null, ephemeral: Boolean = false, essential: Boolean = false): List<Event> {
+        val r = ratchet
+        if (r != null && ratchetOn) {
+            if (r.canReach(who)) {
+                val envelopes = r.encrypt(who, rumor)
+                if (envelopes.isNotEmpty()) return envelopes.map { GiftWrap.wrap(it, keys, who, ephemeral = ephemeral, expiration = expiration) }
+            }
+            // my other phones: only protected copies (none if this is my only phone)
+            if (who == me) return emptyList()
+            // never drop to plain quietly for someone who has used protection: a relay could be hiding their keys
+            if (r.isPinned(who) && !essential) return emptyList()
+        }
+        return listOf(GiftWrap.wrap(rumor, keys, who, ephemeral = ephemeral, expiration = expiration))
     }
 
     // ---------------------------------------------------------------- offline mesh
@@ -829,9 +1044,9 @@ class AmendRepository(
      */
     suspend fun sendCallSignal(peer: String, signal: CallSignal, stored: Boolean = false): Int {
         val rumor = GiftWrap.rumor(me, Kinds.CALL_SIGNAL, signal.contentJson(), listOf(listOf("p", peer), listOf("amend", "call", signal.type)))
-        val wrap = GiftWrap.wrap(rumor, keys, peer, ephemeral = !stored)
-        mutex.withLock { seenWraps.add(wrap.id) }
-        return pool.publish(wrap, inboxFor(peer)).count { it.accepted }
+        val ws = wrapsFor(rumor, peer, ephemeral = !stored)
+        mutex.withLock { ws.forEach { seenWraps.add(it.id) } }
+        return ws.maxOfOrNull { w -> pool.publish(w, inboxFor(peer)).count { it.accepted } } ?: 0
     }
 
     /** Adds (or updates) the call entry in a chat. Local only: each side keeps its own call history. */
@@ -907,10 +1122,10 @@ class AmendRepository(
         tags.add(listOf("amend", "receipt", type))
         until?.let { tags.add(listOf("amend-until", it.toString())) }
         val rumor = GiftWrap.rumor(me, Kinds.RECEIPT, "", tags)
-        val wrap = GiftWrap.wrap(rumor, keys, peer)
-        mutex.withLock { seenWraps.add(wrap.id) }
-        meshOutbox?.invoke(wrap)
-        val n = pool.publish(wrap, inboxFor(peer)).count { it.accepted }
+        val ws = wrapsFor(rumor, peer)
+        mutex.withLock { ws.forEach { seenWraps.add(it.id) } }
+        ws.forEach { meshOutbox?.invoke(it) }
+        val n = ws.maxOfOrNull { w -> pool.publish(w, inboxFor(peer)).count { it.accepted } } ?: 0
         return if (n == 0 && meshOutbox != null) 1 else n
     }
 
@@ -1438,10 +1653,10 @@ class AmendRepository(
         saveStories()
         var sent = 0
         (audience + me).forEach { peer ->
-            val wrap = GiftWrap.wrap(rumor, keys, peer, expiration = expires)
-            mutex.withLock { seenWraps.add(wrap.id) }
-            meshOutbox?.invoke(wrap)
-            val ok = runCatching { pool.publish(wrap, inboxFor(peer)).any { it.accepted } }.getOrDefault(false)
+            val ws = wrapsFor(rumor, peer, expiration = expires)
+            mutex.withLock { ws.forEach { seenWraps.add(it.id) } }
+            ws.forEach { meshOutbox?.invoke(it) }
+            val ok = ws.isNotEmpty() && ws.all { w -> runCatching { pool.publish(w, inboxFor(peer)).any { it.accepted } }.getOrDefault(false) }
             if (ok && peer != me) sent++
         }
         return sent
@@ -1488,9 +1703,9 @@ class AmendRepository(
         removeStory(storyId, me)
         val rumor = GiftWrap.rumor(me, Kinds.DELETION, "", listOf(listOf("e", storyId), listOf("k", Kinds.STORY.toString())))
         (s.audience + me).forEach { peer ->
-            val wrap = GiftWrap.wrap(rumor, keys, peer, expiration = s.expiresAt)
-            mutex.withLock { seenWraps.add(wrap.id) }
-            runCatching { pool.publish(wrap, inboxFor(peer)) }
+            val ws = wrapsFor(rumor, peer, expiration = s.expiresAt)
+            mutex.withLock { ws.forEach { seenWraps.add(it.id) } }
+            ws.forEach { w -> runCatching { pool.publish(w, inboxFor(peer)) } }
         }
     }
 
@@ -1941,9 +2156,9 @@ class AmendRepository(
             .sortedByDescending { it.lastActivity }.take(50).map { it.peer }
         contacts.forEach { peer ->
             val rumor = GiftWrap.rumor(me, Kinds.ECO_STATS, content, listOf(listOf("p", peer), listOf("amend", "eco-stats")))
-            val wrap = GiftWrap.wrap(rumor, keys, peer)
-            mutex.withLock { seenWraps.add(wrap.id) }
-            runCatching { pool.publish(wrap, inboxFor(peer)) }
+            val ws = wrapsFor(rumor, peer)
+            mutex.withLock { ws.forEach { seenWraps.add(it.id) } }
+            ws.forEach { w -> runCatching { pool.publish(w, inboxFor(peer)) } }
         }
     }
 

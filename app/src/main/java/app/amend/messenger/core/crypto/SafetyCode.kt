@@ -13,16 +13,23 @@ import java.security.MessageDigest
 object SafetyCode {
     private const val ITERATIONS = 5200
     private const val VERSION = "amend-safety-code-v1"
+    private const val VERSION_2 = "amend-safety-code-v2"
 
-    /** [a] and [b] are 64-character hex public keys, in any order. */
-    fun of(a: String, b: String): String {
+    /**
+     * [a] and [b] are 64-character hex public keys, in any order. With both people's ratchet
+     * identity keys ([ia] for [a], [ib] for [b]; forward-secret chats) the code covers those too
+     * (v2), so a changed ratchet identity changes the code.
+     */
+    fun of(a: String, b: String, ia: ByteArray? = null, ib: ByteArray? = null): String {
         val x = a.lowercase()
         val y = b.lowercase()
+        val v2 = ia != null && ib != null
         val (first, second) = if (x <= y) x to y else y to x
-        val fb = first.hexToBytes()
-        val sb = second.hexToBytes()
+        val (firstId, secondId) = if (x <= y) ia to ib else ib to ia
+        val fb = first.hexToBytes() + (if (v2) firstId!! else ByteArray(0))
+        val sb = second.hexToBytes() + (if (v2) secondId!! else ByteArray(0))
         val md = MessageDigest.getInstance("SHA-512")
-        var h = md.digest(VERSION.toByteArray(Charsets.UTF_8) + fb + sb)
+        var h = md.digest((if (v2) VERSION_2 else VERSION).toByteArray(Charsets.UTF_8) + fb + sb)
         repeat(ITERATIONS) {
             md.update(h)
             md.update(fb)

@@ -53,7 +53,8 @@ import app.amend.messenger.util.Verified
 @Composable
 fun VerifyScreen(repo: AmendRepository, peer: String, onClose: () -> Unit) {
     val haptics = rememberHaptics()
-    val code = remember(peer) { SafetyCode.of(repo.me, peer) }
+    val fs by repo.ratchetState.collectAsStateWithLifecycle()
+    val code = remember(peer, fs) { repo.safetyCode(peer) }
     val set by Verified.hashes.collectAsStateWithLifecycle()
     val verified = Verified.isVerified(peer, set)
     var scanning by remember { mutableStateOf(false) }

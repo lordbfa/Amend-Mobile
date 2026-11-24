@@ -381,7 +381,8 @@ internal fun BackupCard(nsec: String) {
                             .padding(10.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (show) LeafQr(LINK_PREFIX + nsec, Modifier.fillMaxSize())
+                        // the account's forward-secrecy identity goes along, phone to phone
+                        if (show) LeafQr(LINK_PREFIX + nsec + (repo.ratchetLinkPart()?.let { "#fs=$it" } ?: ""), Modifier.fillMaxSize())
                         else Text("Hold to show the link code", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }

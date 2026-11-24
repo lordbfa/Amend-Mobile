@@ -128,5 +128,9 @@ object Kinds {
      */
     const val NEARBY_SOS = 21911
     const val DM_RELAYS = 10050
+    /** Inner rumor carrying a Signal Protocol message (forward-secret chats, docs/RATCHET.md). Never published. */
+    const val RATCHET_MESSAGE = 1443
+    /** A phone's Signal prekey bundle, one per phone ("d" = device id). Parameterised replaceable. */
+    const val PREKEY_BUNDLE = 30443
     const val CLIENT_AUTH = 22242
 }

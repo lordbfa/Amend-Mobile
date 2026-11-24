@@ -158,11 +158,12 @@ fun QrScannerScreen(myKey: String, onFound: (String) -> Unit, onClose: () -> Uni
     fun handle(text: String): Boolean {
         if (done) return true
         if (linkMode) {
-            val nsec = text.trim().removePrefix(LINK_PREFIX)
-            if (Nip19.parseSecretKey(nsec) == null) { hint = "That isn't an amend link code"; return false }
+            // "nsec1…" or "nsec1…#fs=…" (with the account's forward-secrecy identity)
+            val payload = text.trim().removePrefix(LINK_PREFIX)
+            if (Nip19.parseSecretKey(payload.substringBefore("#")) == null) { hint = "That isn't an amend link code"; return false }
             done = true
             haptics.success()
-            onFound(nsec)
+            onFound(payload)
             return true
         }
         val key = Nip19.parsePublicKey(text)

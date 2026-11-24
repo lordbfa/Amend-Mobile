@@ -238,7 +238,7 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                         Spacer(Modifier.weight(1f))
                         Button(
                             onClick = {
-                                val sk = Nip19.parseSecretKey(input)
+                                val sk = Nip19.parseSecretKey(input.substringBefore("#"))
                                 val kp = sk?.let { runCatching { KeyPair(it) }.getOrNull() }
                                 if (kp == null) {
                                     haptics.reject()
@@ -246,6 +246,8 @@ fun OnboardingScreen(onIdentity: (KeyPair) -> AmendRepository) {
                                 } else {
                                     haptics.success()
                                     val repo = onIdentity(kp)
+                                    // linked from another phone: take over the account's forward-secrecy identity
+                                    input.substringAfter("#fs=", "").takeIf { it.isNotEmpty() }?.let { repo.adoptRatchetIdentity(it) }
                                     repo.goOnline()
                                 }
                             },

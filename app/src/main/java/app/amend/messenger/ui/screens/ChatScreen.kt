@@ -276,6 +276,8 @@ fun ChatScreen(repo: AmendRepository, peer: String, onBack: () -> Unit, onOpenCh
             )
         }
 
+        ProtectionLabel(repo, peer)
+
         LazyColumn(
             state = listState,
             reverseLayout = true,
@@ -827,6 +829,23 @@ private fun GardenHeader(
             }
         }
     }
+}
+
+/** How this chat's messages travel, when full protection is on (docs/RATCHET.md). */
+@Composable
+private fun ProtectionLabel(repo: AmendRepository, peer: String) {
+    val state by repo.ratchetState.collectAsStateWithLifecycle()
+    val protection = remember(state, peer) { repo.protectionOf(peer) }
+    val (text, color) = when (protection) {
+        AmendRepository.Protection.FULL -> "Fully protected" to Color(0xFF2BB673)
+        AmendRepository.Protection.BASIC -> "Not fully protected: their amend doesn't have full protection yet" to MaterialTheme.colorScheme.onSurfaceVariant
+        AmendRepository.Protection.UNREACHABLE -> "Can't reach their protection keys right now. Messages wait until they can be sent safely." to MaterialTheme.colorScheme.error
+        AmendRepository.Protection.OFF -> return
+    }
+    Text(
+        text, style = MaterialTheme.typography.labelMedium, color = color, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

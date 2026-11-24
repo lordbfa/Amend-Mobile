@@ -220,7 +220,7 @@ private fun SectionPage(app: AmendApp, repo: AmendRepository, section: Section) 
         Section.SOUNDS -> SoundsPage()
         Section.LANGUAGE -> LanguagePage()
         Section.ABOUT -> AboutPage()
-        Section.SECURITY -> SecurityPage()
+        Section.SECURITY -> SecurityPage(repo)
         Section.POLICY -> PolicyPage()
         Section.CONTACT -> ContactPage()
         Section.INFO -> AppInfoPage(app, repo)
@@ -490,9 +490,10 @@ private fun AboutPage() {
 
 /** What amend protects, what it can't hide, and how to check it yourself. No overclaiming. */
 @Composable
-private fun SecurityPage() {
+private fun SecurityPage(repo: AmendRepository) {
     val context = LocalContext.current
     val commit = BuildConfig.GIT_COMMIT
+    ForwardSecrecyCard(repo)
     Text("How amend protects you", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     TextCard(
         "End-to-end encryption" to "Messages are encrypted on your phone (NIP-44) and sealed in an envelope signed by a throwaway key (NIP-17/59), so relays can't read them or see who sent them. Calls are encrypted with DTLS-SRTP; photos, videos and voice notes with AES-256-GCM before they are uploaded.",
@@ -503,7 +504,8 @@ private fun SecurityPage() {
     TextCard(
         "Relays see some metadata" to "A relay can see the recipient's public key, a rough time (shifted by up to two days) and the IP address that connects to it. Turn on Tor (Orbot) under Your network & relays to hide your IP address from relays.",
         "Calls" to "By default calls connect phone to phone, so the other person can see your IP address. Turn on Hide my IP address in calls under Calls to always use the relay.",
-        "No forward secrecy yet" to "Messages are encrypted with your long-term key. If someone ever steals that key, they could read old messages that relays still store. Disappearing messages limit this: relays that honour the expiry delete them.",
+        "Forward secrecy" to if (repo.ratchetOn) "Full protection is on: chats with people whose amend has it too can't be opened with your secret key, now or later. Chats marked Not fully protected still use your long-term key."
+            else "Without full protection, messages are encrypted with your long-term key: if someone ever steals that key, they could read old messages that relays still store. Turn on Full protection above.",
         "Not audited yet" to "amend hasn't had an independent security audit. We welcome one and will publish the results.",
     )
     Text("Check it yourself", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -526,6 +528,39 @@ private fun SecurityPage() {
         },
         modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
     ) { Text("Report a security problem") }
+}
+
+/** Full protection: forward-secret chats with the Signal Protocol (docs/RATCHET.md). Off by default for now. */
+@Composable
+private fun ForwardSecrecyCard(repo: AmendRepository) {
+    if (!repo.ratchetAvailable) return
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val state by repo.ratchetState.collectAsStateWithLifecycle()
+    val on = remember(state) { repo.ratchetOn }
+    app.amend.messenger.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Full protection (beta)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Chats use the Signal Protocol inside amend's encryption. New keys for every message, kept only on this phone: not even your secret key (nsec) can open them later.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = on, onCheckedChange = { v -> scope.launch { repo.setRatchetOn(v) } })
+            }
+            if (repo.ratchetNeedsLink) {
+                Text(
+                    "Your other phone set up full protection first. To use it here too, link this phone again from that phone (You → Link another phone).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Text(
+                "Works with people whose amend has full protection on. Others get messages as before, and the chat says so. Restoring from your backup key gives you new protection keys: old messages can't be downloaded again, and your contacts see that your security code changed.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable
