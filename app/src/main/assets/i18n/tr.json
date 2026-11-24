@@ -860,5 +860,17 @@
 "Veterinerin adı ve numarası, geçmiş ve sonraki ziyaretler.",
 "Banyo, tarama, tırnaklar, temizlik.",
 "Yürüyüş, oyun, kum kabı, su, uyku.",
-"Ona bakan kişinin bilmesi gereken başka her şey."
+"Ona bakan kişinin bilmesi gereken başka her şey.",
+"Tam koruma (beta)",
+"Sohbetler amend şifrelemesinin içinde Signal Protokolü'nü kullanır. Her mesaj için yeni anahtarlar, yalnızca bu telefonda: gizli anahtarın (nsec) bile onları sonradan açamaz.",
+"Diğer telefonun tam korumayı önce kurdu. Burada da kullanmak için bu telefonu o telefondan yeniden bağla (You → Link another phone).",
+"amend'inde tam koruma açık olan kişilerle çalışır. Diğerleri mesajları eskisi gibi alır ve sohbette bu belirtilir. Yedek anahtarınla geri yüklemek yeni koruma anahtarları oluşturur: eski mesajlar yeniden indirilemez ve kişilerin güvenlik kodunun değiştiğini görür.",
+"İleri gizlilik",
+"Tam koruma açık: onu kullanan kişilerle sohbetler gizli anahtarınla ne şimdi ne de sonra açılabilir. Tam korunmuyor olarak işaretli sohbetler hâlâ uzun süreli anahtarını kullanır.",
+"Tam koruma olmadan mesajlar uzun süreli anahtarınla şifrelenir: biri o anahtarı çalarsa, rölelerin hâlâ sakladığı eski mesajları okuyabilir. Yukarıdan tam korumayı aç.",
+"Tam korunuyor",
+"Tam korunmuyor: onların amend'inde henüz tam koruma yok",
+"Şu anda koruma anahtarlarına ulaşılamıyor. Mesajlar güvenle gönderilebilene kadar bekler.",
+"Güvenlik kodu değişti: amend'i yeniden kurdular ya da yeni bir telefonda kullanıyorlar. Emin değilsen güvenlik kodlarını karşılaştır.",
+"Bir mesaj bu telefonda çözülemedi. Yeniden göndermelerini iste."
 ]

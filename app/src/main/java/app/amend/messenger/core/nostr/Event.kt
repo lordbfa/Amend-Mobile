@@ -132,5 +132,7 @@ object Kinds {
     const val RATCHET_MESSAGE = 1443
     /** A phone's Signal prekey bundle, one per phone ("d" = device id). Parameterised replaceable. */
     const val PREKEY_BUNDLE = 30443
+    /** Inner (protected) rumor that only restarts a broken session. Never published. */
+    const val RATCHET_RESET = 1444
     const val CLIENT_AUTH = 22242
 }

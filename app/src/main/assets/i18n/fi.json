@@ -860,5 +860,17 @@
 "Eläinlääkärin nimi ja numero, aiemmat ja seuraavat käynnit.",
 "Pesu, harjaus, kynnet, puhdistus.",
 "Ulkoilu, leikki, hiekkalaatikko, vesi, uni.",
-"Kaikki muu, mitä sen hoitajan pitää tietää."
+"Kaikki muu, mitä sen hoitajan pitää tietää.",
+"Täysi suojaus (beta)",
+"Keskustelut käyttävät Signal-protokollaa amendin salauksen sisällä. Joka viestille uudet avaimet, jotka ovat vain tässä puhelimessa: edes salainen avaimesi (nsec) ei avaa niitä myöhemmin.",
+"Toinen puhelimesi otti täyden suojauksen käyttöön ensin. Käyttääksesi sitä myös täällä yhdistä tämä puhelin uudelleen siitä puhelimesta (You → Link another phone).",
+"Toimii niiden kanssa, joiden amendissa täysi suojaus on päällä. Muut saavat viestit kuten ennenkin, ja keskustelussa kerrotaan siitä. Varmuusavaimesta palauttaminen antaa uudet suojausavaimet: vanhoja viestejä ei voi ladata uudelleen, ja yhteystietosi näkevät, että turvakoodisi muuttui.",
+"Eteenpäin salaus (forward secrecy)",
+"Täysi suojaus on päällä: keskusteluja niiden kanssa, joilla se on myös, ei voi avata salaisella avaimellasi nyt eikä myöhemmin. Keskustelut, joissa lukee Ei täysin suojattu, käyttävät yhä pitkäaikaista avaintasi.",
+"Ilman täyttä suojausta viestit salataan pitkäaikaisella avaimellasi: jos joku joskus varastaa sen, hän voi lukea vanhoja viestejä, joita välityspalvelimet vielä säilyttävät. Ota täysi suojaus käyttöön yllä.",
+"Täysin suojattu",
+"Ei täysin suojattu: heidän amendissaan ei vielä ole täyttä suojausta",
+"Heidän suojausavaimiaan ei tavoiteta juuri nyt. Viestit odottavat, kunnes ne voi lähettää turvallisesti.",
+"Turvakoodi muuttui: hän asensi amendin uudelleen tai uuteen puhelimeen. Vertaa turvakoodeja, jos et ole varma.",
+"Viestiä ei voitu purkaa tässä puhelimessa. Pyydä lähettämään se uudelleen."
 ]

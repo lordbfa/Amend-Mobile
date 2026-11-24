@@ -903,6 +903,16 @@ class AmendRepository(
         val r = ratchet ?: return
         val from = envelope.firstTag("from")?.toIntOrNull() ?: return
         if (!r.resetSession(envelope.pubkey, from)) return
+        // a tiny protected message starts a fresh session on their side too (a new first message
+        // replaces their broken one); it carries nothing and is ignored when it arrives
+        scope.launch {
+            val sender = envelope.pubkey
+            val ping = GiftWrap.rumor(me, Kinds.RATCHET_RESET, "", listOf(listOf("p", sender)))
+            wrapsFor(ping, sender).forEach { w ->
+                mutex.withLock { seenWraps.add(w.id) }
+                runCatching { pool.publish(w, inboxFor(sender)) }
+            }
+        }
         if (envelope.pubkey == me) return
         scope.launch {
             upsertMessage(

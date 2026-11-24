@@ -860,5 +860,17 @@
 "Nama dan nomor dokter hewan, kunjungan sebelumnya dan berikutnya.",
 "Mandi, menyikat, kuku, membersihkan.",
 "Jalan-jalan, bermain, pasir, air, tidur.",
-"Hal lain yang perlu diketahui orang yang merawatnya."
+"Hal lain yang perlu diketahui orang yang merawatnya.",
+"Perlindungan penuh (beta)",
+"Obrolan memakai Signal Protocol di dalam enkripsi amend. Kunci baru untuk setiap pesan, hanya disimpan di ponsel ini: bahkan kunci rahasiamu (nsec) tidak bisa membukanya nanti.",
+"Ponselmu yang lain mengaktifkan perlindungan penuh lebih dulu. Agar bisa dipakai di sini juga, tautkan lagi ponsel ini dari ponsel itu (You → Link another phone).",
+"Berfungsi dengan orang yang mengaktifkan perlindungan penuh di amend. Yang lain menerima pesan seperti biasa, dan obrolan menyebutkannya. Memulihkan dengan kunci cadangan membuat kunci perlindungan baru: pesan lama tidak bisa diunduh lagi, dan kontakmu melihat kode keamananmu berubah.",
+"Kerahasiaan maju",
+"Perlindungan penuh aktif: obrolan dengan orang yang juga memilikinya tidak bisa dibuka dengan kunci rahasiamu, sekarang atau nanti. Obrolan bertanda Tidak sepenuhnya terlindungi masih memakai kunci jangka panjangmu.",
+"Tanpa perlindungan penuh, pesan dienkripsi dengan kunci jangka panjangmu: jika seseorang mencurinya, ia bisa membaca pesan lama yang masih disimpan relay. Aktifkan perlindungan penuh di atas.",
+"Terlindungi penuh",
+"Tidak sepenuhnya terlindungi: amend mereka belum punya perlindungan penuh",
+"Kunci perlindungan mereka tidak bisa dijangkau sekarang. Pesan menunggu sampai bisa dikirim dengan aman.",
+"Kode keamanan berubah: mereka memasang ulang amend atau memakai ponsel baru. Bandingkan kode keamanan jika ragu.",
+"Sebuah pesan tidak bisa didekripsi di ponsel ini. Minta mereka mengirimnya lagi."
 ]

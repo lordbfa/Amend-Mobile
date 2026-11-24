@@ -860,5 +860,17 @@
 "The vet's name and number, past and next visits.",
 "Bathing, brushing, nails, cleaning.",
 "Walks, play, litter, water, sleep.",
-"Anything else someone looking after them should know."
+"Anything else someone looking after them should know.",
+"Full protection (beta)",
+"Chats use the Signal Protocol inside amend's encryption. New keys for every message, kept only on this phone: not even your secret key (nsec) can open them later.",
+"Your other phone set up full protection first. To use it here too, link this phone again from that phone (You → Link another phone).",
+"Works with people whose amend has full protection on. Others get messages as before, and the chat says so. Restoring from your backup key gives you new protection keys: old messages can't be downloaded again, and your contacts see that your security code changed.",
+"Forward secrecy",
+"Full protection is on: chats with people whose amend has it too can't be opened with your secret key, now or later. Chats marked Not fully protected still use your long-term key.",
+"Without full protection, messages are encrypted with your long-term key: if someone ever steals that key, they could read old messages that relays still store. Turn on Full protection above.",
+"Fully protected",
+"Not fully protected: their amend doesn't have full protection yet",
+"Can't reach their protection keys right now. Messages wait until they can be sent safely.",
+"Security code changed: they set up amend again or on a new phone. Compare security codes if you're unsure.",
+"A message couldn't be decrypted on this phone. Ask them to send it again."
 ]

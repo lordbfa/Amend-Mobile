@@ -860,5 +860,17 @@
 "Nom et numéro du vétérinaire, visites passées et prochaines.",
 "Bain, brossage, griffes, nettoyage.",
 "Promenades, jeu, litière, eau, sommeil.",
-"Tout ce que doit savoir la personne qui s'en occupe."
+"Tout ce que doit savoir la personne qui s'en occupe.",
+"Protection complète (bêta)",
+"Les discussions utilisent le protocole Signal à l'intérieur du chiffrement d'amend. De nouvelles clés pour chaque message, gardées uniquement sur ce téléphone : même votre clé secrète (nsec) ne pourra pas les ouvrir plus tard.",
+"Votre autre téléphone a activé la protection complète en premier. Pour l'utiliser ici aussi, reliez à nouveau ce téléphone depuis celui-là (You → Link another phone).",
+"Fonctionne avec les personnes dont amend a la protection complète activée. Les autres reçoivent les messages comme avant, et la discussion l'indique. Restaurer avec votre clé de sauvegarde crée de nouvelles clés de protection : les anciens messages ne peuvent pas être retéléchargés, et vos contacts voient que votre code de sécurité a changé.",
+"Confidentialité persistante",
+"La protection complète est activée : les discussions avec les personnes qui l'ont aussi ne peuvent pas être ouvertes avec votre clé secrète, ni maintenant ni plus tard. Les discussions marquées Pas entièrement protégé utilisent encore votre clé à long terme.",
+"Sans protection complète, les messages sont chiffrés avec votre clé à long terme : si quelqu'un la vole un jour, il pourrait lire les anciens messages que les relais conservent. Activez la protection complète ci-dessus.",
+"Entièrement protégé",
+"Pas entièrement protégé : son amend n'a pas encore la protection complète",
+"Impossible d'obtenir ses clés de protection pour le moment. Les messages attendent de pouvoir être envoyés en sécurité.",
+"Code de sécurité modifié : amend a été réinstallé ou utilisé sur un nouveau téléphone. Comparez les codes de sécurité en cas de doute.",
+"Un message n'a pas pu être déchiffré sur ce téléphone. Demandez-lui de le renvoyer."
 ]
