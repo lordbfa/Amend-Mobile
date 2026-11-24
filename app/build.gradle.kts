@@ -73,6 +73,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // libsignal-android is built with core library desugaring and requires it of the app
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -164,6 +166,7 @@ dependencies {
     // Signal Protocol (X3DH/PQXDH + Double Ratchet) for forward-secret chats. AGPL-3.0,
     // which combines with amend's GPL-3.0. The JVM unit tests load its desktop library.
     implementation("org.signal:libsignal-android:0.86.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
