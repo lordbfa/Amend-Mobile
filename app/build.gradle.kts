@@ -85,6 +85,9 @@ android {
     }
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module")
+        // libsignal-client also carries its desktop (Linux/macOS/Windows) libraries for JVM use;
+        // the phone only needs the Android ones that come from libsignal-android's jniLibs.
+        resources.excludes += setOf("libsignal_jni*.so", "libsignal_jni*.dylib", "signal_jni*.dll")
         // Store native .so uncompressed and page-aligned so the app installs and runs on
         // devices with 16 KB memory pages (Android 15+). AGP 8.5.1+ then aligns them to 16 KB.
         jniLibs.useLegacyPackaging = false
@@ -158,6 +161,9 @@ dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     // 0.19.0+ ships 16 KB-aligned 64-bit libsecp256k1 and still builds with Kotlin 2.1
     implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.19.0")
+    // Signal Protocol (X3DH/PQXDH + Double Ratchet) for forward-secret chats. AGPL-3.0,
+    // which combines with amend's GPL-3.0. The JVM unit tests load its desktop library.
+    implementation("org.signal:libsignal-android:0.86.5")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
