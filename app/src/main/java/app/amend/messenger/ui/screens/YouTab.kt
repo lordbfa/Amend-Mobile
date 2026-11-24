@@ -312,7 +312,7 @@ internal fun RelayEditor(relays: List<String>, onChange: (List<String>) -> Unit)
 
 /** Secret key backup, revealed only while the user holds their finger on it. */
 @Composable
-internal fun BackupCard(nsec: String) {
+internal fun BackupCard(nsec: String, linkExtra: String? = null) {
     var revealed by remember { mutableStateOf(false) }
     val blur by animateFloatAsState(if (revealed) 0f else 1f, tween(250), label = "reveal")
     val haptics = rememberHaptics()
@@ -382,7 +382,7 @@ internal fun BackupCard(nsec: String) {
                         contentAlignment = Alignment.Center,
                     ) {
                         // the account's forward-secrecy identity goes along, phone to phone
-                        if (show) LeafQr(LINK_PREFIX + nsec + (repo.ratchetLinkPart()?.let { "#fs=$it" } ?: ""), Modifier.fillMaxSize())
+                        if (show) LeafQr(LINK_PREFIX + nsec + (linkExtra?.let { "#fs=$it" } ?: ""), Modifier.fillMaxSize())
                         else Text("Hold to show the link code", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }

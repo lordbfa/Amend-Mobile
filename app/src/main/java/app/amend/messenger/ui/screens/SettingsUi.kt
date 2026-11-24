@@ -445,7 +445,7 @@ private fun PrivacyPage(app: AmendApp, repo: AmendRepository) {
     InstantsAudienceCard(repo)
     ScreenshotCard()
     WatchTextCard()
-    BackupCard(repo.keys.nsec)
+    BackupCard(repo.keys.nsec, linkExtra = repo.ratchetLinkPart())
     BurnerCard(app)
     OutlinedButton(
         onClick = { confirm = true },

@@ -90,6 +90,8 @@ android {
         // libsignal-client also carries its desktop (Linux/macOS/Windows) libraries for JVM use;
         // the phone only needs the Android ones that come from libsignal-android's jniLibs.
         resources.excludes += setOf("libsignal_jni*.so", "libsignal_jni*.dylib", "signal_jni*.dll")
+        // libsignal's test-only native library is not needed in the app
+        jniLibs.excludes += setOf("**/libsignal_jni_testing.so")
         // Store native .so uncompressed and page-aligned so the app installs and runs on
         // devices with 16 KB memory pages (Android 15+). AGP 8.5.1+ then aligns them to 16 KB.
         jniLibs.useLegacyPackaging = false
