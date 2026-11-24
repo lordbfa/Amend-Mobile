@@ -862,15 +862,17 @@
 "Passeios, brincadeiras, caixa de areia, água, sono.",
 "Qualquer outra coisa que quem cuida dele deve saber.",
 "Proteção total (beta)",
-"As conversas usam o Protocolo Signal dentro da criptografia do amend. Chaves novas a cada mensagem, guardadas só neste telefone: nem sua chave secreta (nsec) consegue abri-las depois.",
-"Seu outro telefone ativou a proteção total primeiro. Para usá-la aqui também, vincule este telefone de novo a partir daquele (You → Link another phone).",
+"As conversas usam o Protocolo Signal dentro da criptografia do amend, com chaves novas a cada mensagem. Essas chaves nunca saem deste telefone, então sua chave secreta (nsec) sozinha não abre as mensagens guardadas nos relays.",
+"Outro telefone usa sua conta com chaves de proteção diferentes. Se for seu segundo telefone, vincule-o a partir deste (You → Link another phone). Se não for seu, alguém tem sua chave secreta: crie uma nova identidade.",
 "Funciona com pessoas que têm a proteção total ativada no amend. As demais recebem as mensagens como antes, e a conversa indica isso. Restaurar com sua chave de backup cria novas chaves de proteção: mensagens antigas não podem ser baixadas de novo, e seus contatos veem que seu código de segurança mudou.",
 "Sigilo futuro",
 "A proteção total está ativada: conversas com quem também a tem não podem ser abertas com sua chave secreta, nem agora nem depois. Conversas marcadas como Não totalmente protegida ainda usam sua chave de longo prazo.",
 "Sem proteção total, as mensagens são criptografadas com sua chave de longo prazo: se alguém a roubar, poderá ler mensagens antigas que os relays ainda guardam. Ative a proteção total acima.",
 "Totalmente protegida",
 "Não totalmente protegida: o amend da pessoa ainda não tem proteção total",
-"Não é possível alcançar as chaves de proteção da pessoa agora. As mensagens aguardam até poderem ser enviadas com segurança.",
+"Não é possível alcançar as chaves de proteção da pessoa agora, então não dá para enviar mensagens. Tente mais tarde.",
 "O código de segurança mudou: a pessoa configurou o amend de novo ou num telefone novo. Compare os códigos de segurança se tiver dúvida.",
-"Uma mensagem não pôde ser descriptografada neste telefone. Peça para a pessoa enviá-la de novo."
+"Uma mensagem não pôde ser descriptografada neste telefone. Peça para a pessoa enviá-la de novo.",
+"As chaves de proteção deste telefone não podem ser abertas agora, então mensagens protegidas não podem ser enviadas. Reinicie o telefone. Se continuar, recomece com chaves novas: seus contatos verão que seu código de segurança mudou.",
+"Recomeçar com chaves novas"
 ]

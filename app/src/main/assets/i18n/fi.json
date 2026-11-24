@@ -862,15 +862,17 @@
 "Ulkoilu, leikki, hiekkalaatikko, vesi, uni.",
 "Kaikki muu, mitä sen hoitajan pitää tietää.",
 "Täysi suojaus (beta)",
-"Keskustelut käyttävät Signal-protokollaa amendin salauksen sisällä. Joka viestille uudet avaimet, jotka ovat vain tässä puhelimessa: edes salainen avaimesi (nsec) ei avaa niitä myöhemmin.",
-"Toinen puhelimesi otti täyden suojauksen käyttöön ensin. Käyttääksesi sitä myös täällä yhdistä tämä puhelin uudelleen siitä puhelimesta (You → Link another phone).",
+"Keskustelut käyttävät Signal-protokollaa amendin salauksen sisällä, joka viestille uusin avaimin. Avaimet eivät koskaan poistu tästä puhelimesta, joten pelkkä salainen avaimesi (nsec) ei avaa välityspalvelimilla olevia viestejä.",
+"Toinen puhelin käyttää tiliäsi eri suojausavaimin. Jos se on oma toinen puhelimesi, yhdistä se tästä (You → Link another phone). Jos se ei ole sinun, jollakulla on salainen avaimesi: luo uusi identiteetti.",
 "Toimii niiden kanssa, joiden amendissa täysi suojaus on päällä. Muut saavat viestit kuten ennenkin, ja keskustelussa kerrotaan siitä. Varmuusavaimesta palauttaminen antaa uudet suojausavaimet: vanhoja viestejä ei voi ladata uudelleen, ja yhteystietosi näkevät, että turvakoodisi muuttui.",
 "Eteenpäin salaus (forward secrecy)",
 "Täysi suojaus on päällä: keskusteluja niiden kanssa, joilla se on myös, ei voi avata salaisella avaimellasi nyt eikä myöhemmin. Keskustelut, joissa lukee Ei täysin suojattu, käyttävät yhä pitkäaikaista avaintasi.",
 "Ilman täyttä suojausta viestit salataan pitkäaikaisella avaimellasi: jos joku joskus varastaa sen, hän voi lukea vanhoja viestejä, joita välityspalvelimet vielä säilyttävät. Ota täysi suojaus käyttöön yllä.",
 "Täysin suojattu",
 "Ei täysin suojattu: heidän amendissaan ei vielä ole täyttä suojausta",
-"Heidän suojausavaimiaan ei tavoiteta juuri nyt. Viestit odottavat, kunnes ne voi lähettää turvallisesti.",
+"Heidän suojausavaimiaan ei tavoiteta juuri nyt, joten heille ei voi lähettää viestejä. Yritä myöhemmin uudelleen.",
 "Turvakoodi muuttui: hän asensi amendin uudelleen tai uuteen puhelimeen. Vertaa turvakoodeja, jos et ole varma.",
-"Viestiä ei voitu purkaa tässä puhelimessa. Pyydä lähettämään se uudelleen."
+"Viestiä ei voitu purkaa tässä puhelimessa. Pyydä lähettämään se uudelleen.",
+"Tämän puhelimen suojausavaimia ei voi juuri nyt avata, joten suojattuja viestejä ei voi lähettää. Käynnistä puhelin uudelleen. Jos tämä toistuu, aloita alusta uusin avaimin: yhteystietosi näkevät, että turvakoodisi muuttui.",
+"Aloita alusta uusin avaimin"
 ]

@@ -862,15 +862,17 @@
 "Walks, play, litter, water, sleep.",
 "Anything else someone looking after them should know.",
 "Full protection (beta)",
-"Chats use the Signal Protocol inside amend's encryption. New keys for every message, kept only on this phone: not even your secret key (nsec) can open them later.",
-"Your other phone set up full protection first. To use it here too, link this phone again from that phone (You → Link another phone).",
+"Chats use the Signal Protocol inside amend's encryption, with new keys for every message. Those keys never leave this phone, so your secret key (nsec) alone can't open the messages stored on relays.",
+"Another phone uses your account with different protection keys. If it's your own second phone, link it from this one (You → Link another phone). If it isn't yours, someone has your secret key: make a new identity.",
 "Works with people whose amend has full protection on. Others get messages as before, and the chat says so. Restoring from your backup key gives you new protection keys: old messages can't be downloaded again, and your contacts see that your security code changed.",
 "Forward secrecy",
 "Full protection is on: chats with people whose amend has it too can't be opened with your secret key, now or later. Chats marked Not fully protected still use your long-term key.",
 "Without full protection, messages are encrypted with your long-term key: if someone ever steals that key, they could read old messages that relays still store. Turn on Full protection above.",
 "Fully protected",
 "Not fully protected: their amend doesn't have full protection yet",
-"Can't reach their protection keys right now. Messages wait until they can be sent safely.",
+"Can't reach their protection keys right now, so messages to them can't be sent. Try again later.",
 "Security code changed: they set up amend again or on a new phone. Compare security codes if you're unsure.",
-"A message couldn't be decrypted on this phone. Ask them to send it again."
+"A message couldn't be decrypted on this phone. Ask them to send it again.",
+"This phone's protection keys can't be opened right now, so protected messages can't be sent. Restart the phone. If it keeps happening, start over with new keys: your contacts will see that your security code changed.",
+"Start over with new keys"
 ]

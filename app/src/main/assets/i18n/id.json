@@ -862,15 +862,17 @@
 "Jalan-jalan, bermain, pasir, air, tidur.",
 "Hal lain yang perlu diketahui orang yang merawatnya.",
 "Perlindungan penuh (beta)",
-"Obrolan memakai Signal Protocol di dalam enkripsi amend. Kunci baru untuk setiap pesan, hanya disimpan di ponsel ini: bahkan kunci rahasiamu (nsec) tidak bisa membukanya nanti.",
-"Ponselmu yang lain mengaktifkan perlindungan penuh lebih dulu. Agar bisa dipakai di sini juga, tautkan lagi ponsel ini dari ponsel itu (You → Link another phone).",
+"Obrolan memakai Signal Protocol di dalam enkripsi amend, dengan kunci baru untuk setiap pesan. Kunci itu tidak pernah keluar dari ponsel ini, jadi kunci rahasiamu (nsec) saja tidak bisa membuka pesan yang tersimpan di relay.",
+"Ponsel lain memakai akunmu dengan kunci perlindungan berbeda. Jika itu ponsel keduamu sendiri, tautkan dari ponsel ini (You → Link another phone). Jika bukan milikmu, seseorang memegang kunci rahasiamu: buat identitas baru.",
 "Berfungsi dengan orang yang mengaktifkan perlindungan penuh di amend. Yang lain menerima pesan seperti biasa, dan obrolan menyebutkannya. Memulihkan dengan kunci cadangan membuat kunci perlindungan baru: pesan lama tidak bisa diunduh lagi, dan kontakmu melihat kode keamananmu berubah.",
 "Kerahasiaan maju",
 "Perlindungan penuh aktif: obrolan dengan orang yang juga memilikinya tidak bisa dibuka dengan kunci rahasiamu, sekarang atau nanti. Obrolan bertanda Tidak sepenuhnya terlindungi masih memakai kunci jangka panjangmu.",
 "Tanpa perlindungan penuh, pesan dienkripsi dengan kunci jangka panjangmu: jika seseorang mencurinya, ia bisa membaca pesan lama yang masih disimpan relay. Aktifkan perlindungan penuh di atas.",
 "Terlindungi penuh",
 "Tidak sepenuhnya terlindungi: amend mereka belum punya perlindungan penuh",
-"Kunci perlindungan mereka tidak bisa dijangkau sekarang. Pesan menunggu sampai bisa dikirim dengan aman.",
+"Kunci perlindungan mereka tidak bisa dijangkau sekarang, jadi pesan ke mereka tidak bisa dikirim. Coba lagi nanti.",
 "Kode keamanan berubah: mereka memasang ulang amend atau memakai ponsel baru. Bandingkan kode keamanan jika ragu.",
-"Sebuah pesan tidak bisa didekripsi di ponsel ini. Minta mereka mengirimnya lagi."
+"Sebuah pesan tidak bisa didekripsi di ponsel ini. Minta mereka mengirimnya lagi.",
+"Kunci perlindungan ponsel ini tidak bisa dibuka sekarang, jadi pesan terlindungi tidak bisa dikirim. Mulai ulang ponsel. Jika terus terjadi, mulai lagi dengan kunci baru: kontakmu akan melihat kode keamananmu berubah.",
+"Mulai lagi dengan kunci baru"
 ]

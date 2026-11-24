@@ -54,12 +54,18 @@ class RatchetStore(private val file: File, private val sealer: RatchetSealer) : 
     private val sessions = HashMap<String, ByteArray>()
     /** npub → trusted ratchet identity (public key bytes). */
     private val trusted = HashMap<String, ByteArray>()
-    /** Free-form small values (pins, peer bundles, counters) kept by [Ratchet]. */
-    val extra = HashMap<String, String>()
+    /** Free-form small values (pins, peer bundles, counters) kept by [Ratchet]. Read from several threads. */
+    val extra = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     @Volatile private var dirty = false
-    /** True when this store was created just now (no file, or the file couldn't be opened). */
+    /** True when this store was created just now (there was no file). */
     val fresh: Boolean
+    /**
+     * The file exists but couldn't be opened (the Keystore key failed or is gone). Nothing is
+     * thrown away and nothing falls back to plain messages: the user is told and decides.
+     */
+    @Volatile var locked: Boolean = false
+        private set
 
     init {
         val loaded = runCatching { if (file.exists()) Json.parseObject(String(sealer.open(file.readBytes()), Charsets.UTF_8)) else null }.getOrNull()
@@ -77,16 +83,26 @@ class RatchetStore(private val file: File, private val sealer: RatchetSealer) : 
             (loaded["x"] as? Map<*, *>)?.forEach { (k, v) -> if (k is String && v is String) extra[k] = v }
             fresh = false
         } else {
-            // No usable state (first start, or the Keystore key is gone): become a new phone.
-            // The old file is kept aside rather than overwritten, in case it can be opened later.
-            if (file.exists()) runCatching { file.renameTo(File(file.parentFile, file.name + ".unreadable-" + UUID.randomUUID())) }
+            // No file yet: a new phone. A file that can't be opened locks the store instead (see
+            // [locked]); a fresh identity is made in memory but never written over the old file.
+            locked = file.exists()
             identity = IdentityKeyPair.generate()
             identityCreated = System.currentTimeMillis() / 1000
             registrationId = 1 + RatchetRandom.int(16380)
             deviceId = 1 + RatchetRandom.int(127)
-            fresh = true
-            dirty = true
+            fresh = !locked
+            dirty = !locked
         }
+    }
+
+    /** The user chose to start protection over after [locked]: the old file is kept aside. */
+    @Synchronized
+    fun startOverAfterLock() {
+        if (!locked) return
+        runCatching { file.renameTo(File(file.parentFile, file.name + ".unreadable-" + UUID.randomUUID())) }
+        locked = false
+        dirty = true
+        commit()
     }
 
     // ------------------------------------------------------------------ own identity
@@ -229,7 +245,7 @@ class RatchetStore(private val file: File, private val sealer: RatchetSealer) : 
     /** Writes the state to disk if anything changed. */
     @Synchronized
     fun commit() {
-        if (!dirty) return
+        if (!dirty || locked) return
         fun enc(m: Map<Int, ByteArray>) = m.entries.associate { it.key.toString() to it.value.b64() }
         val json = Json.write(
             mapOf(

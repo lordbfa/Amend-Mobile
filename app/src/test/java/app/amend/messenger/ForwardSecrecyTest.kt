@@ -114,7 +114,7 @@ class ForwardSecrecyTest {
         val bob = Phone("bob")
         bob.repo.setRatchetOn(true, publish = false)
         val bundle = bob.repo.ratchetBundle()!!
-        assertEquals(Ratchet.BundleResult.Accepted, r.acceptBundle(bundle))
+        assertEquals(Ratchet.BundleResult.FirstSeen, r.acceptBundle(bundle))
         assertTrue(r.canReach(bob.repo.me))
         r.store.extra.keys.filter { it.startsWith("b:") }.toList().forEach { r.store.extra.remove(it) }
         assertFalse(r.canReach(bob.repo.me))
@@ -178,12 +178,80 @@ class ForwardSecrecyTest {
         val forged = Event.sign(bob.keys.secretKey, Kinds.PREKEY_BUNDLE, forgedContent, real.tags, real.createdAt + 5)
         val r = Ratchet(alice.repo.me, RatchetStore(File(dir("a2"), "r.bin"), TestSealer()))
         r.maintain()
-        assertEquals(Ratchet.BundleResult.Accepted, r.acceptBundle(real))
+        assertEquals(Ratchet.BundleResult.FirstSeen, r.acceptBundle(real))
         assertTrue(r.acceptBundle(forged) is Ratchet.BundleResult.Rejected)
         // an attacker's own ratchet identity is only taken with a visible "security code changed"
         val mallory = Ratchet(bob.repo.me, RatchetStore(File(dir("m"), "r.bin"), TestSealer()), now = { real.createdAt + 60 })
         mallory.maintain()
         assertEquals(Ratchet.BundleResult.IdentityChanged, r.acceptBundle(mallory.ownBundle(bob.keys)))
+    }
+
+    /** True when every wrap for [to] carries a Signal message (none is a plain NIP-17 copy). */
+    private fun allProtected(wraps: List<Event>, to: Phone) =
+        wraps.filter { it.tagValues("p").contains(to.repo.me) }.let { ws -> ws.isNotEmpty() && ws.all { GiftWrap.unwrap(it, to.keys).kind == Kinds.RATCHET_MESSAGE } }
+
+    private suspend fun pair(): Pair<Phone, Phone> {
+        val alice = Phone("alice")
+        val bob = Phone("bob")
+        alice.repo.setRatchetOn(true, publish = false)
+        bob.repo.setRatchetOn(true, publish = false)
+        alice.repo.handleBundle(bob.repo.ratchetBundle()!!)
+        bob.repo.handleBundle(alice.repo.ratchetBundle()!!)
+        return alice to bob
+    }
+
+    @Test
+    fun aForgedBundleForMyOwnAccountWarnsButSwitchesNothingOff() = runBlocking {
+        val (alice, bob) = pair()
+        // someone with alice's nsec publishes a bundle for her npub with their own identity
+        val thief = Ratchet(alice.repo.me, RatchetStore(File(dir("thief"), "r.bin"), TestSealer()))
+        thief.maintain()
+        alice.repo.handleBundle(thief.ownBundle(alice.keys))
+        assertTrue(alice.repo.ratchetOn)
+        assertTrue(alice.repo.ratchetIdentityConflict)
+        assertTrue(allProtected(send(alice, bob.repo.me, "still protected"), bob))
+    }
+
+    @Test
+    fun switchingOffNeverTurnsAProtectedChatPlain() = runBlocking {
+        val (alice, bob) = pair()
+        alice.repo.setRatchetOn(false, publish = false)
+        assertTrue(allProtected(send(alice, bob.repo.me, "off, but bob was protected"), bob))
+    }
+
+    @Test
+    fun aNewIdentityCantRetireProtectionRightAway() = runBlocking {
+        val bob = Phone("bob")
+        bob.repo.setRatchetOn(true, publish = false)
+        val real = bob.repo.ratchetBundle()!!
+        val r = Ratchet(KeyPair.generate().publicKeyHex, RatchetStore(File(dir("a"), "r.bin"), TestSealer()))
+        r.maintain()
+        assertEquals(Ratchet.BundleResult.FirstSeen, r.acceptBundle(real))
+        val mallory = Ratchet(bob.repo.me, RatchetStore(File(dir("m"), "r.bin"), TestSealer()), now = { real.createdAt + 60 })
+        mallory.maintain()
+        assertEquals(Ratchet.BundleResult.IdentityChanged, r.acceptBundle(mallory.ownBundle(bob.keys)))
+        val later = Ratchet(bob.repo.me, mallory.store, now = { real.createdAt + 120 })
+        assertEquals(Ratchet.BundleResult.Retired, r.acceptBundle(later.retiredBundle(bob.keys)))
+        assertTrue("a fresh identity must not unpin", r.isPinned(bob.repo.me))
+    }
+
+    @Test
+    fun anUnreadableProtectionFileLocksInsteadOfStartingOver() = runBlocking {
+        val d = dir("locked")
+        File(d, "ratchet.bin").writeBytes(ByteArray(64) { 1 })
+        val phone = Phone("locked", d = d)
+        assertTrue(phone.repo.ratchetLocked)
+        assertFalse(phone.repo.ratchetOn)
+        // the old file is left alone
+        assertEquals(64L, File(d, "ratchet.bin").length())
+        val carol = KeyPair.generate().publicKeyHex
+        val job = CoroutineScope(Dispatchers.Default).launch { runCatching { phone.repo.sendText(carol, "must not go out plain") } }
+        delay(1500)
+        job.cancel()
+        assertTrue("nothing is sent while locked", phone.sent.isEmpty())
+        phone.repo.ratchetStartOver()
+        assertFalse(phone.repo.ratchetLocked)
+        assertTrue(phone.repo.ratchetOn)
     }
 
     @Test

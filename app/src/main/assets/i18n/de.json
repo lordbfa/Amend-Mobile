@@ -862,15 +862,17 @@
 "Spaziergänge, Spielen, Katzenklo, Wasser, Schlaf.",
 "Alles andere, was jemand wissen sollte, der sich darum kümmert.",
 "Voller Schutz (Beta)",
-"Chats nutzen das Signal-Protokoll innerhalb der Verschlüsselung von amend. Neue Schlüssel für jede Nachricht, nur auf diesem Telefon: Nicht einmal dein geheimer Schlüssel (nsec) kann sie später öffnen.",
-"Dein anderes Telefon hat den vollen Schutz zuerst eingerichtet. Um ihn auch hier zu nutzen, verknüpfe dieses Telefon erneut von dort aus (You → Link another phone).",
+"Chats nutzen das Signal-Protokoll innerhalb der Verschlüsselung von amend, mit neuen Schlüsseln für jede Nachricht. Diese Schlüssel verlassen nie dieses Telefon, daher kann dein geheimer Schlüssel (nsec) allein die auf Relays gespeicherten Nachrichten nicht öffnen.",
+"Ein anderes Telefon nutzt dein Konto mit anderen Schutzschlüsseln. Ist es dein eigenes zweites Telefon, verknüpfe es von diesem aus (You → Link another phone). Ist es nicht deins, hat jemand deinen geheimen Schlüssel: Erstelle eine neue Identität.",
 "Funktioniert mit Personen, bei denen amend den vollen Schutz eingeschaltet hat. Andere erhalten Nachrichten wie bisher, und der Chat zeigt das an. Wiederherstellen mit deinem Sicherungsschlüssel erzeugt neue Schutzschlüssel: Alte Nachrichten lassen sich nicht erneut laden, und deine Kontakte sehen, dass sich dein Sicherheitscode geändert hat.",
 "Forward Secrecy",
 "Voller Schutz ist an: Chats mit Personen, die ihn auch haben, lassen sich mit deinem geheimen Schlüssel weder jetzt noch später öffnen. Chats mit dem Hinweis Nicht voll geschützt nutzen weiterhin deinen langfristigen Schlüssel.",
 "Ohne vollen Schutz werden Nachrichten mit deinem langfristigen Schlüssel verschlüsselt: Wer ihn je stiehlt, könnte alte Nachrichten lesen, die Relays noch speichern. Schalte oben den vollen Schutz ein.",
 "Voll geschützt",
 "Nicht voll geschützt: Ihr amend hat noch keinen vollen Schutz",
-"Ihre Schutzschlüssel sind gerade nicht erreichbar. Nachrichten warten, bis sie sicher gesendet werden können.",
+"Ihre Schutzschlüssel sind gerade nicht erreichbar, daher können keine Nachrichten gesendet werden. Versuche es später erneut.",
 "Sicherheitscode geändert: amend wurde neu eingerichtet oder auf einem neuen Telefon. Vergleicht die Sicherheitscodes, wenn du unsicher bist.",
-"Eine Nachricht konnte auf diesem Telefon nicht entschlüsselt werden. Bitte sie, sie erneut zu senden."
+"Eine Nachricht konnte auf diesem Telefon nicht entschlüsselt werden. Bitte sie, sie erneut zu senden.",
+"Die Schutzschlüssel dieses Telefons lassen sich gerade nicht öffnen, daher können keine geschützten Nachrichten gesendet werden. Starte das Telefon neu. Passiert das weiter, fang mit neuen Schlüsseln neu an: Deine Kontakte sehen dann, dass sich dein Sicherheitscode geändert hat.",
+"Mit neuen Schlüsseln neu anfangen"
 ]

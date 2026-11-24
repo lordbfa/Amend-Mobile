@@ -543,17 +543,24 @@ private fun ForwardSecrecyCard(repo: AmendRepository) {
                 Column(Modifier.weight(1f)) {
                     Text("Full protection (beta)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Chats use the Signal Protocol inside amend's encryption. New keys for every message, kept only on this phone: not even your secret key (nsec) can open them later.",
+                        "Chats use the Signal Protocol inside amend's encryption, with new keys for every message. Those keys never leave this phone, so your secret key (nsec) alone can't open the messages stored on relays.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Switch(checked = on, onCheckedChange = { v -> scope.launch { repo.setRatchetOn(v) } })
             }
-            if (repo.ratchetNeedsLink) {
+            if (repo.ratchetIdentityConflict) {
                 Text(
-                    "Your other phone set up full protection first. To use it here too, link this phone again from that phone (You → Link another phone).",
+                    "Another phone uses your account with different protection keys. If it's your own second phone, link it from this one (You → Link another phone). If it isn't yours, someone has your secret key: make a new identity.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
                 )
+            }
+            if (repo.ratchetLocked) {
+                Text(
+                    "This phone's protection keys can't be opened right now, so protected messages can't be sent. Restart the phone. If it keeps happening, start over with new keys: your contacts will see that your security code changed.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                )
+                OutlinedButton(onClick = { repo.ratchetStartOver() }, shape = RoundedCornerShape(16.dp)) { Text("Start over with new keys") }
             }
             Text(
                 "Works with people whose amend has full protection on. Others get messages as before, and the chat says so. Restoring from your backup key gives you new protection keys: old messages can't be downloaded again, and your contacts see that your security code changed.",

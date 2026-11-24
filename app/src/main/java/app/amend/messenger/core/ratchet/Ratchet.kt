@@ -44,8 +44,12 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
     @Volatile var bundleStale = true
         private set
 
-    /** This phone lost the identity race with another of my phones: it must be linked again. */
-    val superseded: Boolean get() = store.extra["superseded"] == "1"
+    /**
+     * Another phone published bundles for my npub with a different ratchet identity: either my
+     * own second phone set up separately, or someone holding my nsec. Nothing changes on its own
+     * (this phone keeps its keys); the user is warned and links the phones to settle it.
+     */
+    val identityConflict: Boolean get() = store.extra["conflict"] == "1"
 
     // ------------------------------------------------------------------ own keys
 
@@ -150,8 +154,10 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
         data object Retired : BundleResult
         /** Not usable: bad signature, expired, malformed, or older than what we have. */
         data class Rejected(val why: String) : BundleResult
-        /** One of my own phones has an identity made earlier than this phone's: link this phone again. */
-        data object Superseded : BundleResult
+        /** First protection identity seen for this person (no notice; old verifications no longer apply). */
+        data object FirstSeen : BundleResult
+        /** A bundle for my npub with another identity: warn (my other phone, or a stolen nsec). */
+        data object OwnConflict : BundleResult
     }
 
     /** Checks a kind-30443 bundle event (its Nostr id and signature already verified) and keeps it. */
@@ -178,10 +184,9 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
         if (npub == me) {
             val mine = store.identityKeyPair.publicKey
             if (ik != mine) {
-                // two of my phones made their own identity: the earlier one wins, this phone must be linked again
-                return if (ikt in 1 until store.identityCreated) {
-                    store.extra["superseded"] = "1"; store.markDirty(); store.commit(); BundleResult.Superseded
-                } else BundleResult.Rejected("other identity of mine (newer)")
+                // never switch anything off because of it: anyone with the nsec could publish this
+                if (!retired) { store.extra["conflict"] = "1"; store.markDirty(); store.commit() }
+                return BundleResult.OwnConflict
             }
             if (device == store.deviceId) {
                 // my own bundle echoed back, or another phone of mine picked the same device id
@@ -198,16 +203,22 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
             if (retired) return BundleResult.Rejected("retired by another identity")
             // they restored from their backup key or reinstalled: a new identity. Visible, like Signal.
             store.setTrusted(npub, ik)
+            store.extra["trustedAt:$npub"] = now().toString()
             store.deleteAllSessions(npub)
             store.extra.keys.filter { it.startsWith("b:$npub:") }.toList().forEach { store.extra.remove(it) }
             result = BundleResult.IdentityChanged
         } else if (npub != me && trusted == null) {
             store.setTrusted(npub, ik)
+            store.extra["trustedAt:$npub"] = now().toString()
+            result = BundleResult.FirstSeen
         }
         if (retired) {
             store.extra.remove(cacheKey)
             store.deleteSession(SignalProtocolAddress(npub, device))
-            if (devicesOf(npub).isEmpty()) store.extra.remove("pin:$npub")
+            // An identity that is less than a week old can't switch protection off: "new identity,
+            // then retire" would otherwise turn a visible takeover into a quiet downgrade.
+            val since = store.extra["trustedAt:$npub"]?.toLongOrNull() ?: 0
+            if (devicesOf(npub).isEmpty() && now() - since >= RETIRE_MIN_IDENTITY_AGE_SECS) store.extra.remove("pin:$npub")
             store.markDirty(); store.commit()
             return BundleResult.Retired
         }
@@ -326,8 +337,10 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
                 val msg = PreKeySignalMessage(bytes)
                 val trusted = store.trustedIdentity(sender)
                 if (sender == me && msg.identityKey != store.identityKeyPair.publicKey) return Opened.Failed("not my identity")
+                if (trusted == null && sender != me) store.extra["trustedAt:$sender"] = now().toString()
                 if (trusted != null && trusted != msg.identityKey) {
                     changed = true
+                    store.extra["trustedAt:$sender"] = now().toString()
                     store.deleteAllSessions(sender)
                     store.extra.keys.filter { it.startsWith("b:$sender:") }.toList().forEach { store.extra.remove(it) }
                 }
@@ -378,6 +391,7 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
         const val REPUBLISH_DAYS = 6L
         const val BUNDLE_LIFETIME_DAYS = 45L
         const val RESET_INTERVAL_SECS = 3600L
+        const val RETIRE_MIN_IDENTITY_AGE_SECS = 7 * 86400L
         private const val BLOCK = 160
 
         /** Pads to a multiple of 160 bytes (0x80 then zeros) so lengths say little. */

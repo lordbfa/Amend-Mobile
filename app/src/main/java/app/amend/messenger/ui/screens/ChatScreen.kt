@@ -839,7 +839,7 @@ private fun ProtectionLabel(repo: AmendRepository, peer: String) {
     val (text, color) = when (protection) {
         AmendRepository.Protection.FULL -> "Fully protected" to Color(0xFF2BB673)
         AmendRepository.Protection.BASIC -> "Not fully protected: their amend doesn't have full protection yet" to MaterialTheme.colorScheme.onSurfaceVariant
-        AmendRepository.Protection.UNREACHABLE -> "Can't reach their protection keys right now. Messages wait until they can be sent safely." to MaterialTheme.colorScheme.error
+        AmendRepository.Protection.UNREACHABLE -> "Can't reach their protection keys right now, so messages to them can't be sent. Try again later." to MaterialTheme.colorScheme.error
         AmendRepository.Protection.OFF -> return
     }
     Text(

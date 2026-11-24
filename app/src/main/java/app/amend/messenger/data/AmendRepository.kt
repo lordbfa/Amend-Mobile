@@ -328,14 +328,12 @@ class AmendRepository(
                 return
             }
             is Ratchet.Opened.Message -> {
-                try {
-                    if (opened.identityChanged) onIdentityChanged(outer.pubkey)
-                    handleRumor(wrap, opened.inner, secure = true)
-                } finally {
-                    // only now does the advanced ratchet reach the disk: if anything above failed
-                    // half-way, the re-delivered message can still be opened
-                    r.commit()
-                }
+                if (opened.identityChanged) onIdentityChanged(outer.pubkey)
+                handleRumor(wrap, opened.inner, secure = true)
+                // the advanced ratchet is written once the message is handled: if that throws,
+                // nothing is written here and the re-delivered message can still be opened
+                // (another send or receive may still write it first; see docs/RATCHET.md)
+                r.commit()
             }
         }
     }
@@ -788,10 +786,24 @@ class AmendRepository(
     val ratchetAvailable: Boolean get() = ratchet != null
     val ratchetOn: Boolean get() {
         val r = ratchet ?: return false
-        return r.store.extra["on"] == "1" && !r.superseded
+        return r.store.extra["on"] == "1" && !r.store.locked
     }
-    /** Another of my phones made the account's ratchet identity first: link this phone again. */
-    val ratchetNeedsLink: Boolean get() = ratchet?.superseded == true
+    /**
+     * Another phone uses my account with different protection keys: my own second phone set up
+     * separately, or someone who has my secret key. Shown as a warning; nothing is switched off.
+     */
+    val ratchetIdentityConflict: Boolean get() = ratchet?.identityConflict == true
+    /** The protection file exists but couldn't be opened: protected messages can't be sent until the user decides. */
+    val ratchetLocked: Boolean get() = ratchet?.store?.locked == true
+
+    /** After [ratchetLocked]: start protection over with new keys (contacts see a changed security code). */
+    fun ratchetStartOver() {
+        val r = ratchet ?: return
+        r.store.startOverAfterLock()
+        r.store.extra["on"] = "1"
+        r.store.markDirty(); r.store.commit()
+        _ratchetState.update { it + 1 }
+    }
 
     private val _ratchetState = MutableStateFlow(0)
     /** Bumps when protection changes for any chat (bundles, identities, the setting). */
@@ -799,9 +811,11 @@ class AmendRepository(
 
     fun protectionOf(peer: String): Protection {
         val r = ratchet ?: return Protection.OFF
-        if (!ratchetOn) return Protection.OFF
         val people = if (isGroup(peer)) recipientsOf(peer) else listOf(peer)
         if (people.isEmpty()) return Protection.OFF
+        if (r.store.locked) return Protection.UNREACHABLE
+        // with the setting off, a chat that already uses protection keeps it
+        if (!ratchetOn && people.none { r.isPinned(it) }) return Protection.OFF
         return when {
             people.all { r.canReach(it) } -> Protection.FULL
             people.any { r.isPinned(it) && !r.canReach(it) } -> Protection.UNREACHABLE
@@ -860,7 +874,7 @@ class AmendRepository(
         val created = part.substringAfter(".", "").toLongOrNull() ?: return
         runCatching {
             r.store.adoptIdentity(id, created)
-            r.store.extra.remove("superseded")
+            r.store.extra.remove("conflict")
             r.store.extra["on"] = "1"
             r.store.markDirty(); r.store.commit()
         }
@@ -875,7 +889,8 @@ class AmendRepository(
         val r = ratchet ?: return
         when (r.acceptBundle(ev)) {
             Ratchet.BundleResult.IdentityChanged -> onIdentityChanged(ev.pubkey)
-            Ratchet.BundleResult.Superseded -> Unit
+            // a verification made before protection doesn't cover the new keys: compare again
+            Ratchet.BundleResult.FirstSeen -> _events.tryEmit(AmendEvent.SecurityCodeChanged(ev.pubkey))
             else -> Unit
         }
         _ratchetState.update { it + 1 }
@@ -934,17 +949,25 @@ class AmendRepository(
      */
     private fun wrapsFor(rumor: Event, who: String, expiration: Long? = null, ephemeral: Boolean = false, essential: Boolean = false): List<Event> {
         val r = ratchet
-        if (r != null && ratchetOn) {
-            if (r.canReach(who)) {
-                val envelopes = r.encrypt(who, rumor)
-                if (envelopes.isNotEmpty()) return envelopes.map { GiftWrap.wrap(it, keys, who, ephemeral = ephemeral, expiration = expiration) }
-            }
+        fun plain() = GiftWrap.wrap(rumor, keys, who, ephemeral = ephemeral, expiration = expiration)
+        if (r == null) return listOf(plain())
+        // a protection file that can't be opened: no protected route, and no quiet plain one either
+        if (r.store.locked) return if (essential) listOf(plain()) else emptyList()
+        val mine = who == me
+        val pinned = !mine && r.isPinned(who)
+        // the pin is checked whatever the setting says: switching off (or anything that looks like
+        // it) must never turn someone's protected chat into a plain one
+        if (ratchetOn || pinned) {
+            val protectedWraps = if (r.canReach(who)) r.encrypt(who, rumor).map { GiftWrap.wrap(it, keys, who, ephemeral = ephemeral, expiration = expiration) } else emptyList()
+            // An SOS also goes out plain: a session broken on their side must not swallow it
+            if (essential) return protectedWraps + plain()
+            if (protectedWraps.isNotEmpty()) return protectedWraps
             // my other phones: only protected copies (none if this is my only phone)
-            if (who == me) return emptyList()
-            // never drop to plain quietly for someone who has used protection: a relay could be hiding their keys
-            if (r.isPinned(who) && !essential) return emptyList()
+            if (mine && ratchetOn) return emptyList()
+            // someone who has used protection never gets a quiet plain message: a relay could be hiding their keys
+            if (pinned) return emptyList()
         }
-        return listOf(GiftWrap.wrap(rumor, keys, who, ephemeral = ephemeral, expiration = expiration))
+        return listOf(plain())
     }
 
     // ---------------------------------------------------------------- offline mesh

@@ -39,9 +39,15 @@ first use). So someone holding only the nsec can't add a phone, replace a bundle
 without the ratchet identity key.
 
 Bundles are refreshed weekly and expire after 45 days (NIP-40), so a lost phone drops out. A
-phone that turns the feature off publishes an identity-signed "retired" bundle. Bundles are
-published to the user's relays, their inbox relays and the default relays, and looked up in the
-same places.
+phone that turns the feature off publishes an identity-signed "retired" bundle; a retirement
+from an identity that is less than a week old removes that phone but doesn't unpin the person
+(otherwise "new identity, then retire" would turn a visible takeover into a quiet downgrade).
+Bundles are published to the user's relays, their inbox relays and the default relays, and
+looked up on the reader's own relays (with the metadata of everyone in their chats).
+
+A bundle for *my own* npub with a different ratchet identity (my second phone set up
+separately, or someone with my nsec) switches nothing off: this phone keeps its keys and shows
+a warning; linking the phones settles it.
 
 One-time prekeys on public relays: two people can pick the same one at the same time. A used
 one is left out of the next bundle at once, but its private half is kept for 72 hours so the
@@ -60,8 +66,12 @@ All eight places that used to call `GiftWrap.wrap` go through one function. For 
   and the chat says *Not fully protected — their app doesn't support it yet*;
 * the recipient has had a bundle before but none can be found now → **no silent fallback**
   (a relay could hide the bundle to force a downgrade). Existing sessions are still used; with
-  none, the message waits and the chat says *Can't reach their secure keys*. The one exception
-  is SOS and live location: they go out as plain NIP-17 rather than not at all, and say so.
+  none, the message isn't sent and the chat says *Can't reach their protection keys*. This holds
+  even with the setting switched off on my phone.
+* SOS is the one exception: it goes out protected *and* as plain NIP-17, so a session broken on
+  the other side can't swallow it.
+* a protection file that can't be opened (Keystore failure) locks: nothing protected or plain is
+  sent (except SOS) until the user restarts the phone or chooses to start over with new keys.
 
 ## Receiving
 
@@ -70,8 +80,9 @@ All eight places that used to call `GiftWrap.wrap` go through one function. For 
 2. Kind 1443 for another of my phones → ignore quietly.
 3. Decrypt with libsignal. The decrypted inner rumor must have the same author as the seal and
    a valid id, then it is handled exactly like a NIP-17 rumor today.
-4. Ratchet state changes are written to disk only after the message has been saved, so a crash
-   in between lets the re-delivered wrap be decrypted again.
+4. Ratchet state changes are written to disk after the message has been handled, so a crash in
+   between usually lets the re-delivered wrap be decrypted again (a send or another receive at
+   the same moment can write the state first; then that one message is lost, never a key reused).
 5. Duplicates and re-deliveries are dropped quietly. A real failure shows *A message couldn't be
    decrypted* and, at most once an hour per phone, starts a fresh session with that phone.
 

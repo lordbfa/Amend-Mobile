@@ -862,15 +862,17 @@
 "Paseos, juego, arena, agua, sueño.",
 "Cualquier otra cosa que deba saber quien lo cuide.",
 "Protección total (beta)",
-"Los chats usan el Protocolo Signal dentro del cifrado de amend. Claves nuevas para cada mensaje, guardadas solo en este teléfono: ni siquiera tu clave secreta (nsec) podrá abrirlos después.",
-"Tu otro teléfono activó la protección total primero. Para usarla aquí también, vuelve a vincular este teléfono desde aquel (You → Link another phone).",
+"Los chats usan el Protocolo Signal dentro del cifrado de amend, con claves nuevas para cada mensaje. Esas claves nunca salen de este teléfono, así que tu clave secreta (nsec) por sí sola no puede abrir los mensajes guardados en los relés.",
+"Otro teléfono usa tu cuenta con otras claves de protección. Si es tu propio segundo teléfono, vincúlalo desde este (You → Link another phone). Si no es tuyo, alguien tiene tu clave secreta: crea una identidad nueva.",
 "Funciona con personas que tienen la protección total activada en amend. Los demás reciben los mensajes como antes, y el chat lo indica. Restaurar con tu clave de respaldo crea nuevas claves de protección: los mensajes antiguos no se pueden volver a descargar y tus contactos ven que tu código de seguridad cambió.",
 "Secreto perfecto hacia adelante",
 "La protección total está activada: los chats con quienes también la tienen no se pueden abrir con tu clave secreta, ni ahora ni después. Los chats marcados como No totalmente protegido siguen usando tu clave a largo plazo.",
 "Sin protección total, los mensajes se cifran con tu clave a largo plazo: si alguien la roba, podría leer mensajes antiguos que los relés aún guardan. Activa la protección total arriba.",
 "Totalmente protegido",
 "No totalmente protegido: su amend aún no tiene protección total",
-"Ahora no se pueden obtener sus claves de protección. Los mensajes esperan hasta poder enviarse de forma segura.",
+"Ahora no se pueden obtener sus claves de protección, así que no se les pueden enviar mensajes. Inténtalo más tarde.",
 "El código de seguridad cambió: volvió a configurar amend o lo usa en un teléfono nuevo. Comparad los códigos de seguridad si tienes dudas.",
-"Un mensaje no se pudo descifrar en este teléfono. Pídele que lo envíe de nuevo."
+"Un mensaje no se pudo descifrar en este teléfono. Pídele que lo envíe de nuevo.",
+"Las claves de protección de este teléfono no se pueden abrir ahora, así que no se pueden enviar mensajes protegidos. Reinicia el teléfono. Si sigue pasando, empieza de nuevo con claves nuevas: tus contactos verán que tu código de seguridad cambió.",
+"Empezar de nuevo con claves nuevas"
 ]
