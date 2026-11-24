@@ -154,8 +154,10 @@ class ForwardSecrecyTest {
         bob2.repo.setRatchetOn(true, publish = false)
         Thread.sleep(1100) // a newer bundle
         alice.repo.handleBundle(bob2.repo.ratchetBundle()!!)
-        val notes = alice.repo.conversations.value[bob.repo.me]!!.messages.filter { it.id.startsWith("fs-change-") }
-        assertEquals(1, notes.size)
+        // the notice is added in the background
+        fun notes() = alice.repo.conversations.value[bob.repo.me]!!.messages.filter { it.id.startsWith("fs-change-") }
+        withTimeout(5_000) { while (notes().isEmpty()) delay(20) }
+        assertEquals(1, notes().size)
         // and the next message reaches the new phone
         deliver(bob2, send(alice, bob.repo.me, "to the new phone"))
         assertNotNull(bob2.repo.conversations.value[alice.repo.me]?.messages?.firstOrNull { it.text == "to the new phone" })
