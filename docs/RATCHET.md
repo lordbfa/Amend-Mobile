@@ -94,9 +94,32 @@ All eight places that used to call `GiftWrap.wrap` go through one function. For 
 * Restoring from the backup key alone creates a new ratchet identity: old messages can't be
   re-downloaded (that is the point), and contacts see the security-code notice.
 
+## Mailboxes: hiding who a message is for
+
+A plain NIP-17 gift wrap names its recipient's npub in its `p` tag, so relays know who gets
+what. Protected gift wraps don't, once two people have exchanged one message each:
+
+* The mailbox key for messages **to R in the chat between A and R** in week *e* is a secp256k1
+  key from `HKDF-SHA256(salt "amend-mailbox-v1", X25519(IK_A, IK_R))` with info `R:e:counter`.
+  Only A and R can work it out: it needs one of their ratchet identities (not the nsec).
+* The gift wrap is addressed and encrypted to that key; the seal inside is still signed by the
+  sender and checked as before, and a mailbox only ever accepts protected messages from the one
+  person it is shared with.
+* A sender uses the mailbox only after hearing from that person (so they know the sender's
+  identity) and only for phones whose bundle says `"mb": 1`. The first message of a new chat,
+  plain chats and older apps still use the npub.
+* Phones read their mailboxes for every known identity, for the weeks since the last sync (at
+  most eight back) and the next week, in filters of 100 keys. The offline mesh recognises them.
+* Weekly rotation means a relay can't follow one mailbox for long.
+
+Limits: a relay still sees which mailboxes one connection asks for together, so it can tell they
+belong to one person (Tor hides who that is). Relays that only hand gift wraps to the person
+named in them after NIP-42 login (in amend's defaults, `auth.nostr1.com`) don't return mailbox
+wraps; the other default relays do (checked by the live relay test in CI).
+
 ## What this does not change
 
-* Relays still see who receives a gift wrap and its rough time, as today.
+* For plain chats and first messages, relays still see who receives a gift wrap and its rough time.
 * Chat history on the phone stays in amend's encrypted files (sealed with a key derived from the
   nsec, in app-private storage). Someone with the phone's files *and* the nsec can read that
   local history; the promise is about messages in transit and on relays.
