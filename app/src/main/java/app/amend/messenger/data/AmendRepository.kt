@@ -630,7 +630,7 @@ class AmendRepository(
                     // with the offline mesh on, the SOS also hops phone to phone — it can reach a
                     // friend even when there is no internet at all
                     ws.forEach { meshOutbox?.invoke(it) }
-                    val n = ws.maxOfOrNull { w -> pool.publish(w, inboxFor(peer)).count { it.accepted } } ?: 0
+                    val n = ws.maxOfOrNull { w -> publishSos(w, inboxFor(peer)) } ?: 0
                     if (n == 0 && meshOutbox != null) 1 else n
                 }.getOrDefault(0)
                 if (phase != SosPhase.UPDATE) {
@@ -649,6 +649,19 @@ class AmendRepository(
         }
         results.forEach { if (it.await()) delivered++ }
         return delivered
+    }
+
+    /**
+     * Publishes one SOS gift wrap. With Tor on it goes through Tor when Tor is ready, and
+     * directly when Tor isn't ready or no relay accepted it through Tor: an emergency never waits
+     * for Tor. Returns how many relays accepted it.
+     */
+    private suspend fun publishSos(wrap: Event, extra: Collection<String>): Int {
+        val tor = app.amend.messenger.net.TorProxy
+        val direct: suspend () -> Int = { runCatching { pool.publishDirect(wrap, extra).count { it.accepted } }.getOrDefault(0) }
+        if (tor.enabled && !kotlinx.coroutines.withContext(Dispatchers.IO) { tor.ready() }) return direct()
+        val n = runCatching { pool.publish(wrap, extra).count { it.accepted } }.getOrDefault(0)
+        return if (n == 0 && tor.enabled) direct() else n
     }
 
     /** A live-location start/update/stop in a chat. */

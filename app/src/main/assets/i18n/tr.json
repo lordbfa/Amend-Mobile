@@ -895,5 +895,6 @@
 "Tor'u kontrol et",
 "Kontrol ediliyor…",
 "Tor kontrolü başarılı: Tor Project senin adresini değil, bir Tor çıkışını ({0}) görüyor.",
-"Tor kontrolü başarısız: istek Tor üzerinden çıkmadı."
+"Tor kontrolü başarısız: istek Tor üzerinden çıkmadı.",
+"SOS asla Tor'u beklemez: Tor hazır değilse SOS doğrudan gönderilir."
 ]

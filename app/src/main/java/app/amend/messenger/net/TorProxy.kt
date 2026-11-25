@@ -18,8 +18,11 @@ import java.net.URI
  * instead of leaking your address ("fail closed"). OkHttp hands the host name to the SOCKS
  * proxy unresolved, so DNS lookups go through Tor as well.
  *
- * Calls are the exception: Tor carries TCP only, so voice/video still connect directly
- * (through Cloudflare TURN when needed).
+ * Two exceptions:
+ * - Calls: Tor carries TCP only, so voice/video still connect directly (through Cloudflare TURN
+ *   when needed).
+ * - SOS: an emergency must never wait for Tor. When Tor isn't ready, or no relay accepted the
+ *   SOS through Tor, it goes out directly (RelayPool.publishDirect).
  */
 object TorProxy : ProxySelector() {
     const val ORBOT_PACKAGE = "org.torproject.android"
@@ -51,6 +54,13 @@ object TorProxy : ProxySelector() {
 
     override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
         // fail closed: never fall back to a direct connection
+    }
+
+    /** Whether Tor can carry traffic right now (call off the main thread: it may probe Orbot). */
+    fun ready(): Boolean = when (mode) {
+        Mode.OFF -> false
+        Mode.BUILT_IN -> port != CLOSED_PORT
+        Mode.ORBOT -> orbotRunning()
     }
 
     /** Whether Orbot's SOCKS port answers (call off the main thread). */

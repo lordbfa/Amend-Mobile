@@ -895,5 +895,6 @@
 "Tarkista Tor",
 "Tarkistetaan…",
 "Tor-tarkistus onnistui: Tor Project näkee Tor-poistumissolmun ({0}), ei osoitettasi.",
-"Tor-tarkistus epäonnistui: pyyntö ei tullut Torin kautta."
+"Tor-tarkistus epäonnistui: pyyntö ei tullut Torin kautta.",
+"SOS ei koskaan odota Toria: jos Tor ei ole valmis, SOS lähtee suoraan."
 ]

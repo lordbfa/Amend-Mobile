@@ -895,5 +895,6 @@
 "Tor prüfen",
 "Wird geprüft…",
 "Tor-Prüfung bestanden: Das Tor Project sieht einen Tor-Ausgang ({0}), nicht deine Adresse.",
-"Tor-Prüfung fehlgeschlagen: Die Anfrage kam nicht über Tor."
+"Tor-Prüfung fehlgeschlagen: Die Anfrage kam nicht über Tor.",
+"SOS wartet nie auf Tor: Ist Tor nicht bereit, geht ein SOS direkt raus."
 ]

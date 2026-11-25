@@ -895,5 +895,6 @@
 "Cek Tor",
 "Memeriksa…",
 "Cek Tor berhasil: Tor Project melihat exit Tor ({0}), bukan alamatmu.",
-"Cek Tor gagal: permintaan tidak keluar lewat Tor."
+"Cek Tor gagal: permintaan tidak keluar lewat Tor.",
+"SOS tidak pernah menunggu Tor: jika Tor belum siap, SOS dikirim langsung."
 ]

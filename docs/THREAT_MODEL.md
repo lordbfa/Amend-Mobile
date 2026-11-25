@@ -82,7 +82,8 @@ on your phone. Messages travel through independent Nostr relays run by other peo
   uses) or through the Orbot app: relays, file servers, weather and map tiles see a Tor exit
   instead of your IP address. It fails closed: until Tor has a circuit, every connection points
   at a closed local port, so amend stays offline instead of connecting directly. Calls can't use
-  Tor (Tor carries TCP only).
+  Tor (Tor carries TCP only). SOS is the one deliberate exception: an emergency never waits for
+  Tor, so when Tor isn't ready (or no relay accepted the SOS through Tor) it goes out directly.
 - Rate limits protect against floods from other users (SOS alarms, offline-mesh frames, watch
   messages).
 
@@ -116,7 +117,8 @@ We'd rather you know these than discover them.
    [RATCHET.md](RATCHET.md#mailboxes-hiding-who-a-message-is-for).
 4. **IP addresses.** Tor is built in since 4.9.0 but off by default (it's slower): without it,
    relays and file servers see your IP address. Calls never go over Tor; without *Hide my IP
-   address in calls*, the person you call sees your IP address too.
+   address in calls*, the person you call sees your IP address too. With Tor on, an SOS sent
+   while Tor isn't ready reveals your IP address to the relays.
 5. **Public profile.** Your name, about text and photo are public Nostr data, as is anything
    you post to the community eco map.
 6. **A compromised phone.** Malware with root access, or someone who knows your phone's PIN,

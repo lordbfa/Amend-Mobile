@@ -765,6 +765,10 @@ private fun TorCard(repo: AmendRepository) {
                     }
                 }
             }
+            if (mode != TorProxy.Mode.OFF) Text(
+                "SOS never waits for Tor: if Tor isn't ready, an SOS goes out directly.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             when (mode) {
                 TorProxy.Mode.OFF -> Unit
                 TorProxy.Mode.BUILT_IN -> when (val st = builtIn) {

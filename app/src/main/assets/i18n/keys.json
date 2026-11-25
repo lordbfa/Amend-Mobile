@@ -895,5 +895,6 @@
 "Check Tor",
 "Checking…",
 "Tor check passed: the Tor Project sees a Tor exit ({0}), not your address.",
-"Tor check failed: the request didn't come out of Tor."
+"Tor check failed: the request didn't come out of Tor.",
+"SOS never waits for Tor: if Tor isn't ready, an SOS goes out directly."
 ]

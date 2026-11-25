@@ -895,5 +895,6 @@
 "Comprobar Tor",
 "Comprobando…",
 "Comprobación superada: el Tor Project ve una salida de Tor ({0}), no tu dirección.",
-"Comprobación fallida: la solicitud no salió por Tor."
+"Comprobación fallida: la solicitud no salió por Tor.",
+"El SOS nunca espera a Tor: si Tor no está listo, el SOS sale directamente."
 ]

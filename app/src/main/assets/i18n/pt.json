@@ -895,5 +895,6 @@
 "Verificar o Tor",
 "Verificando…",
 "Verificação aprovada: o Tor Project vê uma saída Tor ({0}), não o seu endereço.",
-"Verificação falhou: a solicitação não saiu pelo Tor."
+"Verificação falhou: a solicitação não saiu pelo Tor.",
+"O SOS nunca espera pelo Tor: se o Tor não estiver pronto, o SOS sai diretamente."
 ]
