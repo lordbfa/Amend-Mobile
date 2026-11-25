@@ -172,12 +172,50 @@ class LiveRelayTest {
             }
             val ok = published?.accepted == true && got != null
             if (ok) working++
-            report("$url publish=${published?.accepted}(${published?.message}) read=${got != null}")
+            // a wrap addressed to a mailbox key (protected chats): does the relay hand it to bob?
+            val box = KeyPair.generate()
+            val boxWrap = GiftWrap.wrap(GiftWrap.rumor(alice.publicKeyHex, Kinds.RATCHET_MESSAGE, "x", listOf(listOf("p", bob.publicKeyHex))), alice, box.publicKeyHex)
+            val boxPublished = pool.publish(boxWrap).firstOrNull()
+            pool.subscribe("check-box", listOf(mapOf("kinds" to listOf(Kinds.GIFT_WRAP), "#p" to listOf(box.publicKeyHex))))
+            val boxGot = withTimeoutOrNull(10_000) {
+                pool.incoming.filterIsInstance<RelayIncoming.EventMsg>().first { it.event.id == boxWrap.id }
+            }
+            report("$url publish=${published?.accepted}(${published?.message}) read=${got != null} mailbox-publish=${boxPublished?.accepted} mailbox-read=${boxGot != null}")
             pool.disconnect()
             scope.cancel()
         }
         report("working relays: $working/${RelayPool.DEFAULT_RELAYS.size}")
         assertTrue("at least two default relays must work", working >= 2)
+    }
+
+    /** Full protection over real relays: bundles found, first message to the npub, the rest to mailboxes. */
+    @Test
+    fun protectedChatWithMailboxesThroughTheNetwork(): Unit = runBlocking {
+        assumeTrue(live)
+        val alice = AmendRepository(Files.createTempDirectory("fa").toFile(), KeyPair.generate(), ratchetSealer = ForwardSecrecyTest.TestSealer())
+        val bob = AmendRepository(Files.createTempDirectory("fb").toFile(), KeyPair.generate(), ratchetSealer = ForwardSecrecyTest.TestSealer())
+        val wraps = java.util.Collections.synchronizedList(ArrayList<Event>())
+        alice.meshOutbox = { wraps.add(it) }
+        bob.meshOutbox = { wraps.add(it) }
+        bob.goOnline(); alice.goOnline()
+        assertTrue(alice.awaitOnline(20_000)); assertTrue(bob.awaitOnline(20_000))
+        alice.setRatchetOn(true); bob.setRatchetOn(true)
+        alice.addContact(bob.me, "Bob"); bob.addContact(alice.me, "Alice")
+        // each finds the other's bundle on the relays
+        val found = poll(40_000) { if (alice.protectionOf(bob.me) == AmendRepository.Protection.FULL && bob.protectionOf(alice.me) == AmendRepository.Protection.FULL) true else null }
+        report("protection: bundles found both ways = ${found != null}")
+        assertNotNull("both should find each other's bundles", found)
+        alice.sendText(bob.me, "protected hello")
+        val got1 = poll(30_000) { bob.conversations.value[alice.me]?.messages?.firstOrNull { it.text == "protected hello" } }
+        bob.sendText(alice.me, "protected reply")
+        val got2 = poll(30_000) { alice.conversations.value[bob.me]?.messages?.firstOrNull { it.text == "protected reply" } }
+        delay(25_000) // the mailbox subscriptions refresh every 20 s
+        alice.sendText(bob.me, "to the mailbox")
+        val got3 = poll(40_000) { bob.conversations.value[alice.me]?.messages?.firstOrNull { it.text == "to the mailbox" } }
+        val toNpub = wraps.count { it.tagValues("p").contains(bob.me) || it.tagValues("p").contains(alice.me) }
+        report("protection: first=${got1 != null} reply=${got2 != null} mailbox=${got3 != null}; wraps to an npub $toNpub of ${wraps.size}")
+        alice.goOffline(); bob.goOffline()
+        assertNotNull(got1); assertNotNull(got2); assertNotNull("a message to a mailbox must arrive", got3)
     }
 
     /** A first message from someone Bob has never talked to (a request) must raise an event — that's what notifies. */

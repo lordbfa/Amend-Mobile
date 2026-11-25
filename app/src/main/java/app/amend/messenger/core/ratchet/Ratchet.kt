@@ -1,5 +1,7 @@
 package app.amend.messenger.core.ratchet
 
+import app.amend.messenger.core.crypto.Hashes
+import app.amend.messenger.core.crypto.Secp
 import app.amend.messenger.core.json.Json
 import app.amend.messenger.core.json.long
 import app.amend.messenger.core.json.str
@@ -109,6 +111,8 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
                 "spk" to mapOf("id" to spk.id, "k" to spk.keyPair.publicKey.serialize().b64(), "s" to spk.signature.b64()),
                 "kpk" to mapOf("id" to kpk.id, "k" to kpk.keyPair.publicKey.serialize().b64(), "s" to kpk.signature.b64()),
                 "pk" to store.freshPreKeys().map { mapOf("id" to it.id, "k" to it.keyPair.publicKey.serialize().b64()) },
+                // this phone reads mailboxes (see mailboxKey)
+                "mb" to MAILBOX_VERSION,
             ),
         )
         return signedBundle(keys, body, t)
@@ -356,6 +360,8 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
                 ?: return Opened.Failed("inner json")
             // the sealed sender (who signed the seal) must be the author of what's inside
             if (inner.pubkey != sender || !inner.isValid(requireSignature = false)) return Opened.Failed("inner author")
+            // they have a session with us, so they know our ratchet identity: replies can go to a mailbox
+            if (sender != me) store.extra["heard:$sender"] = "1"
             store.markDirty()
             Opened.Message(inner, changed)
         } catch (e: DuplicateMessageException) {
@@ -380,6 +386,59 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
         return true
     }
 
+    // ------------------------------------------------------------------ mailboxes
+
+    /*
+     * Hiding who a message is for. A protected gift wrap isn't addressed to the recipient's npub
+     * but to a "mailbox" key that only the two people can work out: it comes from a Diffie-Hellman
+     * between their ratchet identities (which the nsec can't produce), the recipient, and the week.
+     * Relays see a key that changes every week and can't be tied to an npub.
+     */
+
+    fun epochOf(t: Long): Long = t / MAILBOX_EPOCH_SECS
+
+    /** The mailbox for messages to [recipient] in the chat with [pairWith] (either may be me) in [epoch]. */
+    @Synchronized
+    fun mailboxKey(pairWith: String, recipient: String, epoch: Long): KeyPair? {
+        val peer = if (pairWith == me) store.identityKeyPair.publicKey else store.trustedIdentity(pairWith) ?: return null
+        val shared = store.identityKeyPair.privateKey.calculateAgreement(peer.publicKey)
+        val prk = Hashes.hkdfExtract(MAILBOX_DOMAIN.toByteArray(Charsets.UTF_8), shared)
+        for (counter in 0 until 16) {
+            val sk = Hashes.hkdfExpand(prk, "$recipient:$epoch:$counter".toByteArray(Charsets.UTF_8), 32)
+            if (Secp.provider.isValidSecretKey(sk)) return KeyPair(sk)
+        }
+        return null
+    }
+
+    /**
+     * Can a protected message to [device] of [npub] go to a mailbox? Only once they know our
+     * ratchet identity (we've heard from them, or it's my own phone) and that phone reads mailboxes.
+     */
+    @Synchronized
+    fun mailboxReady(npub: String, device: Int): Boolean {
+        if (npub != me && store.extra["heard:$npub"] != "1") return false
+        val b = store.extra["b:$npub:$device"]?.let { runCatching { Json.parseObject(it) }.getOrNull() } ?: return false
+        return (b.long("mb") ?: 0) >= MAILBOX_VERSION
+    }
+
+    /** Where to send a protected message for [npub] now: their mailbox's public key. */
+    fun mailboxFor(npub: String): String? = mailboxKey(npub, npub, epochOf(now()))?.publicKeyHex
+
+    /**
+     * The mailboxes this phone reads: for everyone whose identity we know (and my own phones),
+     * from the week of [since] (at most [MAX_MAILBOX_EPOCHS] back) to next week. Mailbox key → (peer, keys).
+     */
+    @Synchronized
+    fun myMailboxes(since: Long?): Map<String, Pair<String, KeyPair>> {
+        val nowEpoch = epochOf(now())
+        val from = maxOf(epochOf(since ?: (now() - 14 * 86400)), nowEpoch - MAX_MAILBOX_EPOCHS)
+        val out = HashMap<String, Pair<String, KeyPair>>()
+        for (peer in store.trustedPeers() + me) {
+            for (e in from..nowEpoch + 1) mailboxKey(peer, me, e)?.let { out[it.publicKeyHex] = peer to it }
+        }
+        return out
+    }
+
     /** For "Link another phone": the account identity, to hand over phone to phone. */
     fun exportIdentity(): Pair<ByteArray, Long> = store.identitySerialized() to store.identityCreated
 
@@ -392,6 +451,10 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
         const val BUNDLE_LIFETIME_DAYS = 45L
         const val RESET_INTERVAL_SECS = 3600L
         const val RETIRE_MIN_IDENTITY_AGE_SECS = 7 * 86400L
+        const val MAILBOX_DOMAIN = "amend-mailbox-v1"
+        const val MAILBOX_VERSION = 1L
+        const val MAILBOX_EPOCH_SECS = 7 * 86400L
+        const val MAX_MAILBOX_EPOCHS = 8L
         private const val BLOCK = 160
 
         /** Pads to a multiple of 160 bytes (0x80 then zeros) so lengths say little. */

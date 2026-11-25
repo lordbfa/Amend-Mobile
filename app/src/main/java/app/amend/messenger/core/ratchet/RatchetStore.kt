@@ -135,6 +135,9 @@ class RatchetStore(private val file: File, private val sealer: RatchetSealer) : 
 
     @Synchronized fun trustedIdentity(npub: String): IdentityKey? = trusted[npub]?.let { IdentityKey(it) }
 
+    /** Everyone whose ratchet identity we know. */
+    @Synchronized fun trustedPeers(): Set<String> = trusted.keys.toSet()
+
     @Synchronized
     fun setTrusted(npub: String, key: IdentityKey?) {
         if (key == null) trusted.remove(npub) else trusted[npub] = key.serialize()

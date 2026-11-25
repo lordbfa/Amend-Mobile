@@ -339,14 +339,14 @@ object Mesh {
                 if (ev.kind != Kinds.GIFT_WRAP || !ev.isValid()) return
                 if (s.has(ev.id)) return
                 // messages for me always come in; what I carry for others is rationed
-                val forMe = repo()?.let { ev.tagValues("p").contains(it.me) } == true
+                val forMe = repo()?.isForMe(ev) == true
                 if (!forMe && !carriedIntake.allow()) return
                 if (!s.add(ev.id, json, needsRelay = true)) return
                 _ui.update { it.copy(holding = s.size()) }
                 scheduleSave()
                 // for us? open it like any message from the relays
                 val r = repo()
-                if (r != null && ev.tagValues("p").contains(r.me)) {
+                if (r != null && r.isForMe(ev)) {
                     r.injectMeshEvent(ev)
                     _ui.update { it.copy(delivered = it.delivered + 1) }
                 }

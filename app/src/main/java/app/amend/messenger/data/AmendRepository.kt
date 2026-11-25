@@ -219,6 +219,8 @@ class AmendRepository(
                 runCatching { sendEcoStatsIfDue() }
                 runCatching { checkAchievements() }
                 runCatching { maintainRatchet() }
+                // a new week, or someone new whose identity we know: read their mailbox too
+                runCatching { if (refreshMailboxes()) pool.subscribe(SUB_DM, dmFilters()) }
                 delay(20_000)
             }
         }
@@ -259,14 +261,52 @@ class AmendRepository(
     }
 
     private fun subscribeAll() {
-        val since = if (settings.lastSync == 0L) null else settings.lastSync - GiftWrap.TWO_DAYS - 600
-        val dmFilter = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.GIFT_WRAP), "#p" to listOf(me))
-        if (since != null) dmFilter["since"] = since else dmFilter["limit"] = 1000
-        // live call signals: only what's sent from now on
-        val liveFilter = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.EPHEMERAL_GIFT_WRAP), "#p" to listOf(me), "since" to Event.nowSeconds() - 30)
-        pool.subscribe(SUB_DM, listOf(dmFilter, liveFilter))
+        pool.subscribe(SUB_DM, dmFilters())
         pool.subscribe(Moderation.SUB, listOf(Moderation.filter))
         resubscribeMetadata()
+    }
+
+    /** Gift wraps for me: to my npub, and to my mailboxes (protected chats, see [refreshMailboxes]). */
+    private fun dmFilters(): List<Map<String, Any?>> {
+        val since = if (settings.lastSync == 0L) null else settings.lastSync - GiftWrap.TWO_DAYS - 600
+        refreshMailboxes(since)
+        val filters = ArrayList<Map<String, Any?>>()
+        // relays limit how many values a filter may hold: mailboxes go in groups of 100
+        val targets = listOf(listOf(me)) + mailboxIndex.keys.sorted().chunked(100)
+        for (ps in targets) {
+            val dm = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.GIFT_WRAP), "#p" to ps)
+            if (since != null) dm["since"] = since else dm["limit"] = 1000
+            filters += dm
+            // live call signals: only what's sent from now on
+            filters += linkedMapOf<String, Any?>("kinds" to listOf(Kinds.EPHEMERAL_GIFT_WRAP), "#p" to ps, "since" to Event.nowSeconds() - 30)
+        }
+        return filters
+    }
+
+    /** Mailbox key → (who it's shared with, its keys). */
+    @Volatile private var mailboxIndex: Map<String, Pair<String, KeyPair>> = emptyMap()
+    @Volatile private var mailboxStamp = ""
+
+    /**
+     * Works out the mailboxes this phone reads (one per contact with a known ratchet identity, per
+     * week). Cheap when nothing changed. Returns true if the set changed.
+     */
+    private fun refreshMailboxes(since: Long? = if (settings.lastSync == 0L) null else settings.lastSync - GiftWrap.TWO_DAYS - 600): Boolean {
+        val r = ratchet ?: return false
+        if (r.store.locked) return false
+        val stamp = "${r.epochOf(Event.nowSeconds())}:${since?.let { r.epochOf(it) }}:${r.store.trustedPeers().hashCode()}:${r.store.identityCreated}"
+        if (stamp == mailboxStamp) return false
+        val fresh = runCatching { r.myMailboxes(since) }.getOrDefault(emptyMap())
+        val changed = fresh.keys != mailboxIndex.keys
+        mailboxIndex = fresh
+        mailboxStamp = stamp
+        return changed
+    }
+
+    /** True if [ev] (a gift wrap) is addressed to me: my npub or one of my mailboxes. */
+    fun isForMe(ev: Event): Boolean {
+        refreshMailboxes()
+        return ev.tagValues("p").any { it == me || it in mailboxIndex }
     }
 
     private fun resubscribeMetadata() {
@@ -310,11 +350,18 @@ class AmendRepository(
         mutex.withLock {
             if (!seenWraps.add(wrap.id)) return
         }
+        // addressed to my npub, or to a mailbox shared with one contact
+        refreshMailboxes()
+        val targets = wrap.tagValues("p")
+        val box = if (me in targets) null else targets.firstNotNullOfOrNull { mailboxIndex[it] }
+        if (me !in targets && box == null) return
         val outer = try {
-            GiftWrap.unwrap(wrap, keys, wrapVerified = true)
+            GiftWrap.unwrap(wrap, box?.second ?: keys, wrapVerified = true)
         } catch (e: Exception) {
             return
         }
+        // a mailbox only ever carries protected messages from the person it is shared with
+        if (box != null && (outer.kind != Kinds.RATCHET_MESSAGE || outer.pubkey != box.first)) return
         if (outer.kind != Kinds.RATCHET_MESSAGE) {
             handleRumor(wrap, outer, secure = false)
             return
@@ -943,6 +990,16 @@ class AmendRepository(
     }
 
     /**
+     * Who a protected gift wrap is addressed to: the mailbox shared with [who] once that phone
+     * reads mailboxes and they know our identity, otherwise their npub (a first message).
+     */
+    private fun addressFor(r: Ratchet, who: String, envelope: Event): String {
+        val device = envelope.firstTag("device")?.toIntOrNull() ?: return who
+        if (!r.mailboxReady(who, device)) return who
+        return r.mailboxFor(who) ?: who
+    }
+
+    /**
      * The one place a rumor becomes gift wraps for [who] (a contact, or [me] for my other phones).
      * Protected: one wrap per phone, the rumor encrypted with the Signal Protocol inside.
      * Plain NIP-17 only for people who never used protection, or for an [essential] message
@@ -959,7 +1016,7 @@ class AmendRepository(
         // the pin is checked whatever the setting says: switching off (or anything that looks like
         // it) must never turn someone's protected chat into a plain one
         if (ratchetOn || pinned) {
-            val protectedWraps = if (r.canReach(who)) r.encrypt(who, rumor).map { GiftWrap.wrap(it, keys, who, ephemeral = ephemeral, expiration = expiration) } else emptyList()
+            val protectedWraps = if (r.canReach(who)) r.encrypt(who, rumor).map { GiftWrap.wrap(it, keys, addressFor(r, who, it), ephemeral = ephemeral, expiration = expiration) } else emptyList()
             // An SOS also goes out plain: a session broken on their side must not swallow it
             if (essential) return protectedWraps + plain()
             if (protectedWraps.isNotEmpty()) return protectedWraps
@@ -978,7 +1035,7 @@ class AmendRepository(
 
     /** A gift wrap that reached us over the mesh (Bluetooth / Wi-Fi Direct) instead of a relay. */
     suspend fun injectMeshEvent(ev: Event) {
-        if (ev.kind == Kinds.GIFT_WRAP && ev.tagValues("p").contains(me)) handleWrap(ev)
+        if (ev.kind == Kinds.GIFT_WRAP && isForMe(ev)) handleWrap(ev)
     }
 
     /** Uploads an already-signed event (one carried over the mesh for someone else). */

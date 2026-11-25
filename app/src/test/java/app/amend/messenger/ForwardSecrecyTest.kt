@@ -64,7 +64,8 @@ class ForwardSecrecyTest {
         from.sent.drop(before)
     }
 
-    private suspend fun deliver(to: Phone, wraps: List<Event>) = wraps.filter { it.tagValues("p").contains(to.repo.me) }.forEach { to.repo.injectMeshEvent(it) }
+    /** Hands every wrap to [to]; it keeps what's addressed to it (its npub or one of its mailboxes). */
+    private suspend fun deliver(to: Phone, wraps: List<Event>) = wraps.forEach { to.repo.injectMeshEvent(it) }
 
     @Test
     fun protectedMessagesBothWaysAndTheNsecCannotOpenThem() = runBlocking {
@@ -186,9 +187,9 @@ class ForwardSecrecyTest {
         assertEquals(Ratchet.BundleResult.IdentityChanged, r.acceptBundle(mallory.ownBundle(bob.keys)))
     }
 
-    /** True when every wrap for [to] carries a Signal message (none is a plain NIP-17 copy). */
+    /** True when [to] gets wraps and none of them is a plain NIP-17 copy to its npub. */
     private fun allProtected(wraps: List<Event>, to: Phone) =
-        wraps.filter { it.tagValues("p").contains(to.repo.me) }.let { ws -> ws.isNotEmpty() && ws.all { GiftWrap.unwrap(it, to.keys).kind == Kinds.RATCHET_MESSAGE } }
+        wraps.isNotEmpty() && wraps.filter { it.tagValues("p").contains(to.repo.me) }.all { GiftWrap.unwrap(it, to.keys).kind == Kinds.RATCHET_MESSAGE }
 
     private suspend fun pair(): Pair<Phone, Phone> {
         val alice = Phone("alice")
@@ -252,6 +253,29 @@ class ForwardSecrecyTest {
         phone.repo.ratchetStartOver()
         assertFalse(phone.repo.ratchetLocked)
         assertTrue(phone.repo.ratchetOn)
+    }
+
+    @Test
+    fun afterTheFirstReplyMessagesGoToAWeeklyMailboxNotTheNpub() = runBlocking {
+        val (alice, bob) = pair()
+        // the first message must reach bob's npub: he doesn't know alice's identity yet
+        val first = send(alice, bob.repo.me, "first")
+        assertTrue(first.all { it.tagValues("p") == listOf(bob.repo.me) })
+        deliver(bob, first)
+        // bob replies: alice now knows bob knows her, so his reply and her next messages use mailboxes
+        val reply = send(bob, alice.repo.me, "reply")
+        assertTrue("bob already heard from alice: mailbox", reply.none { it.tagValues("p").contains(alice.repo.me) })
+        deliver(alice, reply)
+        assertEquals("reply", alice.repo.conversations.value[bob.repo.me]!!.messages.last { !it.fromMe }.text)
+        val second = send(alice, bob.repo.me, "second, to a mailbox")
+        assertTrue(second.none { it.tagValues("p").contains(bob.repo.me) })
+        // only bob can open it; someone with bob's nsec alone can't even open the gift wrap
+        second.forEach { w -> assertTrue(runCatching { GiftWrap.unwrap(w, bob.keys) }.isFailure) }
+        deliver(bob, second)
+        assertEquals("second, to a mailbox", bob.repo.conversations.value[alice.repo.me]!!.messages.last().text)
+        // a stranger's phone doesn't take it
+        val carol = Phone("carol")
+        assertFalse(carol.repo.isForMe(second.first()))
     }
 
     @Test
