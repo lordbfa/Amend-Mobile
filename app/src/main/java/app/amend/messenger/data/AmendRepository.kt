@@ -220,7 +220,7 @@ class AmendRepository(
                 runCatching { checkAchievements() }
                 runCatching { maintainRatchet() }
                 // a new week, or someone new whose identity we know: read their mailbox too
-                runCatching { if (refreshMailboxes()) pool.subscribe(SUB_DM, dmFilters()) }
+                runCatching { syncMailboxSubscription() }
                 delay(20_000)
             }
         }
@@ -272,7 +272,9 @@ class AmendRepository(
         refreshMailboxes(since)
         val filters = ArrayList<Map<String, Any?>>()
         // relays limit how many values a filter may hold: mailboxes go in groups of 100
-        val targets = listOf(listOf(me)) + mailboxIndex.keys.sorted().chunked(100)
+        val boxes = mailboxIndex.keys
+        subscribedMailboxes = boxes
+        val targets = listOf(listOf(me)) + boxes.sorted().chunked(100)
         for (ps in targets) {
             val dm = linkedMapOf<String, Any?>("kinds" to listOf(Kinds.GIFT_WRAP), "#p" to ps)
             if (since != null) dm["since"] = since else dm["limit"] = 1000
@@ -286,6 +288,8 @@ class AmendRepository(
     /** Mailbox key → (who it's shared with, its keys). */
     @Volatile private var mailboxIndex: Map<String, Pair<String, KeyPair>> = emptyMap()
     @Volatile private var mailboxStamp = ""
+    /** The mailboxes the relays were last asked for: a change means subscribing again. */
+    @Volatile private var subscribedMailboxes: Set<String> = emptySet()
 
     /**
      * Works out the mailboxes this phone reads (one per contact with a known ratchet identity, per
@@ -301,6 +305,12 @@ class AmendRepository(
         mailboxIndex = fresh
         mailboxStamp = stamp
         return changed
+    }
+
+    /** Asks the relays for my current mailboxes when they changed (new identity known, new week). */
+    private fun syncMailboxSubscription() {
+        refreshMailboxes()
+        if (started && mailboxIndex.keys != subscribedMailboxes) pool.subscribe(SUB_DM, dmFilters())
     }
 
     /** True if [ev] (a gift wrap) is addressed to me: my npub or one of my mailboxes. */
@@ -381,6 +391,8 @@ class AmendRepository(
                 // nothing is written here and the re-delivered message can still be opened
                 // (another send or receive may still write it first; see docs/RATCHET.md)
                 r.commit()
+                // someone new whose identity we now know: read the mailbox shared with them
+                runCatching { syncMailboxSubscription() }
             }
         }
     }
@@ -941,6 +953,7 @@ class AmendRepository(
             Ratchet.BundleResult.FirstSeen -> _events.tryEmit(AmendEvent.SecurityCodeChanged(ev.pubkey))
             else -> Unit
         }
+        runCatching { syncMailboxSubscription() }
         _ratchetState.update { it + 1 }
     }
 
