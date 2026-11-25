@@ -1,6 +1,6 @@
 # Forward-secret chats (Signal Protocol inside NIP-17)
 
-Status: in development on the `ratchet` branch, off by default until tested on two phones.
+Status: in amend 4.7.0, on by default (Settings → Security & transparency → Full protection).
 
 ## Goal
 

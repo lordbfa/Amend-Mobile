@@ -786,7 +786,8 @@ class AmendRepository(
     val ratchetAvailable: Boolean get() = ratchet != null
     val ratchetOn: Boolean get() {
         val r = ratchet ?: return false
-        return r.store.extra["on"] == "1" && !r.store.locked
+        // on unless the user switched it off
+        return r.store.extra["on"] != "0" && !r.store.locked
     }
     /**
      * Another phone uses my account with different protection keys: my own second phone set up

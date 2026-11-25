@@ -95,12 +95,17 @@ on your phone. Messages travel through independent Nostr relays run by other peo
 
 We'd rather you know these than discover them.
 
-1. **No forward secrecy.** NIP-44 messages are encrypted with your long-term key. If that key
-   is ever stolen, old messages still stored on relays could be decrypted. Disappearing
-   messages reduce how much is stored. A ratcheting protocol (such as MLS over Nostr) is being
-   looked at for the future.
-2. **No post-compromise security.** For the same reason, a stolen key keeps working until you
-   move to a new identity (Settings → Privacy & security → burner identity or remove identity).
+1. **Forward secrecy only with full protection on both sides.** Since 4.7.0, chats between
+   two people who both have *Full protection* use the Signal Protocol (PQXDH + Double Ratchet,
+   libsignal) inside NIP-17: new keys for every message, kept on the phone, so the nsec alone
+   can't open them later (forward secrecy and post-compromise security). Chats with older amend
+   versions or other Nostr apps still use plain NIP-44 with your long-term key, and say so.
+   Details: [RATCHET.md](RATCHET.md).
+2. **A stolen nsec and new contacts.** Someone holding only your nsec can't read protected
+   chats or add a phone to your account, but they can start a new protection identity in your
+   name: your contacts then see *Security code changed*. Compare security codes when that
+   happens. Chat history on the phone itself is sealed with a key derived from the nsec, so
+   someone with both the phone's files and the nsec can read that local history.
 3. **Relays see the recipient's public key.** That is how they know who a message is for. They
    can count how many messages a key receives and when (within the two-day blur).
 4. **IP addresses.** Without Tor, relays and file servers see your IP address. Without *Hide my
