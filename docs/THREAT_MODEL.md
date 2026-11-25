@@ -78,9 +78,11 @@ on your phone. Messages travel through independent Nostr relays run by other peo
 ### Network
 
 - Cleartext (non-TLS) traffic is disabled for the whole app.
-- Optional **Tor routing through Orbot**: relays, file servers, weather and map tiles see a Tor
-  exit instead of your IP address. It fails closed: if Orbot isn't running, amend stays offline
-  instead of connecting directly. Calls can't use Tor (Tor carries TCP only).
+- Optional **Tor routing**, built into amend (Guardian Project's tor-android, the library Orbot
+  uses) or through the Orbot app: relays, file servers, weather and map tiles see a Tor exit
+  instead of your IP address. It fails closed: until Tor has a circuit, every connection points
+  at a closed local port, so amend stays offline instead of connecting directly. Calls can't use
+  Tor (Tor carries TCP only).
 - Rate limits protect against floods from other users (SOS alarms, offline-mesh frames, watch
   messages).
 
@@ -112,8 +114,9 @@ We'd rather you know these than discover them.
    the phone asks for its npub and its mailboxes together. First messages of a new chat and chats
    with older apps still name the npub. See
    [RATCHET.md](RATCHET.md#mailboxes-hiding-who-a-message-is-for).
-4. **IP addresses.** Without Tor, relays and file servers see your IP address. Without *Hide my
-   IP address in calls*, the person you call sees it too.
+4. **IP addresses.** Tor is built in since 4.9.0 but off by default (it's slower): without it,
+   relays and file servers see your IP address. Calls never go over Tor; without *Hide my IP
+   address in calls*, the person you call sees your IP address too.
 5. **Public profile.** Your name, about text and photo are public Nostr data, as is anything
    you post to the community eco map.
 6. **A compromised phone.** Malware with root access, or someone who knows your phone's PIN,
