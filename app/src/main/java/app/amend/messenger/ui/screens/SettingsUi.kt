@@ -1,6 +1,7 @@
 package app.amend.messenger.ui.screens
 
 import app.amend.messenger.net.TorProxy
+import app.amend.messenger.util.EmbeddedTor
 import app.amend.messenger.ui.components.InfoTitle
 import app.amend.messenger.util.ScreenProtection
 import app.amend.messenger.util.AppLock
@@ -502,7 +503,7 @@ private fun SecurityPage(repo: AmendRepository) {
     )
     Text("What amend can't hide", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     TextCard(
-        "Relays see some metadata" to "A relay can see the recipient's public key, a rough time (shifted by up to two days) and the IP address that connects to it. Turn on Tor (Orbot) under Your network & relays to hide your IP address from relays.",
+        "Relays see some metadata" to "A relay can see the recipient's public key, a rough time (shifted by up to two days) and the IP address that connects to it. Turn on Tor under Your network & relays to hide your IP address from relays.",
         "Calls" to "By default calls connect phone to phone, so the other person can see your IP address. Turn on Hide my IP address in calls under Calls to always use the relay.",
         "Forward secrecy" to if (repo.ratchetOn) "Full protection is on: chats with people whose amend has it too can't be opened with your secret key, now or later. Chats marked Not fully protected still use your long-term key."
             else "Without full protection, messages are encrypted with your long-term key: if someone ever steals that key, they could read old messages that relays still store. Turn on Full protection above.",
@@ -585,7 +586,7 @@ private fun PolicyPage() {
         "Friends' forests (optional)" to "If you turn it on, your tree count, points and streak are sent encrypted to your contacts — never publicly.",
         "On your phone only" to "Steps, walking reports, check-ins, fake calls, scheduled messages, your forest, points and settings never leave the device.",
         "Services amend talks to" to "Nostr relays (messages), Blossom file servers (encrypted media), Cloudflare TURN (relaying encrypted calls on strict networks), MET Norway (weather), Open-Meteo (air quality, rivers), OpenStreetMap (map tiles), Google STUN (finding a call path), and the website behind a name@domain address when you look one up. Each sees your IP address, like any website, unless you use Tor.",
-        "Tor (optional)" to "With Orbot running, amend can route everything except calls through Tor.",
+        "Tor (optional)" to "amend can route everything except calls through Tor, built in or through Orbot.",
         "Limits" to "What amend can and can't hide is explained in Settings → Security & transparency.",
         "Translate & transcribe" to "Done on your phone. The first time you translate a language, its model is downloaded once from Google; your messages and voice notes are never sent.",
         "Deleting everything" to "Settings → Privacy & security → Remove identity deletes your key and all messages from this phone.",
@@ -698,46 +699,71 @@ private fun LanguagePage() {
 
 
 
-/** Settings → Network: hide your IP from relays by routing through Orbot (Tor). */
+/** Settings → Network: hide your IP from relays with Tor, built into amend or through Orbot. */
 @Composable
 private fun TorCard(repo: AmendRepository) {
     val context = LocalContext.current
     val haptics = rememberHaptics()
-    val scope = rememberCoroutineScope()
-    var on by remember { mutableStateOf(TorProxy.enabled) }
+    val amendApp = context.applicationContext as? app.amend.messenger.AmendApp
+    var mode by remember { mutableStateOf(TorProxy.mode) }
     var running by remember { mutableStateOf<Boolean?>(null) }
+    val builtIn by EmbeddedTor.state.collectAsStateWithLifecycle()
     val installed = remember {
         context.packageManager.getLaunchIntentForPackage(TorProxy.ORBOT_PACKAGE) != null
     }
-    LaunchedEffect(on) {
-        while (on) {
+    LaunchedEffect(mode) {
+        while (mode == TorProxy.Mode.ORBOT) {
             running = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { TorProxy.orbotRunning() }
             kotlinx.coroutines.delay(4_000)
         }
     }
+    fun choose(m: TorProxy.Mode) {
+        if (m == mode) return
+        mode = m
+        haptics.tick()
+        amendApp?.setTorMode(m)
+        // reconnect so every open connection takes the new route
+        repo.goOffline(); repo.goOnline()
+    }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    InfoTitle(
-                        "Route through Tor (Orbot)",
-                        info = "Relays, file servers and the weather service see a Tor address instead of yours. Slower, but nobody can link your messages to your IP. If Orbot isn't running, amend stays offline rather than connecting without Tor. Calls still connect directly.",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+            InfoTitle(
+                "Route through Tor",
+                info = "Relays, file servers, the weather service and map tiles see a Tor address instead of yours. Slower, but nobody can link your messages to your IP. While Tor isn't connected, amend stays offline rather than connecting without it. Calls still connect directly.",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            listOf(
+                TorProxy.Mode.OFF to ("Off" to "Connect directly."),
+                TorProxy.Mode.BUILT_IN to ("Built into amend" to "Tor runs inside amend. Nothing else to install."),
+                TorProxy.Mode.ORBOT to ("Through Orbot" to "Use the Orbot app, if you already use it for other apps."),
+            ).forEach { (m, texts) ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { choose(m) }.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.RadioButton(selected = mode == m, onClick = { choose(m) })
+                    Column(Modifier.weight(1f)) {
+                        Text(texts.first, style = MaterialTheme.typography.bodyLarge)
+                        Text(texts.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
-                Switch(checked = on, onCheckedChange = {
-                    on = it
-                    haptics.tick()
-                    TorProxy.enabled = it
-                    (context.applicationContext as? app.amend.messenger.AmendApp)?.applyMapProxy()
-                    context.getSharedPreferences("amend_net", android.content.Context.MODE_PRIVATE).edit().putBoolean("tor", it).apply()
-                    // reconnect so every open connection takes the new route
-                    scope.launch { repo.goOffline(); kotlinx.coroutines.delay(300); repo.goOnline() }
-                })
             }
-            if (on) {
-                when {
+            when (mode) {
+                TorProxy.Mode.OFF -> Unit
+                TorProxy.Mode.BUILT_IN -> when (val st = builtIn) {
+                    is EmbeddedTor.State.On ->
+                        Text("Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    is EmbeddedTor.State.Starting -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Connecting to Tor… ${st.percent}%", style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.material3.LinearProgressIndicator(progress = { st.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                        Text("amend waits offline until Tor is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    is EmbeddedTor.State.Failed ->
+                        Text(st.why, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    EmbeddedTor.State.Off ->
+                        Text("Starting Tor…", style = MaterialTheme.typography.bodyMedium)
+                }
+                TorProxy.Mode.ORBOT -> when {
                     !installed -> {
                         Text("Orbot isn't installed.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                         OutlinedButton(onClick = {

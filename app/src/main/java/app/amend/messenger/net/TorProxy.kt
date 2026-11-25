@@ -9,13 +9,14 @@ import java.net.SocketAddress
 import java.net.URI
 
 /**
- * Optional Tor routing through Orbot (the Tor Project's Android app), so relays, file
- * servers and the weather service never see your IP address.
+ * Optional Tor routing, so relays, file servers and the weather service never see your IP
+ * address. Tor runs either inside amend ([Mode.BUILT_IN], see util/EmbeddedTor) or in Orbot,
+ * the Tor Project's Android app ([Mode.ORBOT]).
  *
  * Every amend HTTP/WebSocket client uses this selector. When Tor is on it returns ONLY the
- * Orbot SOCKS proxy — there is no direct fallback, so if Orbot isn't running connections
- * fail instead of leaking your address ("fail closed"). OkHttp hands the host name to the
- * SOCKS proxy unresolved, so DNS lookups go through Tor as well.
+ * Tor SOCKS proxy — there is no direct fallback, so while Tor isn't ready connections fail
+ * instead of leaking your address ("fail closed"). OkHttp hands the host name to the SOCKS
+ * proxy unresolved, so DNS lookups go through Tor as well.
  *
  * Calls are the exception: Tor carries TCP only, so voice/video still connect directly
  * (through Cloudflare TURN when needed).
@@ -23,12 +24,28 @@ import java.net.URI
 object TorProxy : ProxySelector() {
     const val ORBOT_PACKAGE = "org.torproject.android"
     private const val HOST = "127.0.0.1"
-    private const val PORT = 9050
+    const val ORBOT_PORT = 9050
+    /** A port nothing listens on: used while built-in Tor is starting, so nothing goes out directly. */
+    private const val CLOSED_PORT = 1
 
-    @Volatile var enabled: Boolean = false
+    enum class Mode(val tag: String) { OFF("off"), BUILT_IN("builtin"), ORBOT("orbot");
+        companion object { fun of(tag: String?) = entries.firstOrNull { it.tag == tag } ?: OFF }
+    }
 
-    /** Orbot's SOCKS proxy, for clients that don't take a ProxySelector (map tiles). */
-    val socks = Proxy(Proxy.Type.SOCKS, InetSocketAddress(HOST, PORT))
+    @Volatile var mode: Mode = Mode.OFF
+        set(value) {
+            field = value
+            port = if (value == Mode.ORBOT) ORBOT_PORT else CLOSED_PORT
+        }
+
+    /** True when everything must go through Tor (built-in or Orbot). */
+    val enabled: Boolean get() = mode != Mode.OFF
+
+    /** The SOCKS port in use: Orbot's 9050, built-in Tor's port once it's ready, or a closed port. */
+    @Volatile var port: Int = CLOSED_PORT
+
+    /** The Tor SOCKS proxy, for clients that don't take a ProxySelector (map tiles). */
+    val socks: Proxy get() = Proxy(Proxy.Type.SOCKS, InetSocketAddress(HOST, port))
 
     override fun select(uri: URI?): List<Proxy> = if (enabled) listOf(socks) else listOf(Proxy.NO_PROXY)
 
@@ -38,6 +55,6 @@ object TorProxy : ProxySelector() {
 
     /** Whether Orbot's SOCKS port answers (call off the main thread). */
     fun orbotRunning(): Boolean = runCatching {
-        Socket().use { it.connect(InetSocketAddress(HOST, PORT), 700); true }
+        Socket().use { it.connect(InetSocketAddress(HOST, ORBOT_PORT), 700); true }
     }.getOrDefault(false)
 }

@@ -51,7 +51,7 @@ class AmendApp : Application() {
         app.amend.messenger.util.ScreenProtection.load(this)
         app.amend.messenger.util.WearSync.load(this)
         app.amend.messenger.util.AgeCheck.load(this)
-        app.amend.messenger.net.TorProxy.enabled = getSharedPreferences("amend_net", MODE_PRIVATE).getBoolean("tor", false)
+        applyTorMode()
         app.amend.messenger.util.AppLock.init(this)
         Notifications.createChannels(this)
         StepTracker.init(this)
@@ -80,6 +80,33 @@ class AmendApp : Application() {
      * with Tor on they'd still show your IP address — and which area you're looking at (a
      * friend's SOS location) — to the tile server. Route them through Orbot too.
      */
+    /**
+     * Tor: off, built into amend, or through Orbot (Settings → Your network). Older versions
+     * only had Orbot, saved as "tor" = true.
+     */
+    fun applyTorMode() {
+        val prefs = getSharedPreferences("amend_net", MODE_PRIVATE)
+        val mode = app.amend.messenger.net.TorProxy.Mode.of(prefs.getString("tor_mode", null) ?: if (prefs.getBoolean("tor", false)) "orbot" else "off")
+        app.amend.messenger.net.TorProxy.mode = mode
+        if (mode == app.amend.messenger.net.TorProxy.Mode.BUILT_IN) {
+            app.amend.messenger.util.EmbeddedTor.onReady = {
+                applyMapProxy()
+                // connections made while Tor was starting failed on purpose; make them again
+                _repository.value?.retryConnections()
+            }
+            app.amend.messenger.util.EmbeddedTor.start(this)
+        } else {
+            app.amend.messenger.util.EmbeddedTor.stop(this)
+        }
+        applyMapProxy()
+    }
+
+    /** Saves and applies a new Tor mode. */
+    fun setTorMode(mode: app.amend.messenger.net.TorProxy.Mode) {
+        getSharedPreferences("amend_net", MODE_PRIVATE).edit().putString("tor_mode", mode.tag).putBoolean("tor", mode != app.amend.messenger.net.TorProxy.Mode.OFF).apply()
+        applyTorMode()
+    }
+
     fun applyMapProxy() {
         org.osmdroid.config.Configuration.getInstance().httpProxy =
             if (app.amend.messenger.net.TorProxy.enabled) app.amend.messenger.net.TorProxy.socks else null

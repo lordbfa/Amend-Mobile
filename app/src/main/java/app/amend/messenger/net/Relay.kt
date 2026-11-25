@@ -74,6 +74,14 @@ class Relay(
         openSocket()
     }
 
+    /** Tries again at once instead of waiting out the back-off (e.g. Tor just became ready). */
+    fun retryNow() {
+        if (!keepAlive || _status.value.state == RelayState.ONLINE) return
+        reconnectJob?.cancel()
+        attempt = 0
+        if (socket == null) openSocket()
+    }
+
     fun disconnect() {
         keepAlive = false
         reconnectJob?.cancel()

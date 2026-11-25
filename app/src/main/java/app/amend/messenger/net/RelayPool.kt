@@ -77,6 +77,11 @@ class RelayPool(
         relays.values.forEach { it.connect() }
     }
 
+    /** Relays that are waiting to reconnect try again now (only while online). */
+    fun retryNow() {
+        if (online) relays.values.forEach { it.retryNow() }
+    }
+
     fun disconnect() {
         online = false
         relays.values.forEach { it.disconnect() }

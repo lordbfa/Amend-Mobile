@@ -238,6 +238,9 @@ class AmendRepository(
         pool.disconnect()
     }
 
+    /** Connections waiting to retry try again now (Tor just became ready). */
+    fun retryConnections() = pool.retryNow()
+
     /** Connects, waits for stored events (or [timeoutMs]), then disconnects. Used by background sync. */
     suspend fun syncOnce(timeoutMs: Long = 25_000): Int {
         val before = _conversations.value.values.sumOf { it.messages.size }
