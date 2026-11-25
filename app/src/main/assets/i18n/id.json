@@ -890,5 +890,10 @@
 "Orbot belum terpasang.",
 "Dapatkan Orbot",
 "Orbot belum berjalan — amend menunggu offline.",
-"Jalankan Orbot"
+"Jalankan Orbot",
+"Tor sepertinya tidak bisa terhubung di jaringan ini. Coba Orbot, yang bisa memakai bridge, atau matikan Tor.",
+"Cek Tor",
+"Memeriksa…",
+"Cek Tor berhasil: Tor Project melihat exit Tor ({0}), bukan alamatmu.",
+"Cek Tor gagal: permintaan tidak keluar lewat Tor."
 ]

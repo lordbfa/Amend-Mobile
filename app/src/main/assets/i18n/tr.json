@@ -890,5 +890,10 @@
 "Orbot yüklü değil.",
 "Orbot'u edin",
 "Orbot henüz çalışmıyor — amend çevrimdışı bekliyor.",
-"Orbot'u başlat"
+"Orbot'u başlat",
+"Tor bu ağda bağlanamıyor gibi görünüyor. Köprü kullanabilen Orbot'u dene ya da Tor'u kapat.",
+"Tor'u kontrol et",
+"Kontrol ediliyor…",
+"Tor kontrolü başarılı: Tor Project senin adresini değil, bir Tor çıkışını ({0}) görüyor.",
+"Tor kontrolü başarısız: istek Tor üzerinden çıkmadı."
 ]

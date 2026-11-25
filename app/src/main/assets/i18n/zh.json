@@ -890,5 +890,10 @@
 "未安装 Orbot。",
 "获取 Orbot",
 "Orbot 尚未运行，amend 正在离线等待。",
-"启动 Orbot"
+"启动 Orbot",
+"在这个网络上 Tor 似乎无法连接。可以试试能使用网桥的 Orbot，或关闭 Tor。",
+"检查 Tor",
+"正在检查…",
+"Tor 检查通过：Tor Project 看到的是 Tor 出口（{0}），而不是你的地址。",
+"Tor 检查失败：请求没有经过 Tor 发出。"
 ]

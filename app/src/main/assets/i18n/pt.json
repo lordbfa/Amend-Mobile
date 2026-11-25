@@ -890,5 +890,10 @@
 "O Orbot não está instalado.",
 "Obter o Orbot",
 "O Orbot ainda não está rodando — o amend está esperando offline.",
-"Iniciar o Orbot"
+"Iniciar o Orbot",
+"Parece que o Tor não consegue conectar nesta rede. Tente o Orbot, que pode usar pontes, ou desligue o Tor.",
+"Verificar o Tor",
+"Verificando…",
+"Verificação aprovada: o Tor Project vê uma saída Tor ({0}), não o seu endereço.",
+"Verificação falhou: a solicitação não saiu pelo Tor."
 ]

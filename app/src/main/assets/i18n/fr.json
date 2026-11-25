@@ -890,5 +890,10 @@
 "Orbot n'est pas installé.",
 "Obtenir Orbot",
 "Orbot n'est pas encore lancé — amend attend hors ligne.",
-"Lancer Orbot"
+"Lancer Orbot",
+"Tor ne semble pas pouvoir se connecter sur ce réseau. Essayez Orbot, qui peut utiliser des ponts, ou désactivez Tor.",
+"Vérifier Tor",
+"Vérification…",
+"Vérification réussie : le Tor Project voit une sortie Tor ({0}), pas votre adresse.",
+"Vérification échouée : la requête n'est pas sortie par Tor."
 ]

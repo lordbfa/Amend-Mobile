@@ -25,8 +25,8 @@ import org.torproject.jni.TorService
 object EmbeddedTor {
     sealed interface State {
         data object Off : State
-        /** Bootstrapping, 0–100 %. */
-        data class Starting(val percent: Int) : State
+        /** Bootstrapping, 0–100 %. [stuck]: no progress for a minute (Tor may be blocked here). */
+        data class Starting(val percent: Int, val stuck: Boolean = false) : State
         data class On(val socksPort: Int) : State
         data class Failed(val why: String) : State
     }
@@ -66,6 +66,8 @@ object EmbeddedTor {
         if (watcher?.isActive == true) return
         watcher = scope.launch {
             var wasOn = false
+            var lastPercent = -1
+            var lastChange = System.currentTimeMillis()
             while (true) {
                 val s = service
                 val port = s?.socksPort ?: -1
@@ -82,12 +84,28 @@ object EmbeddedTor {
                     wasOn = false
                     val percent = s?.let { runCatching { it.getInfo("status/bootstrap-phase") }.getOrNull() }
                         ?.let { Regex("PROGRESS=(\\d+)").find(it)?.groupValues?.get(1)?.toIntOrNull() } ?: 0
-                    _state.value = State.Starting(percent)
+                    if (percent != lastPercent) { lastPercent = percent; lastChange = System.currentTimeMillis() }
+                    // still trying, but tell the user after a minute without progress
+                    _state.value = State.Starting(percent, stuck = System.currentTimeMillis() - lastChange > 60_000)
                 }
                 delay(if (wasOn) 5_000 else 1_000)
             }
         }
     }
+
+    /**
+     * Asks the Tor Project whether a request through amend's proxy really comes out of Tor.
+     * Returns the exit address on success, null if it doesn't (call off the main thread).
+     */
+    fun check(): String? = runCatching {
+        val http = okhttp3.OkHttpClient.Builder().proxySelector(TorProxy)
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS).readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
+        http.newCall(okhttp3.Request.Builder().url("https://check.torproject.org/api/ip").build()).execute().use { r ->
+            val body = r.body?.string().orEmpty()
+            val json = app.amend.messenger.core.json.Json.parseObject(body)
+            if (json["IsTor"] == true) (json["IP"] as? String ?: "") else null
+        }
+    }.getOrNull()
 
     /** Stops built-in Tor (another mode was chosen). */
     @Synchronized

@@ -890,5 +890,10 @@
 "Orbot isn't installed.",
 "Get Orbot",
 "Orbot isn't running yet — amend is waiting offline.",
-"Start Orbot"
+"Start Orbot",
+"Tor can't seem to connect on this network. Try Orbot, which can use bridges, or turn Tor off.",
+"Check Tor",
+"Checking…",
+"Tor check passed: the Tor Project sees a Tor exit ({0}), not your address.",
+"Tor check failed: the request didn't come out of Tor."
 ]

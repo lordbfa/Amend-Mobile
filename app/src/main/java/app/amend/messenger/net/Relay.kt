@@ -79,7 +79,13 @@ class Relay(
         if (!keepAlive || _status.value.state == RelayState.ONLINE) return
         reconnectJob?.cancel()
         attempt = 0
-        if (socket == null) openSocket()
+        openIfClosed()
+    }
+
+    /** Opens a socket unless one is already open or opening (the retry and the back-off can meet). */
+    @Synchronized
+    private fun openIfClosed() {
+        if (socket == null && keepAlive) openSocket()
     }
 
     fun disconnect() {
@@ -104,7 +110,7 @@ class Relay(
         attempt++
         reconnectJob = scope.launch {
             delay(delayMs)
-            if (keepAlive && isActive) openSocket()
+            if (keepAlive && isActive) openIfClosed()
         }
     }
 

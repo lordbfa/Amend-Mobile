@@ -890,5 +890,10 @@
 "Orbotia ei ole asennettu.",
 "Hanki Orbot",
 "Orbot ei ole vielä käynnissä — amend odottaa offline-tilassa.",
-"Käynnistä Orbot"
+"Käynnistä Orbot",
+"Tor ei näytä saavan yhteyttä tässä verkossa. Kokeile Orbotia, joka voi käyttää siltoja, tai poista Tor käytöstä.",
+"Tarkista Tor",
+"Tarkistetaan…",
+"Tor-tarkistus onnistui: Tor Project näkee Tor-poistumissolmun ({0}), ei osoitettasi.",
+"Tor-tarkistus epäonnistui: pyyntö ei tullut Torin kautta."
 ]

@@ -890,5 +890,10 @@
 "Orbot ist nicht installiert.",
 "Orbot holen",
 "Orbot läuft noch nicht — amend wartet offline.",
-"Orbot starten"
+"Orbot starten",
+"Tor scheint in diesem Netz keine Verbindung zu bekommen. Probiere Orbot, das Bridges nutzen kann, oder schalte Tor aus.",
+"Tor prüfen",
+"Wird geprüft…",
+"Tor-Prüfung bestanden: Das Tor Project sieht einen Tor-Ausgang ({0}), nicht deine Adresse.",
+"Tor-Prüfung fehlgeschlagen: Die Anfrage kam nicht über Tor."
 ]

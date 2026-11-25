@@ -890,5 +890,10 @@
 "Orbot no está instalado.",
 "Obtener Orbot",
 "Orbot aún no está en marcha: amend espera sin conexión.",
-"Iniciar Orbot"
+"Iniciar Orbot",
+"Parece que Tor no logra conectarse en esta red. Prueba Orbot, que puede usar puentes, o desactiva Tor.",
+"Comprobar Tor",
+"Comprobando…",
+"Comprobación superada: el Tor Project ve una salida de Tor ({0}), no tu dirección.",
+"Comprobación fallida: la solicitud no salió por Tor."
 ]

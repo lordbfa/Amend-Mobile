@@ -699,6 +699,23 @@ private fun LanguagePage() {
 
 
 
+/** Asks the Tor Project whether amend's traffic really leaves through Tor. */
+@Composable
+private fun TorCheckButton() {
+    val scope = rememberCoroutineScope()
+    var result by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    OutlinedButton(enabled = !checking, onClick = {
+        checking = true; result = null
+        scope.launch {
+            val ip = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { EmbeddedTor.check() }
+            result = if (ip != null) "Tor check passed: the Tor Project sees a Tor exit ($ip), not your address." else "Tor check failed: the request didn't come out of Tor."
+            checking = false
+        }
+    }, shape = RoundedCornerShape(16.dp)) { Text(if (checking) "Checking…" else "Check Tor") }
+    result?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
 /** Settings → Network: hide your IP from relays with Tor, built into amend or through Orbot. */
 @Composable
 private fun TorCard(repo: AmendRepository) {
@@ -751,12 +768,18 @@ private fun TorCard(repo: AmendRepository) {
             when (mode) {
                 TorProxy.Mode.OFF -> Unit
                 TorProxy.Mode.BUILT_IN -> when (val st = builtIn) {
-                    is EmbeddedTor.State.On ->
+                    is EmbeddedTor.State.On -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                        TorCheckButton()
+                    }
                     is EmbeddedTor.State.Starting -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Connecting to Tor… ${st.percent}%", style = MaterialTheme.typography.bodyMedium)
                         androidx.compose.material3.LinearProgressIndicator(progress = { st.percent / 100f }, modifier = Modifier.fillMaxWidth())
                         Text("amend waits offline until Tor is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (st.stuck) Text(
+                            "Tor can't seem to connect on this network. Try Orbot, which can use bridges, or turn Tor off.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                        )
                     }
                     is EmbeddedTor.State.Failed ->
                         Text(st.why, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
@@ -774,7 +797,10 @@ private fun TorCard(repo: AmendRepository) {
                             }
                         }, shape = RoundedCornerShape(16.dp)) { Text("Get Orbot") }
                     }
-                    running == true -> Text("Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    running == true -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Connected through Tor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                        TorCheckButton()
+                    }
                     else -> {
                         Text("Orbot isn't running yet — amend is waiting offline.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                         OutlinedButton(onClick = {
