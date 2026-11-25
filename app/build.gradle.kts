@@ -169,6 +169,9 @@ dependencies {
     // which combines with amend's GPL-3.0. The JVM unit tests load its desktop library.
     implementation("org.signal:libsignal-android:0.86.5")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    // Tor inside amend (Guardian Project, the library Orbot is built on). BSD-3-Clause.
+    implementation("info.guardianproject:tor-android:0.4.8.17.2")
+    implementation("info.guardianproject:jtorctl:0.4.5.7")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

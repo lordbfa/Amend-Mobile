@@ -74,6 +74,20 @@ class Relay(
         openSocket()
     }
 
+    /** Tries again at once instead of waiting out the back-off (e.g. Tor just became ready). */
+    fun retryNow() {
+        if (!keepAlive || _status.value.state == RelayState.ONLINE) return
+        reconnectJob?.cancel()
+        attempt = 0
+        openIfClosed()
+    }
+
+    /** Opens a socket unless one is already open or opening (the retry and the back-off can meet). */
+    @Synchronized
+    private fun openIfClosed() {
+        if (socket == null && keepAlive) openSocket()
+    }
+
     fun disconnect() {
         keepAlive = false
         reconnectJob?.cancel()
@@ -96,7 +110,7 @@ class Relay(
         attempt++
         reconnectJob = scope.launch {
             delay(delayMs)
-            if (keepAlive && isActive) openSocket()
+            if (keepAlive && isActive) openIfClosed()
         }
     }
 

@@ -19,3 +19,8 @@
     public static int wtf(...);
     public static java.lang.String getStackTraceString(java.lang.Throwable);
 }
+
+# Built-in Tor (tor-android): JNI and the control-port library are called by name
+-keep class org.torproject.jni.** { *; }
+-keep class net.freehaven.tor.control.** { *; }
+-dontwarn net.freehaven.tor.control.**

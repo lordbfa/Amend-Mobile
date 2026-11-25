@@ -77,6 +77,11 @@ class RelayPool(
         relays.values.forEach { it.connect() }
     }
 
+    /** Relays that are waiting to reconnect try again now (only while online). */
+    fun retryNow() {
+        if (online) relays.values.forEach { it.retryNow() }
+    }
+
     fun disconnect() {
         online = false
         relays.values.forEach { it.disconnect() }
@@ -104,6 +109,23 @@ class RelayPool(
         val targets = relays.values.toList() + temp
         return try {
             targets.map { r -> scope.async { r.publish(event) } }.awaitAll()
+        } finally {
+            temp.forEach { it.disconnect() }
+        }
+    }
+
+    /** A client that never uses Tor: only for SOS ([publishDirect]). */
+    private val direct by lazy { http.newBuilder().proxy(java.net.Proxy.NO_PROXY).build() }
+
+    /**
+     * Publishes [event] to every pool relay plus [extraRelays] over direct connections, without
+     * Tor. Only for SOS, when Tor isn't ready: getting help matters more than hiding the IP address.
+     */
+    suspend fun publishDirect(event: Event, extraRelays: Collection<String> = emptyList()): List<Relay.PublishResult> {
+        val urls = (relays.keys + extraRelays.map { normalize(it) }).filter { it.isNotEmpty() }.distinct()
+        val temp = urls.map { Relay(it, direct, scope, _incoming, authSigner, onBytes).also { r -> r.connect() } }
+        return try {
+            temp.map { r -> scope.async { r.publish(event) } }.awaitAll()
         } finally {
             temp.forEach { it.disconnect() }
         }
