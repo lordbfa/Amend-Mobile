@@ -360,8 +360,6 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
                 ?: return Opened.Failed("inner json")
             // the sealed sender (who signed the seal) must be the author of what's inside
             if (inner.pubkey != sender || !inner.isValid(requireSignature = false)) return Opened.Failed("inner author")
-            // they have a session with us, so they know our ratchet identity: replies can go to a mailbox
-            if (sender != me) store.extra["heard:$sender"] = "1"
             store.markDirty()
             Opened.Message(inner, changed)
         } catch (e: DuplicateMessageException) {
@@ -411,12 +409,15 @@ class Ratchet(private val me: String, val store: RatchetStore, private val now: 
     }
 
     /**
-     * Can a protected message to [device] of [npub] go to a mailbox? Only once they know our
-     * ratchet identity (we've heard from them, or it's my own phone) and that phone reads mailboxes.
+     * Can [envelope] go to a mailbox? Only a normal ("msg") Signal message: libsignal sends those
+     * only after that very phone has answered in this session, so it knows this session's ratchet
+     * identity and reads the mailbox made from it. A first ("prekey") message always goes to the
+     * npub. And only if that phone's bundle says it reads mailboxes.
      */
     @Synchronized
-    fun mailboxReady(npub: String, device: Int): Boolean {
-        if (npub != me && store.extra["heard:$npub"] != "1") return false
+    fun mailboxReady(npub: String, envelope: Event): Boolean {
+        if (envelope.firstTag("type") != "msg") return false
+        val device = envelope.firstTag("device")?.toIntOrNull() ?: return false
         val b = store.extra["b:$npub:$device"]?.let { runCatching { Json.parseObject(it) }.getOrNull() } ?: return false
         return (b.long("mb") ?: 0) >= MAILBOX_VERSION
     }

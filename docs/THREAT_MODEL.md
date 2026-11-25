@@ -106,11 +106,12 @@ We'd rather you know these than discover them.
    name: your contacts then see *Security code changed*. Compare security codes when that
    happens. Chat history on the phone itself is sealed with a key derived from the nsec, so
    someone with both the phone's files and the nsec can read that local history.
-3. **Relays see the recipient of first and plain messages.** Since 4.8.0, protected chats address
-   their gift wraps to a weekly mailbox key that only the two people can work out, so relays
-   can't tie them to an npub. The first message of a new chat, chats with older apps, and the
-   mailboxes one connection asks for together are still visible to relays (Tor hides who is
-   asking). See [RATCHET.md](RATCHET.md#mailboxes-hiding-who-a-message-is-for).
+3. **Relays see who messages are for, partly.** Since 4.8.0, protected chats address their gift
+   wraps to a weekly mailbox key that only the two people can work out, so anyone reading what
+   relays store can't tell who those messages are for. The recipient's *own* relays still can:
+   the phone asks for its npub and its mailboxes together. First messages of a new chat and chats
+   with older apps still name the npub. See
+   [RATCHET.md](RATCHET.md#mailboxes-hiding-who-a-message-is-for).
 4. **IP addresses.** Without Tor, relays and file servers see your IP address. Without *Hide my
    IP address in calls*, the person you call sees it too.
 5. **Public profile.** Your name, about text and photo are public Nostr data, as is anything

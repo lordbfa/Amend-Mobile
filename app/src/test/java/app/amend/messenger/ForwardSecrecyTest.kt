@@ -279,6 +279,35 @@ class ForwardSecrecyTest {
     }
 
     @Test
+    fun afterARestoreTheFirstMessageGoesToTheNpubAndRepliesStillArrive() = runBlocking {
+        val bobKeys = KeyPair.generate()
+        val alice = Phone("alice")
+        val bob = Phone("bob", bobKeys)
+        alice.repo.setRatchetOn(true, publish = false)
+        bob.repo.setRatchetOn(true, publish = false)
+        alice.repo.handleBundle(bob.repo.ratchetBundle()!!)
+        bob.repo.handleBundle(alice.repo.ratchetBundle()!!)
+        deliver(bob, send(alice, bob.repo.me, "one"))
+        deliver(alice, send(bob, alice.repo.me, "two"))
+        // bob restores from his backup key: same nsec, new ratchet identity, empty phone
+        val bob2 = Phone("bob2", bobKeys)
+        bob2.repo.setRatchetOn(true, publish = false)
+        Thread.sleep(1100)
+        alice.repo.handleBundle(bob2.repo.ratchetBundle()!!)
+        bob2.repo.handleBundle(alice.repo.ratchetBundle()!!)
+        // a new session starts with a first message: it must go to bob's npub, which bob2 reads
+        val w = send(alice, bob.repo.me, "after restore")
+        assertTrue(w.all { it.tagValues("p") == listOf(bob.repo.me) })
+        deliver(bob2, w)
+        assertNotNull(bob2.repo.conversations.value[alice.repo.me]?.messages?.firstOrNull { it.text == "after restore" })
+        // bob2's reply goes to the mailbox made from his new identity, and alice reads it
+        val reply = send(bob2, alice.repo.me, "reply from the new phone")
+        assertTrue(reply.none { it.tagValues("p").contains(alice.repo.me) })
+        deliver(alice, reply)
+        assertNotNull(alice.repo.conversations.value[bob.repo.me]?.messages?.firstOrNull { it.text == "reply from the new phone" })
+    }
+
+    @Test
     fun paddingHidesLengthsAndRoundTrips() {
         for (n in listOf(0, 1, 159, 160, 1000)) {
             val m = ByteArray(n) { 7 }

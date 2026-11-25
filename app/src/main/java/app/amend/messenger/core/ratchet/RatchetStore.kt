@@ -138,6 +138,9 @@ class RatchetStore(private val file: File, private val sealer: RatchetSealer) : 
     /** Everyone whose ratchet identity we know. */
     @Synchronized fun trustedPeers(): Set<String> = trusted.keys.toSet()
 
+    /** Changes whenever anyone's trusted identity (or the set of people) changes. */
+    @Synchronized fun trustedFingerprint(): Int = trusted.entries.sortedBy { it.key }.fold(17) { h, e -> 31 * (31 * h + e.key.hashCode()) + e.value.contentHashCode() }
+
     @Synchronized
     fun setTrusted(npub: String, key: IdentityKey?) {
         if (key == null) trusted.remove(npub) else trusted[npub] = key.serialize()

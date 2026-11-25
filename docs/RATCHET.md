@@ -105,17 +105,24 @@ what. Protected gift wraps don't, once two people have exchanged one message eac
 * The gift wrap is addressed and encrypted to that key; the seal inside is still signed by the
   sender and checked as before, and a mailbox only ever accepts protected messages from the one
   person it is shared with.
-* A sender uses the mailbox only after hearing from that person (so they know the sender's
-  identity) and only for phones whose bundle says `"mb": 1`. The first message of a new chat,
-  plain chats and older apps still use the npub.
+* Only normal ("msg") Signal messages go to a mailbox: libsignal sends those only after that very
+  phone has answered in the session, so it knows the sender's current identity and reads that
+  mailbox. A first ("prekey") message, plain chats and older apps still use the npub, and so does
+  a phone whose bundle doesn't say `"mb": 1`.
 * Phones read their mailboxes for every known identity, for the weeks since the last sync (at
   most eight back) and the next week, in filters of 100 keys. The offline mesh recognises them.
 * Weekly rotation means a relay can't follow one mailbox for long.
 
-Limits: a relay still sees which mailboxes one connection asks for together, so it can tell they
-belong to one person (Tor hides who that is). Relays that only hand gift wraps to the person
-named in them after NIP-42 login (in amend's defaults, `auth.nostr1.com`) don't return mailbox
-wraps; the other default relays do (checked by the live relay test in CI).
+What it hides, and from whom: anyone who reads events stored on relays (scrapers, other relay
+users, relays the recipient doesn't connect to) can no longer see who protected messages are for
+or count them per person. **It does not hide this from the recipient's own relays:** a phone asks
+for its npub and its mailboxes in one subscription (and logs in as the npub on NIP-42 relays), so
+those relays can link the mailboxes to the npub. Reading mailboxes over separate connections
+without the npub would close that too; it isn't done yet.
+
+Relays that hand gift wraps only to the person named in them after NIP-42 login (in amend's
+defaults, `auth.nostr1.com`) don't return mailbox wraps; the other default relays do (checked by
+the live relay test in CI). Someone whose relays are all like that would miss mailbox messages.
 
 ## What this does not change
 

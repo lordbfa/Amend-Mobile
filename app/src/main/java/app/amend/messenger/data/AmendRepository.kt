@@ -298,7 +298,7 @@ class AmendRepository(
     private fun refreshMailboxes(since: Long? = if (settings.lastSync == 0L) null else settings.lastSync - GiftWrap.TWO_DAYS - 600): Boolean {
         val r = ratchet ?: return false
         if (r.store.locked) return false
-        val stamp = "${r.epochOf(Event.nowSeconds())}:${since?.let { r.epochOf(it) }}:${r.store.trustedPeers().hashCode()}:${r.store.identityCreated}"
+        val stamp = "${r.epochOf(Event.nowSeconds())}:${since?.let { r.epochOf(it) }}:${r.store.trustedFingerprint()}:${r.store.identityCreated}"
         if (stamp == mailboxStamp) return false
         val fresh = runCatching { r.myMailboxes(since) }.getOrDefault(emptyMap())
         val changed = fresh.keys != mailboxIndex.keys
@@ -357,14 +357,15 @@ class AmendRepository(
         // copies a real gift wrap's id (from a dishonest relay or a nearby mesh phone) must
         // never make us skip the real one when it arrives.
         if (!wrap.isValid()) return
-        mutex.withLock {
-            if (!seenWraps.add(wrap.id)) return
-        }
-        // addressed to my npub, or to a mailbox shared with one contact
+        // addressed to my npub, or to a mailbox shared with one contact; checked before the id
+        // is remembered, so a wrap that came while the mailbox list was out of date isn't lost
         refreshMailboxes()
         val targets = wrap.tagValues("p")
         val box = if (me in targets) null else targets.firstNotNullOfOrNull { mailboxIndex[it] }
         if (me !in targets && box == null) return
+        mutex.withLock {
+            if (!seenWraps.add(wrap.id)) return
+        }
         val outer = try {
             GiftWrap.unwrap(wrap, box?.second ?: keys, wrapVerified = true)
         } catch (e: Exception) {
@@ -1007,8 +1008,7 @@ class AmendRepository(
      * reads mailboxes and they know our identity, otherwise their npub (a first message).
      */
     private fun addressFor(r: Ratchet, who: String, envelope: Event): String {
-        val device = envelope.firstTag("device")?.toIntOrNull() ?: return who
-        if (!r.mailboxReady(who, device)) return who
+        if (!r.mailboxReady(who, envelope)) return who
         return r.mailboxFor(who) ?: who
     }
 
